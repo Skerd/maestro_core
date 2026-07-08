@@ -479,34 +479,34 @@ application.listen(SERVER.PORT, async () => {
     await connectToMongoDb(logger, true);
     logger.debug(`Connected to mongoDB instance!`);
 
-    // logger.debug(`Starting redis connection supervisor...`);
-    // await connectToRedis(logger);
-    // logger.debug(`Redis connection supervisor started!`);
+    logger.debug(`Starting redis connection supervisor...`);
+    await connectToRedis(logger);
+    logger.debug(`Redis connection supervisor started!`);
 
-    // logger.debug(`Hydrating service counters from Redis...`);
-    // await hydrateAllServiceCounters();
-    // startServiceCountersFlush();
-    // logger.debug(`Service counters hydrated and flush loop started.`);
-    //
-    // logger.debug(`Starting Kafka connection supervisor...`);
-    // await connectToKafka(logger);
-    // logger.debug(`Kafka connection supervisor started!`);
+    logger.debug(`Hydrating service counters from Redis...`);
+    await hydrateAllServiceCounters();
+    startServiceCountersFlush();
+    logger.debug(`Service counters hydrated and flush loop started.`);
+
+    logger.debug(`Starting Kafka connection supervisor...`);
+    await connectToKafka(logger);
+    logger.debug(`Kafka connection supervisor started!`);
 
     logger.debug(`Starting websocket connection supervisor...`);
     await connectToWebSocketServer(logger);
     logger.debug(`Websocket connection supervisor started!`);
 
-    // logger.debug("Starting telegraf connection supervisor...");
-    // await connectToTelegramInstance(logger);
-    // logger.debug("Finished starting telegraf connection supervisor!")
+    logger.debug("Starting telegraf connection supervisor...");
+    await connectToTelegramInstance(logger);
+    logger.debug("Finished starting telegraf connection supervisor!")
 
     logger.debug("Registering all notification handlers...");
     await registerAllNotificationHandlers(logger);
     logger.debug("Finished registering all notification handlers!");
 
-    // logger.debug("Loading cron handler registry (execution runs in cronServer)...");
-    // await loadAllCronHandlers(logger);
-    // logger.debug("Cron handler registry loaded.");
+    logger.debug("Loading cron handler registry (execution runs in cronServer)...");
+    await loadAllCronHandlers(logger);
+    logger.debug("Cron handler registry loaded.");
 
     logger.debug("Setting up request ID middleware...");
     setupRequestIdMiddleware(application, logger);
