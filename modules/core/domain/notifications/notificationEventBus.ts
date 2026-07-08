@@ -1,0 +1,109 @@
+/**
+ * Notification Event Bus
+ *
+ * In-process event emitter for notification-triggering domain events.
+ * Handlers subscribe and create + push notifications.
+ *
+ * @module domain/notifications/notificationEventBus
+ */
+
+import {EventEmitter} from "events";
+import type {ClientSession} from "mongodb";
+
+export const NotificationEventCodes = {
+    USER_LOGGED_IN: "USER_LOGGED_IN",
+    USER_LOGGED_IN_NEW_DEVICE: "USER_LOGGED_IN_NEW_DEVICE",
+    MESSAGE_MENTIONED: "MESSAGE_MENTIONED",
+    ROLE_ASSIGNED: "ROLE_ASSIGNED",
+    TRANSACTION_COMPLETED: "TRANSACTION_COMPLETED",
+    MFA_DISABLED: "MFA_DISABLED",
+    MFA_ENABLED: "MFA_ENABLED",
+    TELEGRAM_LINKED: "TELEGRAM_LINKED",
+    TELEGRAM_UNLINKED: "TELEGRAM_UNLINKED",
+    INVITATION_RECEIVED: "INVITATION_RECEIVED",
+    ACCOUNT_ACTIVATED: "ACCOUNT_ACTIVATED",
+    ACCOUNT_SELF_DEACTIVATED: "ACCOUNT_SELF_DEACTIVATED",
+    ACCOUNT_STATUS_CHANGED_BY_ADMIN: "ACCOUNT_STATUS_CHANGED_BY_ADMIN",
+    COMPANY_UPDATED: "COMPANY_UPDATED",
+    SYSTEM_MAINTENANCE: "SYSTEM_MAINTENANCE",
+    // Real Estate
+    RESERVATION_CREATED: "RESERVATION_CREATED",
+    RESERVATION_CANCELLED: "RESERVATION_CANCELLED",
+    RESERVATION_REINSTATED: "RESERVATION_REINSTATED",
+    RESERVATION_PAID: "RESERVATION_PAID",
+    RESERVATION_PAYMENT_REVERSED: "RESERVATION_PAYMENT_REVERSED",
+    RESERVATION_EXPIRATION_REMINDER: "RESERVATION_EXPIRATION_REMINDER",
+    SALE_CREATED: "SALE_CREATED",
+    SALE_PENDING_APPROVAL: "SALE_PENDING_APPROVAL",
+    SALE_APPROVED: "SALE_APPROVED",
+    SALE_REJECTED: "SALE_REJECTED",
+    COMMISSION_PENDING_APPROVAL: "COMMISSION_PENDING_APPROVAL",
+    COMMISSION_APPROVAL_REJECTED: "COMMISSION_APPROVAL_REJECTED",
+    PAYMENT_PLAN_DOWN_PAYMENT_PAID: "PAYMENT_PLAN_DOWN_PAYMENT_PAID",
+    PAYMENT_PLAN_INSTALLMENT_PAID: "PAYMENT_PLAN_INSTALLMENT_PAID",
+    PAYMENT_PLAN_COMPLETED: "PAYMENT_PLAN_COMPLETED",
+    PAYMENT_PLAN_DEFAULTED: "PAYMENT_PLAN_DEFAULTED",
+    MODIFICATION_REQUEST_CREATED: "MODIFICATION_REQUEST_CREATED",
+    MODIFICATION_REQUEST_APPROVED: "MODIFICATION_REQUEST_APPROVED",
+    MODIFICATION_REQUEST_REJECTED: "MODIFICATION_REQUEST_REJECTED",
+    MODIFICATION_REQUEST_CANCELLED: "MODIFICATION_REQUEST_CANCELLED",
+    MODIFICATION_REQUEST_FINANCE_ADDED: "MODIFICATION_REQUEST_FINANCE_ADDED",
+    MODIFICATION_REQUEST_CLIENT_COST_PENDING: "MODIFICATION_REQUEST_CLIENT_COST_PENDING",
+    MODIFICATION_REQUEST_CLIENT_COST_APPROVED: "MODIFICATION_REQUEST_CLIENT_COST_APPROVED",
+    MODIFICATION_REQUEST_CLIENT_COST_REJECTED: "MODIFICATION_REQUEST_CLIENT_COST_REJECTED",
+    MODIFICATION_REQUEST_REVISION_SUBMITTED: "MODIFICATION_REQUEST_REVISION_SUBMITTED",
+    MODIFICATION_REQUEST_REACTIVATED: "MODIFICATION_REQUEST_REACTIVATED",
+    MODIFICATION_REQUEST_SLA_BREACHED: "MODIFICATION_REQUEST_SLA_BREACHED",
+    MODIFICATION_REQUEST_DELIVERED: "MODIFICATION_REQUEST_DELIVERED",
+    COMMISSION_PAID: "COMMISSION_PAID",
+    // eCommerce
+    TASK_REQUEST_CREATED: "TASK_REQUEST_CREATED",
+    TASK_REQUEST_CLOSED: "TASK_REQUEST_CLOSED",
+    BID_ACCEPTED: "BID_ACCEPTED",
+    BID_REJECTED: "BID_REJECTED",
+    ORDER_CREATED_FROM_LISTING: "ORDER_CREATED_FROM_LISTING",
+    ORDER_ACCEPTED: "ORDER_ACCEPTED",
+    ORDER_STARTED: "ORDER_STARTED",
+    ORDER_CANCELLED: "ORDER_CANCELLED",
+    ORDER_EXTENDED: "ORDER_EXTENDED",
+    ORDER_DELIVERY_SUBMITTED: "ORDER_DELIVERY_SUBMITTED",
+    ORDER_DELIVERY_ACCEPTED: "ORDER_DELIVERY_ACCEPTED",
+    ORDER_REVISION_REQUESTED: "ORDER_REVISION_REQUESTED",
+} as const;
+
+export interface NotificationEvent {
+    code: string;
+    receiverIds: string[];
+    payload: Record<string, unknown>;
+    /**
+     * Optional session from the caller for future use only. Persisted notifications do not use
+     * it: async EventEmitter handlers can run after the request transaction commits, which makes
+     * binding writes to `session` unsafe (MongoServerError 256).
+     */
+    session?: ClientSession;
+}
+
+export type NotificationEventCode = (typeof NotificationEventCodes)[keyof typeof NotificationEventCodes];
+
+export type EmitNotificationEventArgs = {
+    receiverIds: string[];
+    payload: Record<string, unknown>;
+    /** Ignored for DB writes — see {@link NotificationEvent.session}. */
+    session?: ClientSession;
+};
+
+export const notificationEventBus = new EventEmitter();
+notificationEventBus.setMaxListeners(50);
+
+/**
+ * Emit a notification domain event; registered handlers create and push notifications.
+ */
+export function emitNotificationEvent(code: NotificationEventCode, args: EmitNotificationEventArgs): void {
+    const payload: NotificationEvent = {
+        code,
+        receiverIds: args.receiverIds,
+        payload: args.payload,
+        session: args.session
+    };
+    notificationEventBus.emit(code, payload);
+}

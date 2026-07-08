@@ -1,0 +1,9 @@
+{
+  "subject": "Deactivate MFA request",
+  "heading": "Deactivate MFA request!",
+  "bodyBefore": "Your request to deactivate your MFA has been approved. Please click ",
+  "bodyLink": "here",
+  "bodyAfter": " to deactivate MFA.",
+  "imageAlt": "Success",
+  "copyright": "© 2024 All Rights Reserved"
+}

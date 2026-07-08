@@ -1,0 +1,10 @@
+{
+  "subject": "Ju jeni ftuar në {pageName}!",
+  "heading": "Ju jeni ftuar në {companyName}",
+  "body": "{inviterName} ju ka ftuar të bashkoheni me {companyName} në {pageName}.",
+  "ctaBefore": "Ju lutem klikoni ",
+  "ctaLink": "këtu",
+  "ctaAfter": " për të pranuar ftesën dhe për të vendosur fjalëkalimin tuaj.",
+  "imageAlt": "Sukses",
+  "copyright": "© 2024 Të gjitha të drejtat e rezervuara"
+}

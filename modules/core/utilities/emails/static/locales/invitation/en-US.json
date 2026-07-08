@@ -1,0 +1,10 @@
+{
+  "subject": "You've been invited to {pageName}!",
+  "heading": "You've been invited to {companyName}",
+  "body": "{inviterName} has invited you to join {companyName} on {pageName}.",
+  "ctaBefore": "Please click ",
+  "ctaLink": "here",
+  "ctaAfter": " to accept the invitation and set your password.",
+  "imageAlt": "Success",
+  "copyright": "© 2024 All Rights Reserved"
+}

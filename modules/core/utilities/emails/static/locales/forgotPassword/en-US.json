@@ -1,0 +1,11 @@
+{
+  "subject": "Password reset request",
+  "heading": "Reset password request!",
+  "introBefore": "Your request to reset your password has been approved. Please click ",
+  "introLink": "here",
+  "introAfter": " to change your password.",
+  "securityOnceOpen": "For security reasons, the reset password link can only be opened 1 (one) time.",
+  "security24h": "For security reasons, the reset password link will be available for the next 24 hours.",
+  "imageAlt": "Success",
+  "copyright": "© 2024 All Rights Reserved"
+}

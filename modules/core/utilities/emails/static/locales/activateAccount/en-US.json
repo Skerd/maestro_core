@@ -1,0 +1,9 @@
+{
+  "subject": "Welcome to {pageName}!",
+  "heading": "Welcome to {pageName}",
+  "bodyBefore": "Please click ",
+  "bodyLink": "here",
+  "bodyAfter": " to activate your account.",
+  "imageAlt": "Success",
+  "copyright": "© 2024 All Rights Reserved"
+}
