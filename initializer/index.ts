@@ -61,11 +61,7 @@ const coreModels: Model<any>[] = [
     MessagingProvider,
 ];
 
-const OPTIONAL_MODULE_BOOTSTRAPS: Record<string, () => Promise<ModuleBootstrap>> = {
-    propertyManagement: () => import("../modules/propertyManagement/database/moduleBootstrap"),
-    eCommerce: () => import("../modules/eCommerce/database/moduleBootstrap"),
-    eCommerceMarketplace: () => import("../modules/eCommerceMarketplace/database/moduleBootstrap"),
-};
+const OPTIONAL_MODULE_BOOTSTRAPS: Record<string, () => Promise<ModuleBootstrap>> = {};
 
 async function loadOptionalModuleBootstraps(): Promise<ModuleBootstrap[]> {
     const bootstraps: ModuleBootstrap[] = [];
