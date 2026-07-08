@@ -137,6 +137,9 @@ export const TELEGRAM = {
     TOKEN: process.env.TELEGRAM_TOKEN
 }
 
+export type KafkaSecurityProtocol = 'PLAINTEXT' | 'SSL' | 'SASL_PLAINTEXT' | 'SASL_SSL';
+export type KafkaSaslMechanism = 'plain' | 'scram-sha-256' | 'scram-sha-512';
+
 export const KAFKA = {
     ENABLED: process.env.KAFKA_ENABLED === 'true',
     BROKERS: process.env.KAFKA_BROKERS.split(","),
@@ -145,6 +148,12 @@ export const KAFKA = {
     CONSUMER_MAX_RETRIES: parseInt(process.env.KAFKA_CONSUMER_MAX_RETRIES, 10),
     PRODUCER_MAX_RETRIES: parseInt(process.env.KAFKA_PRODUCER_MAX_RETRIES, 10),
     PRODUCER_RETRY_DELAY_BASE_MS: parseInt(process.env.KAFKA_PRODUCER_RETRY_DELAY_BASE_MS, 10),
+    SECURITY_PROTOCOL: (process.env.KAFKA_SECURITY_PROTOCOL || 'PLAINTEXT') as KafkaSecurityProtocol,
+    SASL_MECHANISM: (process.env.KAFKA_SASL_MECHANISM || 'plain').toLowerCase() as KafkaSaslMechanism,
+    USERNAME: process.env.KAFKA_USERNAME || '',
+    PASSWORD: process.env.KAFKA_PASSWORD || '',
+    SSL_CA_PATH: process.env.KAFKA_SSL_CA_PATH || '',
+    SSL_REJECT_UNAUTHORIZED: process.env.KAFKA_SSL_REJECT_UNAUTHORIZED === 'true',
 
     TOPICS: {
         USER_LOGIN_HISTORY: process.env.KAFKA_TOPIC_USER_LOGIN_HISTORY,

@@ -1,9 +1,11 @@
 /** Kafka producer/consumer wiring, retry/reconnect, metadata probe, circuit breaker helpers. */
 
+import fs from "fs";
+import path from "path";
 import type {Admin} from "kafkajs";
-import {Consumer, ConsumerConfig, Kafka, KafkaConfig, Partitioners, Producer} from "kafkajs";
+import {Consumer, ConsumerConfig, Kafka, KafkaConfig, Partitioners, Producer, SASLOptions} from "kafkajs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import {KAFKA} from "@coreModule/environment";
+import {KAFKA, KafkaSaslMechanism} from "@coreModule/environment";
 import {kafkaCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {KafkaHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
@@ -57,24 +59,57 @@ async function waitForRetry(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function usesKafkaSsl(): boolean {
+    return KAFKA.SECURITY_PROTOCOL === 'SSL' || KAFKA.SECURITY_PROTOCOL === 'SASL_SSL';
+}
+
+function usesKafkaSasl(): boolean {
+    return KAFKA.SECURITY_PROTOCOL === 'SASL_PLAINTEXT' || KAFKA.SECURITY_PROTOCOL === 'SASL_SSL';
+}
+
+function buildKafkaSaslConfig(): SASLOptions {
+    return {
+        mechanism: KAFKA.SASL_MECHANISM as KafkaSaslMechanism,
+        username: KAFKA.USERNAME,
+        password: KAFKA.PASSWORD,
+    };
+}
+
+function buildKafkaClientConfig(): KafkaConfig {
+    const kafkaConfig: KafkaConfig = {
+        clientId: KAFKA.CLIENT_ID,
+        brokers: KAFKA.BROKERS,
+        retry: {
+            retries: 8,
+            initialRetryTime: 100,
+            multiplier: 2,
+            maxRetryTime: 30000,
+        },
+        requestTimeout: 30000,
+        connectionTimeout: 3000,
+    };
+
+    if (usesKafkaSsl()) {
+        const caPath = path.resolve(process.cwd(), KAFKA.SSL_CA_PATH);
+        kafkaConfig.ssl = {
+            rejectUnauthorized: KAFKA.SSL_REJECT_UNAUTHORIZED,
+            ca: [fs.readFileSync(caPath, 'utf-8')],
+        };
+    }
+
+    if (usesKafkaSasl()) {
+        kafkaConfig.sasl = buildKafkaSaslConfig();
+    }
+
+    return kafkaConfig;
+}
+
 export function getKafkaInstance(): Kafka | null {
     if (!KAFKA.ENABLED) {
         return null;
     }
     if (!kafkaInstance) {
-        const kafkaConfig: KafkaConfig = {
-            clientId: KAFKA.CLIENT_ID,
-            brokers: KAFKA.BROKERS,
-            retry: {
-                retries: 8,
-                initialRetryTime: 100,
-                multiplier: 2,
-                maxRetryTime: 30000,
-            },
-            requestTimeout: 30000,
-            connectionTimeout: 3000,
-        };
-        kafkaInstance = new Kafka(kafkaConfig);
+        kafkaInstance = new Kafka(buildKafkaClientConfig());
     }
     return kafkaInstance;
 }
@@ -145,7 +180,9 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
 
     const logger = getLogger("connecting_to_kafka_instance", parentLogger);
     logger.start("Setting up Kafka instance");
-    logger.debug(`Kafka target brokers=${JSON.stringify(KAFKA.BROKERS)}, clientId=${KAFKA.CLIENT_ID}`);
+    logger.debug(
+        `Kafka target brokers=${JSON.stringify(KAFKA.BROKERS)}, clientId=${KAFKA.CLIENT_ID}, securityProtocol=${KAFKA.SECURITY_PROTOCOL}`,
+    );
 
     // Forward declare functions that are mutually dependent
     let runKafkaMetadataProbe: () => Promise<void>;

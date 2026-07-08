@@ -136,6 +136,11 @@ export function validateConfiguration(): void {
 
     // Kafka configuration (if enabled)
     if (process.env.KAFKA_ENABLED === 'true') {
+        const kafkaSecurityProtocol = (process.env.KAFKA_SECURITY_PROTOCOL || 'PLAINTEXT').toUpperCase();
+        const kafkaUsesSsl = kafkaSecurityProtocol === 'SSL' || kafkaSecurityProtocol === 'SASL_SSL';
+        const kafkaUsesSasl = kafkaSecurityProtocol === 'SASL_PLAINTEXT' || kafkaSecurityProtocol === 'SASL_SSL';
+        const kafkaSaslMechanism = (process.env.KAFKA_SASL_MECHANISM || 'plain').toLowerCase();
+
         errors.push(...[
             validateArray('KAFKA_BROKERS', process.env.KAFKA_BROKERS, true, 1),
             validateString('KAFKA_CLIENT_ID', process.env.KAFKA_CLIENT_ID, true),
@@ -143,6 +148,12 @@ export function validateConfiguration(): void {
             validateNumber('KAFKA_CONSUMER_MAX_RETRIES', process.env.KAFKA_CONSUMER_MAX_RETRIES, true, 0),
             validateNumber('KAFKA_PRODUCER_MAX_RETRIES', process.env.KAFKA_PRODUCER_MAX_RETRIES, true, 0),
             validateNumber('KAFKA_PRODUCER_RETRY_DELAY_BASE_MS', process.env.KAFKA_PRODUCER_RETRY_DELAY_BASE_MS, true, 100),
+            validateString('KAFKA_SECURITY_PROTOCOL', process.env.KAFKA_SECURITY_PROTOCOL, false),
+            validateString('KAFKA_SASL_MECHANISM', process.env.KAFKA_SASL_MECHANISM, false),
+            validateString('KAFKA_USERNAME', process.env.KAFKA_USERNAME, kafkaUsesSasl),
+            validateString('KAFKA_PASSWORD', process.env.KAFKA_PASSWORD, kafkaUsesSasl),
+            validateString('KAFKA_SSL_CA_PATH', process.env.KAFKA_SSL_CA_PATH, kafkaUsesSsl),
+            validateBoolean('KAFKA_SSL_REJECT_UNAUTHORIZED', process.env.KAFKA_SSL_REJECT_UNAUTHORIZED, false),
 
             validateString('KAFKA_TOPIC_USER_LOGIN_HISTORY', process.env.KAFKA_TOPIC_USER_LOGIN_HISTORY, true),
             validateString('KAFKA_TOPIC_ACTIVATION_EMAIL', process.env.KAFKA_TOPIC_ACTIVATION_EMAIL, true),
@@ -161,6 +172,20 @@ export function validateConfiguration(): void {
             validateString('KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_API_ACCESS', process.env.KAFKA_CONSUMER_GROUP_API_ACCESS, true),
         ].filter((e): e is ValidationError => e !== null));
+
+        if (!['PLAINTEXT', 'SSL', 'SASL_PLAINTEXT', 'SASL_SSL'].includes(kafkaSecurityProtocol)) {
+            errors.push({
+                key: 'KAFKA_SECURITY_PROTOCOL',
+                message: `Environment variable KAFKA_SECURITY_PROTOCOL must be one of PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL, got: ${process.env.KAFKA_SECURITY_PROTOCOL}`,
+            });
+        }
+
+        if (kafkaUsesSasl && !['plain', 'scram-sha-256', 'scram-sha-512'].includes(kafkaSaslMechanism)) {
+            errors.push({
+                key: 'KAFKA_SASL_MECHANISM',
+                message: `Environment variable KAFKA_SASL_MECHANISM must be one of plain, scram-sha-256, scram-sha-512, got: ${process.env.KAFKA_SASL_MECHANISM}`,
+            });
+        }
     }
 
     // AUTHENTICATION & SECURITY
