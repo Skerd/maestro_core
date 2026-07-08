@@ -373,7 +373,7 @@ export async function addKafkaTopicConsumer(parentLogger: serverLogger | undefin
  *
  * @param parentLogger - Optional parent logger instance for hierarchical logging
  */
-export async function startAllKafkaEventsConsumer(parentLogger?: serverLogger): Promise<void> {
+export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Promise<void> {
 
     if (!KAFKA.ENABLED) {
         const log = getLogger("kafka_consumer", parentLogger);
