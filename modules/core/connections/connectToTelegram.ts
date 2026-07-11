@@ -6,6 +6,9 @@
  * user messages into the AI-assistant. The AI-assistant is decoupled from Telegram
  * and is reachable ONLY through the in-app internal chat (see aiAssistantResponder.ts).
  *
+ * Long-polling (getUpdates) runs in telegramServer. Other processes (e.g. apiServer)
+ * may use the Telegraf client for outbound sendMessage without calling launch().
+ *
  * Provides:
  * - Telegraf bot instance management
  * - Circuit breaker pattern for failure protection and cascading failure prevention
@@ -46,6 +49,7 @@
  */
 
 import {randomUUID} from "crypto";
+import os from "os";
 import {Telegraf} from "telegraf";
 import User from "@coreModule/database/schemas/user/user";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
@@ -65,6 +69,7 @@ import {
     TELEGRAM_HEALTH_SNAPSHOT_KEY,
     TELEGRAM_HEALTH_SNAPSHOT_TTL_SECONDS
 } from "@coreModule/utilities/timing/healthSnapshot";
+import {telegramCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 
 /**
  * Telegraf bot instance - singleton instance for Telegram bot operations
@@ -84,7 +89,7 @@ let handlersSetup = false;
 /** Prevent overlapping launch attempts */
 let launchInProgress = false;
 
-/** Refreshes Redis `health:telegram` while Telegraf runs in this process (API only). */
+/** Refreshes Redis `health:telegram` while Telegraf runs in this process (telegramServer). */
 let telegramHealthSnapTimer: ReturnType<typeof setInterval> | null = null;
 
 // ============================================================================
@@ -137,11 +142,15 @@ function flushTelegramHealthSnapshot(): void {
     if (!isConnected) {
         return;
     }
-    void redisSetEx(
-        TELEGRAM_HEALTH_SNAPSHOT_KEY,
-        TELEGRAM_HEALTH_SNAPSHOT_TTL_SECONDS,
-        JSON.stringify(getTelegramHealth())
-    ).catch(() => {});
+    void (async () => {
+        // Pull cross-process send counters (apiServer) before snapshotting.
+        await telegramCounter.hydrate().catch(() => {});
+        await redisSetEx(
+            TELEGRAM_HEALTH_SNAPSHOT_KEY,
+            TELEGRAM_HEALTH_SNAPSHOT_TTL_SECONDS,
+            JSON.stringify(getTelegramHealth())
+        );
+    })().catch(() => {});
 }
 
 function startTelegramHealthSnapshotPublisher(): void {
@@ -576,6 +585,7 @@ export function isTelegramConnected(): boolean {
  */
 export function getTelegramHealth(): TelegramHealth {
     const circuitBreakerStats = telegramCircuitBreaker.getStats();
+    const counters = telegramCounter.getStats();
 
     // Warn if circuit breaker is open (service is down)
     if (circuitBreakerStats.state === 'OPEN') {
@@ -588,19 +598,30 @@ export function getTelegramHealth(): TelegramHealth {
         );
     }
 
+    // Prefer process uptime (telegramServer) so the card matches assistant/cron/api.
+    const lastStart =
+        uptimeKeeper.getLastStart("telegramServer")
+        || uptimeKeeper.getLastStart("telegram")
+        || 0;
+
     return {
-        lastStart: uptimeKeeper.getLastStart("telegram"),
-        connected: isConnected, 
-        botName: TELEGRAM.NAME,
-        messages: 0,
+        lastStart,
+        lastHeartbeat: isConnected ? Date.now() : undefined,
+        connected: isConnected,
+        botName: TELEGRAM.NAME || "",
+        serverId: `${os.hostname()}:${process.pid}`,
+        messages: counters.completedJobs,
         users: 0,
+        failed: counters.failedJobs,
+        totalMs: counters.totalTime,
+        averageMs: counters.averageTime,
         circuitBreaker: circuitBreakerStats
     };
 }
 
 /**
  * Telegram health for dashboards that run outside the Telegraf process (e.g. WebSocket server).
- * Reads Redis snapshot written by the API when the bot is connected; falls back to {@link getTelegramHealth}.
+ * Reads Redis snapshot written by telegramServer when the bot is connected; falls back to {@link getTelegramHealth}.
  */
 export async function getTelegramHealthResolved(): Promise<TelegramHealth> {
     const local = getTelegramHealth();
@@ -616,10 +637,15 @@ export async function getTelegramHealthResolved(): Promise<TelegramHealth> {
         // Merge so a partial JSON blob (or strict-validation rejects) still upgrades `connected` from Redis.
         return {
             lastStart: typeof parsed.lastStart === "number" ? parsed.lastStart : local.lastStart,
+            lastHeartbeat: typeof parsed.lastHeartbeat === "number" ? parsed.lastHeartbeat : local.lastHeartbeat,
             connected: parsed.connected,
             botName: typeof parsed.botName === "string" ? parsed.botName : local.botName,
+            serverId: typeof parsed.serverId === "string" ? parsed.serverId : local.serverId,
             messages: typeof parsed.messages === "number" ? parsed.messages : local.messages,
             users: typeof parsed.users === "number" ? parsed.users : local.users,
+            failed: typeof parsed.failed === "number" ? parsed.failed : local.failed,
+            totalMs: typeof parsed.totalMs === "number" ? parsed.totalMs : local.totalMs,
+            averageMs: typeof parsed.averageMs === "number" ? parsed.averageMs : local.averageMs,
             circuitBreaker: parsed.circuitBreaker ?? local.circuitBreaker
         };
     } catch {

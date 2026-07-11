@@ -23,7 +23,7 @@ import {applyServiceUptimeIndexes} from "./serviceUptime.indexes";
 /**
  * Logical service identifier. Mirrors the keys in the Health response.
  */
-export type ServiceUptimeName = | "mongoDb" | "redis" | "kafka" | "websocket" | "telegram" | "api" | "websocketServer" | "kafkaServer" | "cronServer" | "assistantServer";
+export type ServiceUptimeName = | "mongoDb" | "redis" | "kafka" | "websocket" | "telegram" | "api" | "websocketServer" | "kafkaServer" | "cronServer" | "assistantServer" | "telegramServer";
  
 export interface IServiceUptime extends Document {
     service: ServiceUptimeName;

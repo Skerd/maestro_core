@@ -34,11 +34,13 @@
     "websocket:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/webSocketServer.ts",
     "cron:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/cronServer.ts",
     "assistant:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/assistantServer.ts",
+    "telegram:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/telegramServer.ts",
     "api": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/apiServer.ts",
     "kafka": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/kafkaServer.ts",
     "websocket": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/webSocketServer.ts",
     "cron": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/cronServer.ts",
-    "assistant": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/assistantServer.ts"
+    "assistant": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/assistantServer.ts",
+    "telegram": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/telegramServer.ts"
   },
   "dependencies": {
     "@techstark/opencv-js": "^4.12.0-release.1",

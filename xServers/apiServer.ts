@@ -12,15 +12,18 @@
  * - Metrics collection middleware
  * - Request timeout validation
  * - Error handling middleware
- * - Connection to external services (MongoDB, Redis, Kafka, WebSocket, Telegram)
+ * - Connection to external services (MongoDB, Redis, Kafka, WebSocket)
  * 
  * Server Lifecycle:
  * 1. Validates environment configuration
  * 2. Sets up CORS, body parser, and request middleware
  * 3. Starts listening on configured port
- * 4. Connects to MongoDB, Redis, Kafka, WebSocket, and Telegram
+ * 4. Connects to MongoDB, Redis, Kafka, and WebSocket
  * 5. Registers all API routes automatically
  * 6. Sets up error handling
+ *
+ * Telegram long-polling lives in telegramServer; this process only sends
+ * outbound notification messages via the Bot API (no getUpdates).
  * 
  * @module apiServer
  */
@@ -36,7 +39,6 @@ import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import express, {Application, NextFunction, Response} from 'express';
 import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
-import {connectToTelegramInstance} from "@coreModule/connections/connectToTelegram";
 import {connectToWebSocketServer} from "@coreModule/connections/connectToWebSocketServer";
 import {
     hydrateAllServiceCounters,
@@ -504,10 +506,6 @@ application.listen(SERVER.PORT, async () => {
     logger.debug(`Starting websocket connection supervisor...`);
     await connectToWebSocketServer(logger);
     logger.debug(`Websocket connection supervisor started!`);
-
-    logger.debug("Starting telegraf connection supervisor...");
-    await connectToTelegramInstance(logger);
-    logger.debug("Finished starting telegraf connection supervisor!")
 
     logger.debug("Registering all notification handlers...");
     await registerAllNotificationHandlers(logger);

@@ -126,10 +126,10 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
             name: "telegram",
             connected: services.telegram.connected,
             circuitBreakerState: services.telegram.circuitBreaker.state,
-            // Telegram tracks sent messages similarly to WS.
+            // Telegram tracks sent messages similarly to WS / assistant jobs.
             completed: services.telegram.messages,
-            failed: 0,
-            totalTime: 0
+            failed: services.telegram.failed || 0,
+            totalTime: services.telegram.totalMs || 0
         }
     ];
 
