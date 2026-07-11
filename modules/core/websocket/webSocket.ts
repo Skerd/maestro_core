@@ -768,6 +768,7 @@ export function updateWebSocketInstance(newWebSocket: WebSocketServer): void {
 export function getLocalWebSocketServerHealth(): import("armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto").WebSocketHealth {
     const { uptimeKeeper } = require("@coreModule/utilities/uptime/uptimeKeeper");
     const { webSocketCircuitBreaker } = require("@coreModule/utilities/circuitBreaker");
+    const os = require("os") as typeof import("os");
 
     const listening = !!ServerWebSocket && (ServerWebSocket as any).address?.() != null;
     const totalUsers = Object.keys(AllUsersWebSockets).length;
@@ -775,19 +776,22 @@ export function getLocalWebSocketServerHealth(): import("armonia/src/modules/cor
     // the dashboard's KPI tile survives WS server restarts. The per-room
     // counters in `AllRoomsUsers` (used by the stats endpoint for the
     // breakdown) are persisted separately via `wsMessageStore`.
-    const totalMessages = webSocketCounter.getStats().completedJobs;
+    const counterStats = webSocketCounter.getStats();
     const roomNames = Object.values(AllRoomsUsers).map((room) => room.name);
 
     const port = WEBSOCKET?.PORT;
+    const host = os.hostname();
     return {
         lastStart: uptimeKeeper.getLastStart("websocketServer"),
         connected: listening,
         // 1 = OPEN per the ws spec; we only have a server so report OPEN when listening.
         readyState: listening ? 1 : 3,
-        url: port ? `ws://0.0.0.0:${port}` : "",
+        url: port ? `ws://${host}:${port}` : `ws://${host}`,
         users: totalUsers,
         rooms: roomNames,
-        messages: totalMessages,
+        messages: counterStats.completedJobs,
+        failedJobs: counterStats.failedJobs,
+        totalTime: counterStats.totalTime,
         circuitBreaker: webSocketCircuitBreaker.getStats()
     }; 
 }

@@ -484,6 +484,8 @@ export function getWebSocketHealth(): WebSocketHealth {
     return {
         lastStart: uptimeKeeper.getLastStart("websocket"),
         messages: 0,
+        failedJobs: 0,
+        totalTime: 0,
         rooms: [], 
         users: 0,
         connected,

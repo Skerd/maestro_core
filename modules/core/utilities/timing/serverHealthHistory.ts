@@ -119,8 +119,8 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
             circuitBreakerState: services.websocket.circuitBreaker.state,
             // For the WS service we treat sent messages as completed jobs.
             completed: services.websocket.messages,
-            failed: 0,
-            totalTime: 0
+            failed: services.websocket.failedJobs || 0,
+            totalTime: services.websocket.totalTime || 0
         },
         {
             name: "telegram",
