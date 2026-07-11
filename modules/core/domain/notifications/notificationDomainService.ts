@@ -23,6 +23,7 @@ import {
 } from "@coreModule/database/schemas/notification/notification";
 import {serverLogger} from "@coreModule/loggers/serverLog";
 import {sendMessagingNotification} from "@coreModule/utilities/messaging/messagingDispatchService";
+import {sendTelegramNotification} from "@coreModule/utilities/messaging/telegramDispatchService";
 import User from "@coreModule/database/schemas/user/user";
 import {NotificationDeliveryChannel} from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
 
@@ -119,6 +120,20 @@ export async function createAndPushNotification(
                 // Non-fatal — log but don't fail the notification creation
                 console.error("Messaging dispatch failed:", e);
             }
+        }
+    }
+
+    // Auto-dispatch to Telegram when the receiver has a linked chatId
+    if (description) {
+        try {
+            const receiverUser = await User.findById(receiver).select("telegram.chatId").lean();
+            const chatId = (receiverUser as any)?.telegram?.chatId as number | undefined;
+            if (chatId) {
+                await sendTelegramNotification({chatId, body: description});
+            }
+        } catch (e) {
+            // Non-fatal — log but don't fail the notification creation
+            console.error("Telegram dispatch failed:", e);
         }
     }
 
