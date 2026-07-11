@@ -53,6 +53,8 @@ import path from "path";
 import fs from "fs";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {createRolePermissions} from "@coreModule/database/schemas/rolePermission/rolePermission.default";
+import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
+import {startApiHeartbeat, stopApiHeartbeat} from "@coreModule/api/health/apiServerHealth";
 
 /** Express application instance */
 const application: Application = express();
@@ -488,6 +490,13 @@ application.listen(SERVER.PORT, async () => {
     startServiceCountersFlush();
     logger.debug(`Service counters hydrated and flush loop started.`);
 
+    logger.debug("Hydrating UptimeKeeper + starting API heartbeat...");
+    await uptimeKeeper.hydrate();
+    await uptimeKeeper.markStart("api", SERVER.API_VERSION || "1.0.0");
+    uptimeKeeper.start();
+    startApiHeartbeat();
+    logger.debug("API server heartbeat started!");
+
     logger.debug(`Starting Kafka connection supervisor...`);
     await connectToKafka(logger);
     logger.debug(`Kafka connection supervisor started!`);
@@ -531,3 +540,14 @@ application.listen(SERVER.PORT, async () => {
     logger.finish(`Done setting up api server!`);
 
 });
+
+async function gracefulShutdown(): Promise<void> {
+    const log = getLogger("api_server_shutdown");
+    log.debug("API server shutting down...");
+    stopApiHeartbeat();
+    await uptimeKeeper.markStop("api");
+    process.exit(0);
+}
+
+process.on("SIGTERM", () => void gracefulShutdown());
+process.on("SIGINT", () => void gracefulShutdown());

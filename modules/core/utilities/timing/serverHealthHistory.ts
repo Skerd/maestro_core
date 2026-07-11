@@ -155,6 +155,17 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
         });
     }
 
+    if (services.apiServer) {
+        samples.push({
+            name: "apiServer",
+            connected: services.apiServer.connected,
+            circuitBreakerState: services.apiServer.connected ? "CLOSED" : "OPEN",
+            completed: services.apiServer.completed,
+            failed: services.apiServer.failed,
+            totalTime: services.apiServer.totalMs
+        });
+    }
+
     return samples;
 }
 

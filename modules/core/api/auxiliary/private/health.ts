@@ -22,6 +22,7 @@ import {getWebSocketHealth} from "@coreModule/connections/connectToWebSocketServ
 import {getTelegramHealthResolved} from "@coreModule/connections/connectToTelegram";
 import {getAssistantResponderHealth} from "@coreModule/domain/ai/assistantHealth";
 import {getCronSchedulerHealth} from "@coreModule/cronjobs/health/cronSchedulerHealth";
+import {getApiServerHealth} from "@coreModule/api/health/apiServerHealth";
 import {ServerHealthDto} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {HEALTH_SNAPSHOT_KEY} from "@coreModule/utilities/timing/healthSnapshot";
 import ServerHealth1m from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
@@ -52,13 +53,14 @@ router.get("", async (_req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const [mongoDbHealth, redisHealth, kafkaHealth, telegramHealth, cronSchedulerHealth, assistantHealth] = await Promise.all([
+        const [mongoDbHealth, redisHealth, kafkaHealth, telegramHealth, cronSchedulerHealth, assistantHealth, apiServerHealth] = await Promise.all([
             getMongoDbHealth(),
             getRedisHealth(),
             getKafkaHealth(),
             getTelegramHealthResolved(),
             getCronSchedulerHealth(),
             getAssistantResponderHealth(),
+            getApiServerHealth(),
         ]);
         const webSocketHealth = getWebSocketHealth();
 
@@ -79,6 +81,7 @@ router.get("", async (_req: Request, res: Response): Promise<void> => {
                 telegram: telegramHealth,
                 cronScheduler: cronSchedulerHealth,
                 assistant: assistantHealth,
+                apiServer: apiServerHealth,
             }
         };
 
@@ -120,16 +123,18 @@ async function safeGetCachedHealth(): Promise<{ statusCode: number; payload: Ser
         // Refresh the timestamp so consumers don't perceive cached data as stale.
         parsed.payload.timestamp = Date.now();
         // WS-authored envelope may still carry process-local telegram: offline; overlay Redis/API truth.
-        // Cron + assistant also live outside the WS process — refresh from Redis heartbeats.
+        // Cron + assistant + apiServer also live outside the WS process — refresh from Redis heartbeats.
         if (parsed.payload.services) {
-            const [telegramHealth, cronSchedulerHealth, assistantHealth] = await Promise.all([
+            const [telegramHealth, cronSchedulerHealth, assistantHealth, apiServerHealth] = await Promise.all([
                 getTelegramHealthResolved(),
                 getCronSchedulerHealth(),
                 getAssistantResponderHealth(),
+                getApiServerHealth(),
             ]);
             parsed.payload.services.telegram = telegramHealth;
             parsed.payload.services.cronScheduler = cronSchedulerHealth;
             parsed.payload.services.assistant = assistantHealth;
+            parsed.payload.services.apiServer = apiServerHealth;
         }
         return parsed;
     }
@@ -174,7 +179,7 @@ const HISTORY_WINDOW_DEFINITIONS: Record<string, { granularity: ServerHealthHist
     "365d": { granularity: "1d", durationMs: 365 * 24 * 60 * 60 * 1_000 }
 };
 
-const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "kafka", "websocket", "telegram", "assistant", "cronScheduler"];
+const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "kafka", "websocket", "telegram", "assistant", "cronScheduler", "apiServer"];
 
 /**
  * Returns historical health time-series for all services.

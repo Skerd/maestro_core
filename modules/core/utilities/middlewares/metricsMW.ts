@@ -13,6 +13,7 @@
 import {NextFunction, Request, Response} from 'express';
 import {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {publishApiAccessEvent} from "@coreModule/kafka/kafkaProducer";
+import {recordApiResult} from "@coreModule/api/health/apiServerHealth";
 
 /**
  * Metrics middleware
@@ -36,6 +37,9 @@ export function metricsMiddleware() {
             const now = Date.now();
             const duration = now - startTime;
             const statusCode = res.statusCode;
+
+            // Process-local counters for the server-health card (cheap; no I/O).
+            recordApiResult(statusCode >= 400 ? "failed" : "completed", duration);
 
             void publishApiAccessEvent({
                 eventType: "api_access",
