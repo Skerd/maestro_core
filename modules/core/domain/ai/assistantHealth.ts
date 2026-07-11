@@ -24,6 +24,7 @@
 
 import os from "os";
 import {isRedisConnected, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
+import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 
 /** Redis key holding the assistant responder's latest heartbeat + counters. */
 export const ASSISTANT_HEARTBEAT_KEY = "assistant:responder:heartbeat";
@@ -42,6 +43,7 @@ const STALE_MS = 60_000;
 export type AssistantResponderHealth = {
     connected: boolean;
     lastHeartbeat?: number;
+    lastStart?: number;
     serverId?: string;
     /** answered + failed. */
     processed: number;
@@ -59,6 +61,8 @@ export type AssistantResponderHealth = {
 let answered = 0;
 let failed = 0;
 let totalMs = 0;
+/** Latched once so uptime does not reset on every heartbeat tick. */
+let startedAt = 0;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 
 /**
@@ -86,9 +90,13 @@ export function recordAssistantResult(outcome: "answered" | "failed", durationMs
 export async function publishAssistantHeartbeat(): Promise<void> {
     if (!isRedisConnected()) return;
     try {
+        if (!startedAt) {
+            startedAt = uptimeKeeper.getLastStart("assistantServer") || Date.now();
+        }
         await redisSetEx(ASSISTANT_HEARTBEAT_KEY, HEARTBEAT_TTL_SECONDS, JSON.stringify({
             serverId: `${os.hostname()}:${process.pid}`,
             at: Date.now(),
+            lastStart: startedAt,
             answered,
             failed,
             totalMs
@@ -130,7 +138,12 @@ export async function getAssistantResponderHealth(): Promise<AssistantResponderH
         const raw = await redisGet(ASSISTANT_HEARTBEAT_KEY);
         if (!raw) return empty;
         const p = JSON.parse(raw) as {
-            serverId?: string; at?: number; answered?: number; failed?: number; totalMs?: number;
+            serverId?: string;
+            at?: number;
+            lastStart?: number;
+            answered?: number;
+            failed?: number;
+            totalMs?: number;
         };
         const answeredN = p.answered ?? 0;
         const failedN = p.failed ?? 0;
@@ -139,6 +152,7 @@ export async function getAssistantResponderHealth(): Promise<AssistantResponderH
         return {
             connected: age < STALE_MS,
             lastHeartbeat: p.at,
+            lastStart: p.lastStart || p.at,
             serverId: p.serverId,
             processed: answeredN + failedN,
             answered: answeredN,

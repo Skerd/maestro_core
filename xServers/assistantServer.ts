@@ -74,11 +74,12 @@ async function setAssistantUp(logger: serverLogger): Promise<void> {
 
     // Publish the responder heartbeat + live throughput stats so this process
     // shows up as a service card in the server-performance UI, like the others.
-    logger.debug("Starting assistant responder heartbeat...");
-    startAssistantHeartbeat();
-
+    // Mark uptime before the first heartbeat so lastStart is available immediately.
     void uptimeKeeper.markStart("assistantServer");
     uptimeKeeper.start();
+
+    logger.debug("Starting assistant responder heartbeat...");
+    startAssistantHeartbeat();
 }
 
 async function gracefulShutdown(logger: serverLogger): Promise<void> {
