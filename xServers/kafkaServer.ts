@@ -39,6 +39,10 @@ import {startPerformancePersistence} from "@coreModule/utilities/timing/performa
 import {startStatsSnapshotPublisher} from "@coreModule/utilities/timing/statsSnapshotPublisher";
 import {startPerformanceRollupJobs} from "@coreModule/utilities/timing/performanceRollups";
 import {startServerHealthRollupJobs} from "@coreModule/utilities/timing/serverHealthHistory";
+import {
+    startKafkaServerHeartbeat,
+    stopKafkaServerHeartbeat,
+} from "@coreModule/kafka/kafkaServerHealth";
 
 /** Global server name identifier for logging and service identification */
 global.ServerName = "KafkaServer";
@@ -93,6 +97,9 @@ async function setKafkaUp(logger: serverLogger): Promise<void> {
     void uptimeKeeper.markStart("kafkaServer");
     uptimeKeeper.start();
 
+    logger.debug("Starting kafkaServer process heartbeat...");
+    startKafkaServerHeartbeat();
+
     logger.debug(`Starting aggregator + persistence + snapshot publisher`);
     metricsAggregator.start();
     startPerformancePersistence();
@@ -102,9 +109,20 @@ async function setKafkaUp(logger: serverLogger): Promise<void> {
 
 }
 
+async function gracefulShutdown(): Promise<void> {
+    const log = getLogger("kafka_server_shutdown");
+    log.debug("Kafka server shutting down...");
+    stopKafkaServerHeartbeat();
+    await uptimeKeeper.markStop("kafkaServer");
+    process.exit(0);
+}
+
 let logger = getLogger("kafkaInitialization");
 logger.start("Setting up kafka server");
 
 setKafkaUp(logger).then(() => {
     logger.finish("Done setting up kafka server!");
 });
+
+process.on("SIGTERM", () => void gracefulShutdown());
+process.on("SIGINT", () => void gracefulShutdown());

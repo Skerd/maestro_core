@@ -1,16 +1,14 @@
-/** Kafka producer/consumer wiring, retry/reconnect, metadata probe, circuit breaker helpers. */
-
-import fs from "fs";
-import path from "path";
-import type {Admin} from "kafkajs";
-import {Consumer, ConsumerConfig, Kafka, KafkaConfig, Partitioners, Producer, SASLOptions} from "kafkajs";
-import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import {KAFKA, KafkaSaslMechanism} from "@coreModule/environment";
-import {kafkaCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {KafkaHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
-import {kafkaCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
-import {getKafkaConsumerStatuses} from "@coreModule/kafka/consumerRegistry";
+import {kafkaCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
+import {KAFKA, KafkaSaslMechanism} from "@coreModule/environment";
+import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
+import {Consumer, ConsumerConfig, Kafka, KafkaConfig, Partitioners, Producer, SASLOptions} from "kafkajs";
+import type {Admin} from "kafkajs";
+import fs from "fs";
+import path from "path";
+
+// Note: kafkaCounter / consumer registry live on kafkaServer health, not broker health.
 
 let kafkaInstance: Kafka | null = null;
 let producerInstance: Producer | null = null;
@@ -28,6 +26,16 @@ let kafkaMetadataProbeAdmin: Admin | null = null;
 let kafkaMetadataProbeInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectScheduled = false;
 let metadataProbeRunning = false;
+
+/** Last successful cluster metadata snapshot (brokers + topics). */
+let lastClusterStats: {
+    brokersOnline: string[];
+    brokerCount: number;
+    topics: string[];
+    topicCount: number;
+    clusterId?: string;
+    updatedAt: number;
+} | null = null;
 
 async function teardownKafkaMetadataProbe(): Promise<void> {
     // Stop the interval first
@@ -349,13 +357,29 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
                 await kafkaMetadataProbeAdmin.connect();
             }
 
-            // Test the connection with a short timeout
-            await Promise.race([
-                kafkaMetadataProbeAdmin.describeCluster(),
-                new Promise((_, reject) =>
+            // Test the connection and refresh broker/topic stats with a short timeout
+            const [cluster, topics] = await Promise.race([
+                Promise.all([
+                    kafkaMetadataProbeAdmin.describeCluster(),
+                    kafkaMetadataProbeAdmin.listTopics(),
+                ]),
+                new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error("Metadata probe timeout")), 5000)
                 ),
             ]);
+
+            const brokersOnline = (cluster.brokers || []).map(
+                (b) => `${b.host}:${b.port}`
+            );
+            const topicList = (topics || []).slice().sort((a, b) => a.localeCompare(b));
+            lastClusterStats = {
+                brokersOnline,
+                brokerCount: brokersOnline.length,
+                topics: topicList,
+                topicCount: topicList.length,
+                clusterId: cluster.clusterId,
+                updatedAt: Date.now(),
+            };
         } catch (error: any) {
             // Clean up broken admin connection
             try {
@@ -368,6 +392,7 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
             // Only trigger reconnection if we were previously connected
             if (isConnected) {
                 isConnected = false;
+                lastClusterStats = null;
                 scheduleReconnectIfNeeded(`metadata probe failure: ${error.message}`);
             }
         } finally {
@@ -440,6 +465,7 @@ export async function disconnectFromKafka(): Promise<void> {
     await disconnectAllRegisteredConsumers();
     kafkaInstance = null;
     isConnected = false;
+    lastClusterStats = null;
 }
 
 export function isKafkaConnected(): boolean {
@@ -451,15 +477,11 @@ export async function executeWithCircuitBreaker<T>(operation: () => Promise<T>):
 }
 
 /**
- * Builds the full Kafka health envelope.
+ * Builds the infrastructure Kafka (broker) health envelope.
  *
- * Async because the consumer roster is read from Redis (cross-process). The
- * roster portion gracefully degrades to an empty list on Redis failure so the
- * caller never has to special-case unavailability.
- *
- * Note: the `connected` field reflects ONLY the producer-side broker
- * connection in this process. The dashboard correlates it with `consumers`
- * to flag the case where the broker is up but consumers are down.
+ * Reflects producer-side broker connectivity plus the latest cluster metadata
+ * snapshot (online brokers + topics) from the admin probe. Consumer roster +
+ * pipeline throughput live on {@link getKafkaServerHealth}.
  */
 export async function getKafkaHealth(): Promise<KafkaHealth> {
     const connected = isConnected && KAFKA.ENABLED;
@@ -472,27 +494,16 @@ export async function getKafkaHealth(): Promise<KafkaHealth> {
         });
     }
 
-    const counters = kafkaCounter.getStats();
-    const consumerList = await getKafkaConsumerStatuses();
-    const runningConsumers = consumerList.filter((c) => c.alive).length;
-
     return {
-        completedJobs: counters.completedJobs,
-        failedJobs: counters.failedJobs,
         lastStart: uptimeKeeper.getLastStart("kafka"),
-        totalTime: counters.totalTime,
         connected,
         enabled: KAFKA.ENABLED,
-        clientId: KAFKA.CLIENT_ID || "",
         brokers: KAFKA.BROKERS || [],
-        consumers: {
-            // `expected` = how many consumers have ever registered (and thus
-            // are still in the registry). A consumer that was decommissioned
-            // should be removed via `unregister()` or `pruneStaleConsumers()`.
-            expected: consumerList.length,
-            running: runningConsumers,
-            list: consumerList
-        }, 
+        brokersOnline: lastClusterStats?.brokersOnline || [],
+        brokerCount: lastClusterStats?.brokerCount ?? 0,
+        topics: lastClusterStats?.topics || [],
+        topicCount: lastClusterStats?.topicCount ?? 0,
+        clusterId: lastClusterStats?.clusterId,
         circuitBreaker: circuitBreakerStats,
     };
 }

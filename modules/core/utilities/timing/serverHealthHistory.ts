@@ -109,9 +109,9 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
             name: "kafka",
             connected: services.kafka.connected,
             circuitBreakerState: services.kafka.circuitBreaker.state,
-            completed: services.kafka.completedJobs,
-            failed: services.kafka.failedJobs,
-            totalTime: services.kafka.totalTime
+            completed: 0,
+            failed: 0,
+            totalTime: 0
         },
         {
             name: "websocket",
@@ -163,6 +163,17 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
             completed: services.apiServer.completed,
             failed: services.apiServer.failed,
             totalTime: services.apiServer.totalMs
+        });
+    }
+
+    if (services.kafkaServer) {
+        samples.push({
+            name: "kafkaServer",
+            connected: services.kafkaServer.connected,
+            circuitBreakerState: services.kafkaServer.connected ? "CLOSED" : "OPEN",
+            completed: services.kafkaServer.completed,
+            failed: services.kafkaServer.failed,
+            totalTime: services.kafkaServer.totalMs
         });
     }
 
