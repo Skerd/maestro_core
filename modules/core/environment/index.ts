@@ -25,6 +25,7 @@
 
 import * as dotenv from 'dotenv';
 import path from "path";
+import os from "os";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -256,7 +257,7 @@ export const CRON = {
     SELF_HEAL_INTERVAL_MS: parseInt(process.env.CRON_SELF_HEAL_INTERVAL_MS || "300000", 10),
     GRACEFUL_SHUTDOWN_MS: parseInt(process.env.CRON_GRACEFUL_SHUTDOWN_MS || "30000", 10),
     SEED_PLATFORM_JOBS: process.env.CRON_SEED_PLATFORM_JOBS === "true",
-    SERVER_ID: process.env.CRON_SERVER_ID || `${process.env.HOSTNAME || "host"}:${process.pid}`,
+    SERVER_ID: process.env.CRON_SERVER_ID || `${os.hostname()}:${process.pid}`,
     TOPIC_EXECUTE: process.env.KAFKA_TOPIC_CRON_EXECUTE || "cron.execute",
     CONSUMER_GROUP_EXECUTE: process.env.KAFKA_CONSUMER_GROUP_CRON_EXECUTE || "CRON_WORKERS",
 };

@@ -1,7 +1,10 @@
 import {randomUUID} from "crypto";
-import {getRedisClient, isRedisConnected, redisDel, redisSetEx} from "@coreModule/connections/connectToRedis";
+import {getRedisClient, isRedisConnected, redisDel} from "@coreModule/connections/connectToRedis";
 import {CRON} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
+// Heartbeat lives with counters in cronSchedulerHealth; re-exported below for
+// callers that historically imported it from this lock module.
+export {publishSchedulerHeartbeat} from "@coreModule/cronjobs/health/cronSchedulerHealth";
 
 const logger = getLogger("cron_lock_redis");
 
@@ -62,12 +65,4 @@ export async function releaseRedisLock(handle: RedisLockHandle): Promise<void> {
 
 export async function acquireLeaderLock(serverId: string): Promise<RedisLockHandle | null> {
     return acquireRedisLock("leader", CRON.LEADER_LOCK_TTL_MS);
-}
-
-export async function publishSchedulerHeartbeat(): Promise<void> {
-    if (!isRedisConnected()) return;
-    await redisSetEx("cron:scheduler:heartbeat", 30, JSON.stringify({
-        serverId: CRON.SERVER_ID,
-        at: Date.now(),
-    }));
 }

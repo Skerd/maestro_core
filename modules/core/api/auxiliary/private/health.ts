@@ -21,6 +21,7 @@ import {getKafkaHealth} from "@coreModule/connections/connectToKafka";
 import {getWebSocketHealth} from "@coreModule/connections/connectToWebSocketServer";
 import {getTelegramHealthResolved} from "@coreModule/connections/connectToTelegram";
 import {getAssistantResponderHealth} from "@coreModule/domain/ai/assistantHealth";
+import {getCronSchedulerHealth} from "@coreModule/cronjobs/health/cronSchedulerHealth";
 import {ServerHealthDto} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {HEALTH_SNAPSHOT_KEY} from "@coreModule/utilities/timing/healthSnapshot";
 import ServerHealth1m from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
@@ -119,8 +120,16 @@ async function safeGetCachedHealth(): Promise<{ statusCode: number; payload: Ser
         // Refresh the timestamp so consumers don't perceive cached data as stale.
         parsed.payload.timestamp = Date.now();
         // WS-authored envelope may still carry process-local telegram: offline; overlay Redis/API truth.
+        // Cron + assistant also live outside the WS process — refresh from Redis heartbeats.
         if (parsed.payload.services) {
-            parsed.payload.services.telegram = await getTelegramHealthResolved();
+            const [telegramHealth, cronSchedulerHealth, assistantHealth] = await Promise.all([
+                getTelegramHealthResolved(),
+                getCronSchedulerHealth(),
+                getAssistantResponderHealth(),
+            ]);
+            parsed.payload.services.telegram = telegramHealth;
+            parsed.payload.services.cronScheduler = cronSchedulerHealth;
+            parsed.payload.services.assistant = assistantHealth;
         }
         return parsed;
     }
@@ -165,7 +174,7 @@ const HISTORY_WINDOW_DEFINITIONS: Record<string, { granularity: ServerHealthHist
     "365d": { granularity: "1d", durationMs: 365 * 24 * 60 * 60 * 1_000 }
 };
 
-const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "kafka", "websocket", "telegram", "assistant"];
+const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "kafka", "websocket", "telegram", "assistant", "cronScheduler"];
 
 /**
  * Returns historical health time-series for all services.
@@ -263,28 +272,6 @@ async function readHistorySeries(
         failedJobs: r.failedJobs || 0,
         averageTime: r.averageTime || 0
     }));
-}
-
-async function getCronSchedulerHealth(): Promise<{
-    connected: boolean;
-    lastHeartbeat?: number;
-    serverId?: string;
-}> {
-    try {
-        const raw = await redisGet("cron:scheduler:heartbeat");
-        if (!raw) {
-            return {connected: false};
-        }
-        const parsed = JSON.parse(raw) as {at?: number; serverId?: string};
-        const age = Date.now() - (parsed.at ?? 0);
-        return {
-            connected: age < 60_000,
-            lastHeartbeat: parsed.at,
-            serverId: parsed.serverId,
-        };
-    } catch {
-        return {connected: false};
-    }
 }
 
 export { router };

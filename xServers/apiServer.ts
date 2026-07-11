@@ -504,10 +504,6 @@ application.listen(SERVER.PORT, async () => {
     await registerAllNotificationHandlers(logger);
     logger.debug("Finished registering all notification handlers!");
 
-    logger.debug("Loading cron handler registry (execution runs in cronServer)...");
-    await loadAllCronHandlers(logger);
-    logger.debug("Cron handler registry loaded.");
-
     logger.debug("Setting up request ID middleware...");
     setupRequestIdMiddleware(application, logger);
     logger.debug(`Finished setting up request ID middleware!`);

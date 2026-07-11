@@ -40,7 +40,9 @@ async function setCronUp(logger: serverLogger): Promise<void> {
             await seedPlatformCronJobs();
         }
 
+        await uptimeKeeper.hydrate();
         await uptimeKeeper.markStart("cronServer");
+        uptimeKeeper.start();
         await schedulerEngine.start(logger);
         logger.debug("Cron scheduler engine started");
     } else {

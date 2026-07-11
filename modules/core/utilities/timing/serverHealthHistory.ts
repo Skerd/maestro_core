@@ -144,6 +144,17 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
         });
     }
 
+    if (services.cronScheduler) {
+        samples.push({
+            name: "cronScheduler",
+            connected: services.cronScheduler.connected,
+            circuitBreakerState: services.cronScheduler.connected ? "CLOSED" : "OPEN",
+            completed: services.cronScheduler.completed,
+            failed: services.cronScheduler.failed,
+            totalTime: services.cronScheduler.totalMs
+        });
+    }
+
     return samples;
 }
 

@@ -11,6 +11,7 @@ import {cronExecutionService} from "@coreModule/database/schemas/cronExecution/c
 import type {ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
 import type {ICronExecution, CronExecutionStatus} from "@coreModule/database/schemas/cronExecution/cronExecution";
 import CronExecution from "@coreModule/database/schemas/cronExecution/cronExecution";
+import {recordCronResult} from "@coreModule/cronjobs/health/cronSchedulerHealth";
 
 const MAX_LOG_LINES = 500;
 
@@ -164,6 +165,10 @@ export class JobRunner {
 
         const finishedAt = new Date();
         const durationMs = finishedAt.getTime() - execution.startedAt.getTime();
+
+        // Surface throughput on the server-health card (same process that
+        // publishes the scheduler heartbeat when it holds leadership).
+        recordCronResult(status === "success" ? "completed" : "failed", durationMs);
 
         await CronExecution.updateOne(
             {_id: execution._id},

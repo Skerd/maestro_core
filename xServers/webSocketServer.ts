@@ -58,6 +58,7 @@ import {
 import {hydrateRoomMessages, saveRoomMessages} from "@coreModule/utilities/serviceMetrics/wsMessageStore";
 import {startServerHealthSnapshotting} from "@coreModule/utilities/timing/serverHealthHistory";
 import {getAssistantResponderHealth} from "@coreModule/domain/ai/assistantHealth";
+import {getCronSchedulerHealth} from "@coreModule/cronjobs/health/cronSchedulerHealth";
 
 mongoose.set("strictQuery", true);
 global.ServerName = "WebSocketServer";
@@ -382,12 +383,13 @@ setWebSocketServerUp(initLogger)
  */
 export async function getHealthData(): Promise<ServerHealthFormResponseType> {
     try {
-        const [mongoDbHealth, redisHealth, kafkaHealth, telegramHealth, assistantHealth] = await Promise.all([
+        const [mongoDbHealth, redisHealth, kafkaHealth, telegramHealth, assistantHealth, cronSchedulerHealth] = await Promise.all([
             getMongoDbHealth(),
             getRedisHealth(),
             getKafkaHealth(),
             getTelegramHealthResolved(),
-            getAssistantResponderHealth()
+            getAssistantResponderHealth(),
+            getCronSchedulerHealth(),
         ]);
         // Use the *local* WS server health — this process owns the WSS instance
         // and the room/user registries. The M2M client getter from
@@ -410,7 +412,8 @@ export async function getHealthData(): Promise<ServerHealthFormResponseType> {
                 kafka: kafkaHealth,
                 websocket: webSocketHealth,
                 telegram: telegramHealth,
-                assistant: assistantHealth
+                assistant: assistantHealth,
+                cronScheduler: cronSchedulerHealth,
             }
         };
     }
