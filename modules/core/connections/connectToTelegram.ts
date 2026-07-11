@@ -1,31 +1,34 @@
 /**
  * Telegram Bot Connection Manager
  * 
- * Provides comprehensive Telegram bot integration with:
+ * Telegram is a ONE-WAY NOTIFICATION transport only. It delivers outbound
+ * notifications and supports account linking (/start); it does NOT route inbound
+ * user messages into the AI-assistant. The AI-assistant is decoupled from Telegram
+ * and is reachable ONLY through the in-app internal chat (see aiAssistantResponder.ts).
+ *
+ * Provides:
  * - Telegraf bot instance management
  * - Circuit breaker pattern for failure protection and cascading failure prevention
- * - Command handlers for bot interactions (/start, /help, /hi)
+ * - Command handlers for account linking (/start) and trivial static replies (/help, /hi)
  * - User account linking via verification codes
- * - Message handling for non-bot users
  * - Graceful shutdown handling (SIGINT, SIGTERM)
  * - Health monitoring and connection status checks
- * 
+ *
  * Bot Configuration:
  * - NAME: Telegram bot username
  * - TOKEN: Telegram bot API token for authentication
- * 
+ *
  * Bot Commands:
  * - /start {code}: Links user account to Telegram using verification code
  *   - Verifies code from user.requests.telegram.code
  *   - Stores chatId in user.telegram.chatId
  *   - Sends confirmation message to user
- * - /help: Displays help message
- * - /hi: Greets the user with their name
- * 
- * Message Handling:
- * - Responds to all messages from non-bot users
- * - Provides friendly greeting responses
- * 
+ * - /help: Static reply (no AI)
+ * - /hi: Greets the user with their name (static, no AI)
+ *
+ * NOTE: There is deliberately no general free-text message handler. Inbound
+ * Telegram messages are ignored; the AI-assistant is NOT reachable via Telegram.
+ *
  * Account Linking Flow:
  * 1. User generates QR code via POST /api/user/telegram
  * 2. System stores verification code in user.requests.telegram.code
@@ -42,16 +45,22 @@
  * @module connectToTelegram
  */
 
+import {randomUUID} from "crypto";
 import {Telegraf} from "telegraf";
 import User from "@coreModule/database/schemas/user/user";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {CONSTANTS, TELEGRAM} from "@coreModule/environment";
-import {message} from "telegraf/filters";
 import {telegramCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {TelegramHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
-import {redisDel, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
+import {
+    redisDel,
+    redisGet,
+    redisReleaseLock,
+    redisSetEx,
+    redisTryAcquireOrRenewLock
+} from "@coreModule/connections/connectToRedis";
 import {
     TELEGRAM_HEALTH_SNAPSHOT_KEY,
     TELEGRAM_HEALTH_SNAPSHOT_TTL_SECONDS
@@ -78,7 +87,51 @@ let launchInProgress = false;
 /** Refreshes Redis `health:telegram` while Telegraf runs in this process (API only). */
 let telegramHealthSnapTimer: ReturnType<typeof setInterval> | null = null;
 
-const TELEGRAM_RETRY_TIMER = 5000;
+// ============================================================================
+// Single-poller leadership lock
+// ============================================================================
+// Telegram permits only ONE active getUpdates long-poll per bot token; a second
+// poller triggers `409 Conflict: terminated by other getUpdates request`. Across
+// replicas/cluster nodes every process would otherwise start its own poll. So the
+// long-poll is guarded by a Redis leadership lock: exactly one process holds it
+// and polls; the rest stand by and take over only when the holder's lock expires
+// (crash) or is released (graceful shutdown).
+
+/** Redis key holding the single-poller leadership lock (one holder cluster-wide). */
+const TELEGRAM_POLLER_LOCK_KEY = "telegram:poller:leader";
+
+/** Lock TTL. Must exceed the renew interval so a healthy leader never self-expires. */
+const TELEGRAM_POLLER_LOCK_TTL_SECONDS = 30;
+
+/** How often the leader renews its lock (comfortably under the TTL). */
+const TELEGRAM_POLLER_LOCK_RENEW_MS = 10_000;
+
+/** How often a follower re-checks whether leadership has freed up. */
+const TELEGRAM_POLLER_FOLLOWER_POLL_MS = 10_000;
+
+/** Unique owner id for this process, so only we can renew/release our own lock. */
+const TELEGRAM_POLLER_INSTANCE_ID = `${global.ServerName ?? "server"}:${process.pid}:${randomUUID()}`;
+
+/** True while this process holds the poller lock (i.e. it runs the long-poll). */
+let isLeader = false;
+
+/** Prevent overlapping leadership supervisors in one process. */
+let leadershipInProgress = false;
+
+/** Set by {@link disconnectFromTelegram} to permanently stop this process polling. */
+let pollerDisabled = false;
+
+/**
+ * Release the poller lock if we hold it, so another instance can take over
+ * immediately instead of waiting for the TTL to lapse.
+ */
+async function releasePollerLeadership(): Promise<void> {
+    if (!isLeader) {
+        return;
+    }
+    isLeader = false;
+    await redisReleaseLock(TELEGRAM_POLLER_LOCK_KEY, TELEGRAM_POLLER_INSTANCE_ID);
+}
 
 function flushTelegramHealthSnapshot(): void {
     if (!isConnected) {
@@ -115,10 +168,9 @@ async function waitForRetry(ms: number): Promise<void> {
  * Establishes connection to Telegram bot with command and message handlers
  * 
  * This function:
- * 1. Sets up command handlers (/start, /help, /hi)
- * 2. Sets up message handlers for user interactions
- * 3. Launches the bot to start receiving updates
- * 4. Sets up graceful shutdown handlers
+ * 1. Sets up command handlers (/start, /help, /hi) — no free-text/AI handler
+ * 2. Launches the bot to start receiving updates
+ * 3. Sets up graceful shutdown handlers
  * 
  * @param parentLogger - Parent logger instance for hierarchical logging
  * 
@@ -134,57 +186,113 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
     logger.start("Setting up Telegram instance");
     logger.debug(`Telegram target bot=${TELEGRAM.NAME}, token=${TELEGRAM.TOKEN ? 'provided' : 'not provided'}`);
 
-    if (isConnected) {
-        logger.debug("Telegram instance already connected. Skipping launch.");
-        logger.finish("Telegram already connected");
-        return;
-    }
-
-    if (launchInProgress) {
-        logger.debug("Telegram launch already in progress. Skipping duplicate launch.");
+    if (leadershipInProgress) {
+        logger.debug("Telegram leadership supervisor already running. Skipping duplicate.");
         logger.finish("Telegram connection supervisor already running");
         return;
     }
-    
-    const launchWithRetry = async (): Promise<void> => {
-        if (launchInProgress) {
-            logger.debug("Telegram launch already in progress. Skipping duplicate launch.");
+
+    // A single Telegraf launch attempt. `launch()` awaits long polling until
+    // `stop()` — it does not resolve once polling starts. Post-connect work runs
+    // in the hook (after getMe, before polling). Resolves on stop()/standdown;
+    // throws if the launch itself fails.
+    const launchBot = async (): Promise<void> => {
+        await telegrafBot.launch({}, () => {
+            void (async () => {
+                isConnected = true;
+                logger.info("Telegram connected");
+                await uptimeKeeper.markStart("telegram");
+                startTelegramHealthSnapshotPublisher();
+            })();
+        });
+    };
+
+    // Stop polling in this process (leadership standdown / disable). Best-effort.
+    const standDownFromPolling = async (): Promise<void> => {
+        if (!isConnected && !launchInProgress) {
             return;
         }
+        try {
+            await telegrafBot.stop();
+        } catch (e: any) {
+            logger.err(`Error stopping Telegram polling on standdown: ${e?.message ?? e}`);
+        }
+        isConnected = false;
+        stopTelegramHealthSnapshotPublisher();
+    };
 
-        launchInProgress = true;
+    // Leadership supervisor: only the process that holds the Redis poller lock
+    // runs the long-poll, so 409 "terminated by other getUpdates" is impossible
+    // across replicas/cluster nodes. Followers stand by and take over only when
+    // the leader's lock expires (crash) or is released (graceful stop).
+    const runLeadershipSupervisor = async (): Promise<void> => {
+        if (leadershipInProgress) {
+            logger.debug("Telegram leadership supervisor already running. Skipping duplicate.");
+            return;
+        }
+        leadershipInProgress = true;
 
         try {
-            let currentRetryCount = 0;
-
-            while (!isConnected) {
-                try {
-                    // Launch supervision must always keep trying while Telegram is down.
-                    // The circuit breaker still protects bot operations separately.
-                    //
-                    // Telegraf: `launch()` awaits long polling until `stop()` — it does not resolve
-                    // once polling starts. Run post-connect work in the hook (after getMe, before polling).
-                    await telegrafBot.launch({}, () => {
-                        void (async () => {
-                            isConnected = true;
-                            logger.info("Telegram connected");
-                            await uptimeKeeper.markStart("telegram");
-                            startTelegramHealthSnapshotPublisher();
-                        })();
-                    });
-                    // Promise settles only after telegrafBot.stop() ends polling (shutdown / migration).
-                } catch (e: any) {
-                    currentRetryCount++;
-                    isConnected = false;
-                    logger.err(`Telegram connection failed: ${e.message}. Retrying in ${TELEGRAM_RETRY_TIMER} ms.`);
-                    await waitForRetry(TELEGRAM_RETRY_TIMER);
+            // Runs for the lifetime of the process.
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                // Permanently disabled via disconnectFromTelegram(): stand down and idle.
+                if (pollerDisabled) {
+                    if (isConnected || isLeader) {
+                        await standDownFromPolling();
+                        await releasePollerLeadership();
+                    }
+                    await waitForRetry(TELEGRAM_POLLER_FOLLOWER_POLL_MS);
+                    continue;
                 }
+
+                let holdsLock = false;
+                try {
+                    holdsLock = await redisTryAcquireOrRenewLock(
+                        TELEGRAM_POLLER_LOCK_KEY,
+                        TELEGRAM_POLLER_INSTANCE_ID,
+                        TELEGRAM_POLLER_LOCK_TTL_SECONDS
+                    );
+                } catch (e: any) {
+                    // On any lock error, behave as a follower this tick (fail safe).
+                    logger.err(`Telegram leadership lock check failed: ${e?.message ?? e}`);
+                    holdsLock = false;
+                }
+
+                if (holdsLock && !isLeader) {
+                    isLeader = true;
+                    logger.info(`Acquired Telegram poller leadership (owner=${TELEGRAM_POLLER_INSTANCE_ID})`);
+                } else if (!holdsLock && isLeader) {
+                    // Another instance now owns the lock (e.g. we stalled past the TTL).
+                    // Stop polling immediately so it is the only poller.
+                    logger.warn("Lost Telegram poller leadership; standing down (another instance is the poller).");
+                    isLeader = false;
+                    await standDownFromPolling();
+                }
+
+                // As leader, ensure the long-poll is running. launchBot() blocks
+                // until stop()/standdown; we keep looping to renew the lock while
+                // it polls, so `launchInProgress` stays true for the poll's lifetime.
+                if (isLeader && !isConnected && !launchInProgress) {
+                    launchInProgress = true;
+                    void launchBot()
+                        .catch((e: any) => {
+                            logger.err(`Telegram launch failed: ${e?.message ?? e}. Will retry while leader.`);
+                        })
+                        .finally(() => {
+                            isConnected = false;
+                            launchInProgress = false;
+                        });
+                }
+
+                // Leaders renew often; followers just poll for a free lock.
+                await waitForRetry(isLeader ? TELEGRAM_POLLER_LOCK_RENEW_MS : TELEGRAM_POLLER_FOLLOWER_POLL_MS);
             }
         } finally {
-            launchInProgress = false;
+            leadershipInProgress = false;
         }
     };
-    
+
     try{
         if (!handlersSetup) {
             // ============================================================================
@@ -308,29 +416,14 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
             // ============================================================================
             // Message Handlers
             // ============================================================================
-            
-            /**
-             * General message handler
-             * Responds to all messages from non-bot users
-             * Provides friendly greeting responses
-             */
-            telegrafBot.on(message(), async (ctx) => {
-                if( !ctx.from.is_bot ){
-                    try {
-                        await telegramCircuitBreaker.execute(async () => {
-                            let {first_name, last_name} = ctx.from;
-                            await ctx.reply(`Hey there ${first_name} ${last_name}!`);
-                        });
-                    } catch (error: any) {
-                        const messageLogger = getLogger("telegram-message-handler", logger);
-                        if (error.message?.includes('Circuit breaker')) {
-                            messageLogger.warn(`Circuit breaker is OPEN - Telegram service unavailable`);
-                        } else {
-                            messageLogger.err(`Error processing message: ${error.message}`);
-                        }
-                    }
-                }
-            });
+            //
+            // Intentionally NONE. Telegram is a one-way notification transport only:
+            // it delivers outbound notifications and handles account linking (/start),
+            // but it must never route inbound user messages into the AI-assistant.
+            // The AI-assistant is reachable ONLY through the in-app internal chat
+            // (see aiAssistantResponder.ts / assistantBrain.ts). Do not re-add a
+            // `telegrafBot.on(message(), ...)` handler that answers user messages
+            // here — that would re-couple Telegram to the assistant.
 
             handlersSetup = true;
         }
@@ -356,6 +449,9 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
                         await telegrafBot.stop('SIGINT');
                         isConnected = false;
                         stopTelegramHealthSnapshotPublisher();
+                        // Release the poller lock so another instance takes over now,
+                        // rather than after the TTL lapses.
+                        await releasePollerLeadership();
                         shutdownLogger.info('Telegram bot stopped successfully');
                     }
                 } catch (error) {
@@ -379,6 +475,9 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
                         await telegrafBot.stop('SIGTERM');
                         isConnected = false;
                         stopTelegramHealthSnapshotPublisher();
+                        // Release the poller lock so another instance takes over now,
+                        // rather than after the TTL lapses.
+                        await releasePollerLeadership();
                         shutdownLogger.info('Telegram bot stopped successfully');
                     }
                 } catch (error) {
@@ -398,11 +497,11 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
         return;
     }
 
-    void launchWithRetry().catch((e: any) => {
-        logger.err(`Telegram connection supervisor failed: ${e.message}`);
+    void runLeadershipSupervisor().catch((e: any) => {
+        logger.err(`Telegram leadership supervisor failed: ${e.message}`);
     });
 
-    logger.finish("Telegram connection supervisor started");
+    logger.finish("Telegram leadership supervisor started");
 }
 
 // ============================================================================
@@ -423,9 +522,13 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
 export async function disconnectFromTelegram(): Promise<void> {
     if (telegrafBot) {
         try {
+            // Permanently opt this process out of polling so the leadership
+            // supervisor won't relaunch, and release the lock for other instances.
+            pollerDisabled = true;
             await telegrafBot.stop();
             isConnected = false;
             stopTelegramHealthSnapshotPublisher();
+            await releasePollerLeadership();
         } catch (error) {
             const logger = getLogger("telegram-disconnect");
             logger.err('Error disconnecting from Telegram bot');

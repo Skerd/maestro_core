@@ -26,6 +26,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/permissions/changeUserRoles.form.response.type";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
+import {ensureAiChannel, hideAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import Role, {IRole} from "@coreModule/database/schemas/role/role";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
@@ -269,6 +270,31 @@ async function UpdateUserRoles(params: TransactionRequiredParams & ChangeUserRol
         else{
             throw apiValidationException("companyRole_not_found", null, null, languageCode);
         }
+    }
+
+    // Keep the AI-assistant channel in sync with company-role membership.
+    // fetchThese is the user's final set of role ids in this company: empty means
+    // they no longer hold any role here (hide the channel), otherwise ensure it
+    // exists / re-attach the user if it had been hidden.
+    if (fetchThese.length === 0) {
+        await hideAiChannel({
+            userId: userInfo._id,
+            companyId: company._id,
+            session,
+            logger,
+            languageCode,
+            auditUserId: actionUserCtx.userId
+        });
+    }
+    else {
+        await ensureAiChannel({
+            userId: userInfo._id,
+            companyId: company._id,
+            session,
+            logger,
+            languageCode,
+            auditUserId: actionUserCtx.userId
+        });
     }
 
     logger.finish(`Finished updating user roles!`);

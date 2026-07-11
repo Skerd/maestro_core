@@ -36,6 +36,7 @@ import {KAFKA} from "@coreModule/environment";
 import {kafkaCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {
     ActivationEmailEvent,
+    AiChannelMessageEvent,
     ApiAccessEvent,
     ForgotPasswordEmailEvent,
     InvitationEmailEvent,
@@ -204,6 +205,41 @@ export async function publishLoginHistoryEvent(params: LoginHistoryEvent): Promi
     }
     catch (error: any) {
         logger.err(`Failed to publish login history event for user ${params.userId}: ${error.message}`);
+    }
+}
+
+/**
+ * Publish an AI-channel message event to Kafka.
+ *
+ * Fired when a human user posts in their AI-assistant channel; the AI responder
+ * ("Layer 2") consumes it and composes the bot's reply. Fire-and-forget — the
+ * user's own message is already persisted and delivered independently.
+ *
+ * @param params - AI-channel message event data
+ */
+export async function publishAiChannelMessageEvent(params: AiChannelMessageEvent, loggerInstance?: serverLogger): Promise<void> {
+    const log = loggerInstance || logger;
+    if (!canPublish(log)) return;
+
+    try {
+        await publishWithRetry(
+            KAFKA.TOPICS.AI_CHANNEL_MESSAGE,
+            {
+                key: params.channelId,
+                value: JSON.stringify(params),
+                headers: {
+                    'event-type': 'ai_channel_message',
+                    'timestamp': new Date(params.timestamp).toISOString(),
+                },
+            },
+            KAFKA.PRODUCER_MAX_RETRIES,
+            log
+        );
+
+        log.debug(`Published AI-channel message event for channel ${params.channelId}`);
+    }
+    catch (error: any) {
+        log.err(`Failed to publish AI-channel message event for channel ${params.channelId}: ${error.message}`);
     }
 }
 

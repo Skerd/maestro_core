@@ -38,6 +38,8 @@ import {
     ValidateInvitationCodeFormResponseType
 } from "armonia/src/modules/core/api/user/public/acceptInvitation/validateInvitationCode.form.response.type";
 import {userService} from "@coreModule/database/schemas/user/user.service";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
+import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
@@ -146,6 +148,20 @@ async function acceptInvitation(params: TransactionRequiredParams & AcceptInvita
     user.$locals = user.$locals || {};
     user.$locals.auditUserId = user._id;
     await user.save({session});
+
+    // The invited user is now active - create their single AI-assistant channel.
+    // (Eager creation is intentionally deferred from invite time to acceptance so
+    // never-accepted invites don't leave orphan channels.)
+    if (invitationCompanyIdRaw) {
+        await ensureAiChannel({
+            userId: user._id,
+            companyId: new ObjectId(invitationCompanyIdRaw.toString()),
+            session,
+            logger,
+            languageCode,
+            auditUserId: user._id
+        });
+    }
 
     if (notificationCompanyId) {
         emitNotificationEvent(NotificationEventCodes.ACCOUNT_ACTIVATED, {

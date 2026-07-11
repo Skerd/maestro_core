@@ -56,6 +56,7 @@ import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/midd
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
+import {publishAiChannelMessageEvent} from "@coreModule/kafka/kafkaProducer";
 
 /**
  * Chat messages API – private endpoints for listing and managing messages.
@@ -591,6 +592,22 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
     } catch (e) {
         // WebSocket notification failure should not break the request
         logger.debug(`Failed to send WebSocket notification: ${e}`);
+    }
+
+    // AI-assistant channel: hand off to the responder ("Layer 2"). Fire-and-forget —
+    // the user's message is already saved/delivered; the reply arrives asynchronously.
+    // Never trigger on the bot's own messages, which would loop.
+    if ((selectedChannel as IChannel).isAiAssistant && !userInfo.isBot) {
+        void publishAiChannelMessageEvent({
+            eventType: "ai_channel_message",
+            companyId: company._id.toString(),
+            channelId: selectedChannel._id.toString(),
+            userId: userInfo._id.toString(),
+            messageId: message._id.toString(),
+            text,
+            languageCode,
+            timestamp: Date.now()
+        }, logger);
     }
 
     logger.debug(`Converting messages to DTOs...`);

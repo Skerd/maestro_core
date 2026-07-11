@@ -42,6 +42,7 @@ import {currencyService} from "@coreModule/database/schemas/currency/currency.se
 import {financeService} from "@coreModule/database/schemas/finance/finance.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequired, TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
@@ -222,6 +223,16 @@ async function addExistingUserToCompany(existingUser: IUser, companyId: ObjectId
         },
         opts
     );
+
+    // Ensure this user has their single AI-assistant channel with the company bot.
+    await ensureAiChannel({
+        userId: existingUser._id,
+        companyId,
+        session: opts.session ?? null,
+        logger: opts.logger,
+        languageCode: opts.languageCode,
+        auditUserId: opts.auditUserId,
+    });
 }
 
 /**
@@ -609,6 +620,17 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
             { ...opts, auditUserId: actionUserCtx.userId }
         );
         await newUser.sendActivationEmail(email, languageCode, session, logger);
+
+        // Give the newly created company user their single AI-assistant channel.
+        // (The existingUser branch handles this inside addExistingUserToCompany.)
+        await ensureAiChannel({
+            userId: newUser._id,
+            companyId: company._id,
+            session: session ?? null,
+            logger,
+            languageCode,
+            auditUserId: actionUserCtx.userId,
+        });
     }
 
     const roleDoc = await roleService.findOneOrThrow(

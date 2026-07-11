@@ -79,7 +79,14 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
     const services = health.services;
     if (!services) return [];
 
-    return [
+    const samples: {
+        name: ServerHealthServiceName;
+        connected: boolean;
+        circuitBreakerState: "CLOSED" | "OPEN" | "HALF_OPEN";
+        completed: number;
+        failed: number;
+        totalTime: number;
+    }[] = [
         {
             name: "mongoDb",
             connected: services.mongoDb.connected,
@@ -125,6 +132,19 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
             totalTime: 0
         }
     ];
+
+    if (services.assistant) {
+        samples.push({
+            name: "assistant",
+            connected: services.assistant.connected,
+            circuitBreakerState: services.assistant.connected ? "CLOSED" : "OPEN",
+            completed: services.assistant.answered,
+            failed: services.assistant.failed,
+            totalTime: services.assistant.totalMs
+        });
+    }
+
+    return samples;
 }
 
 /**

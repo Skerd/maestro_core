@@ -19,6 +19,10 @@ export interface IChannel extends Document, IOwnershipPluginFields {
     description?: string,
     avatar?: ObjectId,
     isGroup: boolean,
+    /** True for the dedicated 1-1 channel between a company-role user and the company AI bot. */
+    isAiAssistant: boolean,
+    /** The human user this AI-assistant channel belongs to. Only set when isAiAssistant is true. */
+    aiOwnerUser?: IUser,
     adminUsers: IUser[],
 
     leftUsers: {
@@ -77,6 +81,33 @@ export const ChannelSchema = new mongoose.Schema<IChannel>(
                 },
                 others: {
                     read: "no-permission",
+                    write: "no-permission"
+                }
+            }
+        },
+        isAiAssistant: {
+            type: SchemaTypes.Boolean,
+            default: false,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
+        },
+        aiOwnerUser: {
+            type: SchemaTypes.ObjectId,
+            ref: "User",
+            required: false,
+            default: null,
+            refAllowlist: SimpleUserSnippet,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
                     write: "no-permission"
                 }
             }

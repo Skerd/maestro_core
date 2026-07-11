@@ -14,6 +14,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/chats/channels/deleteChannel.form.response.type";
 import {channelsToDTO, channelToDTO} from "@coreModule/utilities/mappers/channel/channelMapper.dto";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
@@ -87,7 +88,7 @@ router.post(
     authMW("private"),
     rateLimiter({
         windowMs: 60000,
-        max: 60
+        max: 600
     }),
     validateFormZod(allChannelsFormSchema),
     schemaSanitizer({model: "channels", requiredModes: ["read"]}),
@@ -249,6 +250,80 @@ async function getChannelSingle(params: GetChannelSingleType & GetChannelSingleF
 }
 
 /**
+ * POST /api/user/chats/channels/ai
+ *
+ * Returns the authenticated user's single AI-assistant channel with the company
+ * bot, creating it on demand if it does not exist yet (lazy safety net that
+ * complements eager creation on role grant). Idempotent - never creates a second
+ * channel thanks to the get-or-create helper + partial unique index.
+ *
+ * @route POST /api/user/chats/channels/ai
+ * @access Private
+ * @returns {Promise<GetChannelSingleFormResponseType>} The AI-assistant channel DTO
+ *
+ * @throws {apiValidationException} If the company has no bot user (ai_channel_unavailable)
+ *
+ * @remarks
+ * - No transaction: keeps the unique-index race-recovery path reachable
+ * - Same DTO shape as GET single / list items
+ */
+router.post(
+    "/ai",
+    authMW("private"),
+    rateLimiter({
+        windowMs: 60000,
+        max: 60
+    }),
+    schemaSanitizer({model: "channels", requiredModes: ["read"]}),
+    asyncHandler(getOrCreateAiChannel)
+);
+type GetOrCreateAiChannelType = AuthenticatedMWType & SchemaSanitizerMWType;
+/**
+ * Gets or creates the current user's AI-assistant channel and returns its DTO.
+ *
+ * @param params - Auth, sanitizedReadFields
+ * @returns AI-assistant channel DTO
+ */
+async function getOrCreateAiChannel(params: GetOrCreateAiChannelType): Promise<GetChannelSingleFormResponseType> {
+    const { logger, userInfo, company, languageCode, actionUserCtx, sanitizedReadFields } = params;
+
+    logger.start(`Get-or-create AI channel for user ${userInfo._id.toString()} in company ${company._id.toString()}...`);
+
+    const aiChannel = await ensureAiChannel({
+        userId: userInfo._id,
+        companyId: company._id,
+        logger,
+        languageCode,
+        auditUserId: actionUserCtx.userId
+    });
+
+    if (!aiChannel) {
+        logger.debug(`AI channel unavailable (no company bot?)`);
+        throw apiValidationException("ai_channel_unavailable", null, null, languageCode);
+    }
+
+    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema);
+    const channel = await channelService.findOne(
+        { _id: aiChannel._id, company: company._id },
+        { logger, languageCode },
+        populate.populate,
+        (populate.select || "") + " isGroup"
+    );
+
+    if (!channel) {
+        throw apiValidationException("channel_not_found", null, null, languageCode);
+    }
+
+    const channelDTO = await channelToDTO(channel, userInfo._id.toString(), actionUserCtx);
+    if (!channelDTO) {
+        throw apiValidationException("channel_not_found", null, null, languageCode);
+    }
+
+    logger.finish(`AI channel ready: ${aiChannel._id.toString()}`);
+    return channelDTO;
+}
+
+/**
  * PUT /api/user/chat/channels
  * 
  * Creates a new chat channel (direct message or group). For direct messages, checks if
@@ -347,6 +422,44 @@ async function createUserChannel(params: CreateUserChannelType & CreateChannelFo
     }
 
     const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema);
+
+    // The AI bot must never be a normal DM/group member - that would spawn a
+    // second chat alongside the dedicated AI-assistant channel. Intercept here.
+    const botTarget = foundUsers.find((u: IUser) => u.isBot);
+    if (botTarget) {
+        if (isGroup) {
+            logger.debug(`Validation failed: cannot add AI bot to a group channel`);
+            throw apiValidationException("cannot_add_ai_bot_to_channel", null, null, languageCode);
+        }
+
+        logger.debug(`Direct message targets the AI bot - routing to the dedicated AI-assistant channel`);
+        const aiChannel = await ensureAiChannel({
+            userId: userInfo._id,
+            companyId: company._id,
+            session,
+            logger,
+            languageCode,
+            auditUserId: actionUserCtx.userId
+        });
+
+        if (!aiChannel) {
+            throw apiValidationException("ai_channel_unavailable", null, null, languageCode);
+        }
+
+        const populatedAiChannel = await channelService.findOne(
+            { company: company._id, _id: aiChannel._id },
+            { session, logger, languageCode },
+            populate.populate,
+            (populate.select || "") + " isGroup"
+        );
+
+        logger.finish(`Returning AI-assistant channel ${aiChannel._id.toString()}`);
+        return {
+            message: "Channel already exists",
+            alreadyExist: true,
+            channelInfo: await channelToDTO(populatedAiChannel ?? aiChannel, userInfo._id.toString(), actionUserCtx)
+        };
+    }
 
     // For direct messages, check if channel already exists
     if (!isGroup) {
@@ -672,6 +785,13 @@ async function deleteUserChannel(params: DeleteUserChannelType & DeleteChannelFo
     if (!foundChannel) {
         logger.debug(`Channel ${channelId} not found or user does not have access`);
         throw apiValidationException("channel_not_yours_to_delete", null, null, languageCode);
+    }
+
+    // The AI-assistant channel is permanent - it cannot be deleted or left.
+    // (Clearing its message history is handled by the messages API instead.)
+    if (foundChannel.isAiAssistant) {
+        logger.debug(`Refusing to delete/leave AI-assistant channel ${channelId}`);
+        throw apiValidationException("ai_channel_cannot_be_deleted", null, null, languageCode);
     }
 
     logger.debug(`Channel found: isGroup=${foundChannel.isGroup}, users count=${foundChannel.users.length}`);

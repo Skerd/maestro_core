@@ -32,6 +32,7 @@ import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
 
 function documentObjectId(ref: unknown): ObjectId | null {
     if (ref == null) return null;
@@ -68,6 +69,7 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
         requiresSaleApproval?: boolean;
     };
     createBot: () => Promise<void>;
+    ensureAiChannels: (session?: ClientSession | null) => Promise<void>;
     getRobotId: () => Promise<ObjectId>,
     createDefaultRoles: (parentLogger?: serverLogger, session?: ClientSession) => Promise<void>;
     assignCreatorFinanceAndRoles: (session?: ClientSession | null) => Promise<void>;
@@ -236,6 +238,8 @@ CompanySchema.post("save", async function (doc) {
         const session = doc.$session();
         await doc.createDefaultRoles(undefined, session ?? undefined);
         await doc.assignCreatorFinanceAndRoles(session);
+        await doc.createBot();
+        await doc.ensureAiChannels(session ?? undefined);
     }
 });
 
@@ -443,14 +447,15 @@ CompanySchema.methods.createBot = async function (){
     }).save();
 
     let createdBotUser = await new User({
-        username: `Robot ${this.name.replaceAll(" ", "")}`,
+        username: `${this.name.replaceAll(" ", "")} AI Bot`,
         password: generateRandomString(64),
         isBot: true,
         mfaSecret: "",
         unsuccessfulLogins: 0,
         online: false,
-        name: "bot",
-        surname: this.name,
+        name: `${this.name.replaceAll(" ", "")} AI`,
+        surname: "Bot",
+        fullName: `${this.name.replaceAll(" ", "")} AI Bot`,
         email: `bot_${this.name.replaceAll(" ", "")}`,
         verifiedEmail: true,
         timezone: "Europe/Berlin",
@@ -464,6 +469,7 @@ CompanySchema.methods.createBot = async function (){
                 unsuccessfulLogins: 0,
                 lockedOutUntil: null,
                 lastLogin: null,
+                rolesCount: 0,
                 roles: [],
                 company: this._id
             }
@@ -478,6 +484,31 @@ CompanySchema.methods.createBot = async function (){
     await User.findByIdAndUpdate(createdBotUser._id, {registeredFrom: createdBotUser._id});
 
 }
+/**
+ * Ensures every non-bot user with an active role in this company has their single
+ * 1-1 AI-assistant channel with the company bot. Idempotent; safe to re-run.
+ * Requires the bot user to already exist (see createBot).
+ */
+CompanySchema.methods.ensureAiChannels = async function (session?: ClientSession | null) {
+    const query = User.find({
+        companies: this._id,
+        isBot: {$ne: true},
+        "roles.company": this._id,
+        "roles.active": "active",
+    }).select("_id");
+    const companyRoleUsers = session ? await query.session(session) : await query;
+
+    const auditUserId = documentObjectId(this.createdBy) ?? undefined;
+    for (const user of companyRoleUsers) {
+        await ensureAiChannel({
+            userId: user._id,
+            companyId: this._id,
+            session: session ?? null,
+            auditUserId,
+        });
+    }
+};
+
 CompanySchema.methods.getRobotId = async function (): Promise<ObjectId>{
     let robotAggregate = await User.findOne({
         isBot: true,

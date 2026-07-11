@@ -188,7 +188,8 @@ export async function channelToDTO(channel: IChannel, actionUserId: string, acti
                 isGroup: channel.isGroup,
                 readOnly: !!actionUserLeft,
                 unreadMessages: unreadInChannel,
-                lastUserReadTime: time
+                lastUserReadTime: time,
+                isAiAssistant: !!channel.isAiAssistant
             }
         };
 

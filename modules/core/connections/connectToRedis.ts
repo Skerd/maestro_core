@@ -465,8 +465,91 @@ export async function redisDel(key: string): Promise<void> {
 }
 
 /**
+ * Atomically acquire OR renew a self-owned lock — a leader-election primitive.
+ *
+ * Sets `key` to `owner` with a `ttlSeconds` expiry ONLY if the key is currently
+ * unset or already owned by `owner`. Returns true when this caller holds the lock
+ * afterwards, false when a different owner holds it. The get-and-set runs as a
+ * single Lua script so two callers can never both win.
+ *
+ * Fails safe: returns false when Redis is unavailable, so callers that use this
+ * for single-instance coordination (e.g. running the Telegram long-poll in only
+ * one process/node) stand down rather than risk double-acquiring.
+ *
+ * @param key - Lock key (shared by all contenders)
+ * @param owner - Unique id of the calling instance
+ * @param ttlSeconds - Lock lifetime; renew well within this to keep leadership
+ * @returns true if this caller now holds the lock, false otherwise
+ *
+ * @example
+ * ```typescript
+ * const leader = await redisTryAcquireOrRenewLock('telegram:poller:leader', instanceId, 30);
+ * if (leader) startPolling();
+ * ```
+ */
+export async function redisTryAcquireOrRenewLock(key: string, owner: string, ttlSeconds: number): Promise<boolean> {
+    if (!isRedisConnected()) {
+        return false;
+    }
+
+    // Acquire when unset (get -> false) or already ours; otherwise leave untouched.
+    const script =
+        "local v = redis.call('get', KEYS[1]) " +
+        "if v == false or v == ARGV[1] then " +
+        "redis.call('set', KEYS[1], ARGV[1], 'EX', ARGV[2]) return 1 " +
+        "else return 0 end";
+
+    const startedAt = Date.now();
+    try {
+        const result = await executeWithCircuitBreaker(async () => {
+            return await (getRedisClient() as any).eval(script, {
+                keys: [key],
+                arguments: [owner, String(ttlSeconds)]
+            });
+        });
+        redisCounter.recordSuccess(Date.now() - startedAt);
+        return Number(result) === 1;
+    } catch (error) {
+        redisCounter.recordFailure(Date.now() - startedAt);
+        return false;
+    }
+}
+
+/**
+ * Release a lock acquired via {@link redisTryAcquireOrRenewLock}.
+ *
+ * Deletes `key` ONLY if it is still owned by `owner` (a no-op otherwise), so a
+ * caller can never delete a lock that has since been taken over by another
+ * instance. Fails silently when Redis is unavailable (the TTL will expire it).
+ *
+ * @param key - Lock key
+ * @param owner - Unique id of the calling instance
+ */
+export async function redisReleaseLock(key: string, owner: string): Promise<void> {
+    if (!isRedisConnected()) {
+        return;
+    }
+
+    const script =
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
+    const startedAt = Date.now();
+    try {
+        await executeWithCircuitBreaker(async () => {
+            await (getRedisClient() as any).eval(script, {
+                keys: [key],
+                arguments: [owner]
+            });
+        });
+        redisCounter.recordSuccess(Date.now() - startedAt);
+    } catch (error) {
+        redisCounter.recordFailure(Date.now() - startedAt);
+    }
+}
+
+/**
  * Wrapper for Redis MGET operation with circuit breaker protection
- * 
+ *
  * Retrieves multiple values from Redis by keys. Returns array of values
  * (null for missing keys). Returns array of nulls if Redis is unavailable.
  * 

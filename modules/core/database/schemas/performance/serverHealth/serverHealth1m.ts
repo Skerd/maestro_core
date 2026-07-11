@@ -28,7 +28,7 @@ import mongoose, {Schema, SchemaTypes} from "mongoose";
 
 const TTL_SECONDS = 7 * 24 * 60 * 60;
 
-export type ServerHealthServiceName = | "mongoDb" | "redis" | "kafka" | "websocket" | "telegram";
+export type ServerHealthServiceName = | "mongoDb" | "redis" | "kafka" | "websocket" | "telegram" | "assistant";
 
 export interface IServerHealth1m {
     bucketStart: Date;

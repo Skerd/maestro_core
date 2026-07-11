@@ -202,3 +202,18 @@ export interface KafkaMessage<T = any> {
     timestamp?: string;
 }
 
+/**
+ * AI-channel message event - a human user posted in their AI-assistant channel.
+ * Consumed by the AI responder ("Layer 2"), which composes the bot's reply.
+ */
+export interface AiChannelMessageEvent {
+    eventType: 'ai_channel_message';
+    companyId: string;
+    channelId: string;
+    userId: string;   // the human sender the bot should reply to
+    messageId: string;
+    text: string;     // plaintext the user typed (pre-encryption)
+    languageCode: string;
+    timestamp: number;
+}
+

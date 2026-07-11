@@ -20,6 +20,7 @@ import {getRedisHealth, redisGet, redisSetEx} from "@coreModule/connections/conn
 import {getKafkaHealth} from "@coreModule/connections/connectToKafka";
 import {getWebSocketHealth} from "@coreModule/connections/connectToWebSocketServer";
 import {getTelegramHealthResolved} from "@coreModule/connections/connectToTelegram";
+import {getAssistantResponderHealth} from "@coreModule/domain/ai/assistantHealth";
 import {ServerHealthDto} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {HEALTH_SNAPSHOT_KEY} from "@coreModule/utilities/timing/healthSnapshot";
 import ServerHealth1m from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
@@ -50,12 +51,13 @@ router.get("", async (_req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const [mongoDbHealth, redisHealth, kafkaHealth, telegramHealth, cronSchedulerHealth] = await Promise.all([
+        const [mongoDbHealth, redisHealth, kafkaHealth, telegramHealth, cronSchedulerHealth, assistantHealth] = await Promise.all([
             getMongoDbHealth(),
             getRedisHealth(),
             getKafkaHealth(),
             getTelegramHealthResolved(),
             getCronSchedulerHealth(),
+            getAssistantResponderHealth(),
         ]);
         const webSocketHealth = getWebSocketHealth();
 
@@ -75,6 +77,7 @@ router.get("", async (_req: Request, res: Response): Promise<void> => {
                 websocket: webSocketHealth,
                 telegram: telegramHealth,
                 cronScheduler: cronSchedulerHealth,
+                assistant: assistantHealth,
             }
         };
 
@@ -162,7 +165,7 @@ const HISTORY_WINDOW_DEFINITIONS: Record<string, { granularity: ServerHealthHist
     "365d": { granularity: "1d", durationMs: 365 * 24 * 60 * 60 * 1_000 }
 };
 
-const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "kafka", "websocket", "telegram"];
+const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "kafka", "websocket", "telegram", "assistant"];
 
 /**
  * Returns historical health time-series for all services.

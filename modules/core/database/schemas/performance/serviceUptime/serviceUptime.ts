@@ -23,7 +23,7 @@ import {applyServiceUptimeIndexes} from "./serviceUptime.indexes";
 /**
  * Logical service identifier. Mirrors the keys in the Health response.
  */
-export type ServiceUptimeName = | "mongoDb" | "redis" | "kafka" | "websocket" | "telegram" | "api" | "websocketServer" | "kafkaServer" | "cronServer";
+export type ServiceUptimeName = | "mongoDb" | "redis" | "kafka" | "websocket" | "telegram" | "api" | "websocketServer" | "kafkaServer" | "cronServer" | "assistantServer";
  
 export interface IServiceUptime extends Document {
     service: ServiceUptimeName;
@@ -41,8 +41,10 @@ export const ServiceUptimeSchema = new Schema<IServiceUptime>(
         service: { type: SchemaTypes.String, required: true },
         serverName: { type: SchemaTypes.String, required: true },
         processId: { type: SchemaTypes.Number, required: true },
-        host: { type: SchemaTypes.String, required: true, default: "" },
-        version: { type: SchemaTypes.String, required: true, default: "" },
+        // Optional metadata: a `required` String rejects "", so these must not be
+        // required while defaulting to "" (that combination can never validate).
+        host: { type: SchemaTypes.String, required: false, default: "" },
+        version: { type: SchemaTypes.String, required: false, default: "" },
         startedAt: { type: SchemaTypes.Date, required: true },
         lastSeenAt: { type: SchemaTypes.Date, required: true },
         stoppedAt: { type: SchemaTypes.Date, required: false }

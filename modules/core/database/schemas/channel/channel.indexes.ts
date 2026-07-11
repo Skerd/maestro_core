@@ -25,6 +25,16 @@ export function applyChannelIndexes(ChannelSchema: Schema): void {
     // For finding existing direct message channels
     ChannelSchema.index({ company: 1, isGroup: 1, users: 1, deleted: 1 });
 
+    // Hard guarantee: at most ONE AI-assistant channel per (company, human user).
+    // Partial index so it only constrains AI channels and ignores every normal channel.
+    ChannelSchema.index(
+        { company: 1, aiOwnerUser: 1 },
+        { unique: true, partialFilterExpression: { isAiAssistant: true } }
+    );
+
+    // For listing/looking up a user's AI-assistant channel quickly
+    ChannelSchema.index({ company: 1, isAiAssistant: 1, aiOwnerUser: 1 });
+
     // For pinned messages queries
     ChannelSchema.index({ pinnedMessages: 1 });
 

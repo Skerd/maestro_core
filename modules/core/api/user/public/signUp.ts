@@ -24,6 +24,7 @@ import {currencyService} from "@coreModule/database/schemas/currency/currency.se
 import {financeService} from "@coreModule/database/schemas/finance/finance.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import {Decimal128, ObjectId} from "mongodb";
@@ -147,6 +148,16 @@ async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType
     createdUser.$locals = createdUser.$locals || {};
     createdUser.$locals.auditUserId = createdUser._id;
     await createdUser.sendActivationEmail(email, languageCode, session, logger);
+
+    // Give the new user their single AI-assistant channel with the default company bot.
+    await ensureAiChannel({
+        userId: createdUser._id,
+        companyId: company._id,
+        session,
+        logger,
+        languageCode,
+        auditUserId: createdUser._id,
+    });
 
     logger.finish(`Successfully signed user up [${email}]!`);
     return {message: "User signed up successfully!"};
