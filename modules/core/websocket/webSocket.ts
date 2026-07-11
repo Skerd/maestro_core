@@ -787,6 +787,7 @@ export function getLocalWebSocketServerHealth(): import("armonia/src/modules/cor
         // 1 = OPEN per the ws spec; we only have a server so report OPEN when listening.
         readyState: listening ? 1 : 3,
         url: port ? `ws://${host}:${port}` : `ws://${host}`,
+        serverId: `${host}:${process.pid}`,
         users: totalUsers,
         rooms: roomNames,
         messages: counterStats.completedJobs,
