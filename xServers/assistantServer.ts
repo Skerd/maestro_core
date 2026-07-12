@@ -26,9 +26,10 @@ import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import {connectToKafka} from "@coreModule/connections/connectToKafka";
 import {connectToWebSocketServer} from "@coreModule/connections/connectToWebSocketServer";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
-import {KAFKA} from "@coreModule/environment";
+import {KAFKA, AI_ASSISTANT} from "@coreModule/environment";
 import {startAiChannelConsumer} from "@coreModule/kafka/aiChannelConsumer";
 import {startAssistantHeartbeat, stopAssistantHeartbeat} from "@coreModule/domain/ai/assistantHealth";
+import {registerAllAssistantTools} from "@coreModule/domain/ai/tools/registerAllAssistantTools";
 
 /** Global server name identifier for logging and service identification */
 global.ServerName = "AssistantServer";
@@ -67,6 +68,17 @@ async function setAssistantUp(logger: serverLogger): Promise<void> {
     logger.debug("Connecting to WebSocket server (M2M) for reply delivery...");
     await connectToWebSocketServer(logger);
     logger.debug("WebSocket (M2M) connection supervisor started!");
+
+    // Register the assistant's tools (search_properties, etc.) so the brain's
+    // tool-calling loop can dispatch them. Only needed when a model is wired in;
+    // skipped otherwise since the brain returns a placeholder without calling any.
+    if (AI_ASSISTANT.ENABLED) {
+        logger.debug("Registering AI-assistant tools...");
+        await registerAllAssistantTools(logger);
+        logger.debug("AI-assistant tools registered!");
+    } else {
+        logger.debug("AI assistant disabled; skipping tool registration.");
+    }
 
     logger.debug("Starting AI-channel responder consumer...");
     await startAiChannelConsumer(logger);

@@ -56,7 +56,7 @@ import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/midd
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
-import {publishAiChannelMessageEvent} from "@coreModule/kafka/kafkaProducer";
+import {dispatchAiChannelMessage} from "@coreModule/domain/ai/notifyAssistantOffline";
 
 /**
  * Chat messages API – private endpoints for listing and managing messages.
@@ -595,19 +595,20 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
     }
 
     // AI-assistant channel: hand off to the responder ("Layer 2"). Fire-and-forget —
-    // the user's message is already saved/delivered; the reply arrives asynchronously.
+    // the user's message is already saved/delivered. The responder runs in its own
+    // process (assistantServer); if it is offline the dispatcher DISCARDS the
+    // message (no queuing) and posts a "not available" notice instead of answering.
     // Never trigger on the bot's own messages, which would loop.
     if ((selectedChannel as IChannel).isAiAssistant && !userInfo.isBot) {
-        void publishAiChannelMessageEvent({
-            eventType: "ai_channel_message",
+        void dispatchAiChannelMessage({
             companyId: company._id.toString(),
             channelId: selectedChannel._id.toString(),
             userId: userInfo._id.toString(),
             messageId: message._id.toString(),
             text,
             languageCode,
-            timestamp: Date.now()
-        }, logger);
+            logger
+        });
     }
 
     logger.debug(`Converting messages to DTOs...`);

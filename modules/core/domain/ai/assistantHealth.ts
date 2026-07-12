@@ -126,6 +126,19 @@ export function stopAssistantHeartbeat(): void {
 }
 
 /**
+ * Whether the AI-assistant responder process is currently online, judged by the
+ * freshness of its Redis heartbeat (see {@link STALE_MS}). Readable from any
+ * process — notably the API server, which uses it to tell a user their message
+ * can't be answered right now when the dedicated `assistantServer` is down.
+ *
+ * Fails "offline" (returns `false`) on any Redis miss/error, matching
+ * {@link getAssistantResponderHealth}.
+ */
+export async function isAssistantResponderOnline(): Promise<boolean> {
+    return (await getAssistantResponderHealth()).connected;
+}
+
+/**
  * Reads the assistant responder's health slice from the Redis heartbeat.
  * Returns a disconnected zero-stats slice on any miss/error so callers can
  * always render a card.

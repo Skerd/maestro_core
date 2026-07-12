@@ -349,6 +349,15 @@ export function validateConfiguration(): void {
         ].filter((e): e is ValidationError => e !== null));
     }
 
+    // AI ASSISTANT (local LLM via Ollama; only validated when enabled)
+    if (process.env.AI_ASSISTANT_ENABLED === 'true') {
+        errors.push(...[
+            validateString('AI_ASSISTANT_BASE_URL', process.env.AI_ASSISTANT_BASE_URL, false),
+            validateString('AI_ASSISTANT_MODEL', process.env.AI_ASSISTANT_MODEL, false),
+            validateNumber('AI_ASSISTANT_TIMEOUT_MS', process.env.AI_ASSISTANT_TIMEOUT_MS, false, 1000, 600000),
+        ].filter((e): e is ValidationError => e !== null));
+    }
+
     if (errors.length > 0) {
         const errorMessages = errors.map(e => `  - ${e.key}: ${e.message}`).join('\n');
         throw new Error(

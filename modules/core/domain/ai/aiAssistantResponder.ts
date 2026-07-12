@@ -22,14 +22,85 @@ import User from "@coreModule/database/schemas/user/user";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
-import {EncryptString} from "@coreModule/utilities/security/encryption";
+import {EncryptString, DecryptString} from "@coreModule/utilities/security/encryption";
 import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
 import {applyMessageReceipts} from "@coreModule/domain/messages/applyMessageReceipts";
-import {generateAssistantReply} from "@coreModule/domain/ai/assistantBrain";
+import {generateAssistantReply, AssistantConversationTurn} from "@coreModule/domain/ai/assistantBrain";
 import {recordAssistantResult} from "@coreModule/domain/ai/assistantHealth";
 import {AiChannelMessageEvent} from "@coreModule/kafka/types";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import {ObjectId} from "mongodb";
+
+/**
+ * How many prior messages to load as conversation context. One exchange is two
+ * messages, so this is ~7 turns back — enough to resolve follow-ups without
+ * bloating the model's context window.
+ */
+const MAX_HISTORY_MESSAGES = 14;
+
+/**
+ * Total character budget across all history turns. Older turns are dropped first
+ * once this is exceeded, so a few very long messages can't crowd out the prompt.
+ */
+const MAX_HISTORY_CHARS = 6000;
+
+/**
+ * Load the recent conversation in an AI channel as model-ready turns (oldest
+ * first), so the assistant can resolve follow-up questions. The current
+ * triggering message is excluded (the brain adds it as the live user turn).
+ *
+ * Messages authored by the company bot become `assistant` turns; everything else
+ * (the human) becomes a `user` turn. Deleted/empty messages and notifications are
+ * skipped. Newest turns are kept preferentially under {@link MAX_HISTORY_CHARS}.
+ * Best-effort: any failure yields an empty history rather than failing the reply.
+ */
+async function loadConversationHistory(
+    channelId: ObjectId,
+    companyId: ObjectId,
+    botId: ObjectId,
+    excludeMessageId: string,
+    logger: ReturnType<typeof getLogger>,
+    languageCode?: string
+): Promise<AssistantConversationTurn[]> {
+    try {
+        const recent = await messageService.find(
+            {
+                channel: channelId,
+                company: companyId,
+                type: "message",
+                status: "active",
+                _id: { $ne: new ObjectId(excludeMessageId) }
+            },
+            { logger, languageCode },
+            undefined,
+            "sender text status deletedAt type createdAt",
+            { createdAt: -1 },
+            MAX_HISTORY_MESSAGES
+        );
+
+        const botIdStr = botId.toString();
+        const turns: AssistantConversationTurn[] = [];
+        let budget = MAX_HISTORY_CHARS;
+
+        // `recent` is newest-first; walk it that way so the oldest turns are the
+        // ones dropped when the budget runs out, then reverse to oldest-first.
+        for (const msg of recent as any[]) {
+            if (msg.deletedAt) continue;
+            const raw = msg.text ? DecryptString(msg.text).trim() : "";
+            if (!raw) continue;
+            if (raw.length > budget) break;
+            budget -= raw.length;
+            const role = String(msg.sender) === botIdStr ? "assistant" : "user";
+            turns.push({ role, content: raw });
+        }
+        turns.reverse();
+        return turns;
+    }
+    catch (e: any) {
+        logger.warn(`Failed to load AI history for channel ${channelId.toString()}: ${e?.message}`);
+        return [];
+    }
+}
 
 /**
  * Compose and deliver the bot's reply to a message in an AI-assistant channel.
@@ -89,12 +160,23 @@ async function composeAndDeliverAiReply(
         return false;
     }
 
-    // Ask the assistant brain (empty shell until an LLM is wired in) for the reply.
+    // Load prior turns so the model can resolve follow-ups; best-effort.
+    const history = await loadConversationHistory(
+        channel._id,
+        new ObjectId(event.companyId),
+        bot._id,
+        event.messageId,
+        logger,
+        event.languageCode
+    );
+
+    // Ask the assistant brain for the reply, grounded in tools and past turns.
     const userDisplayName =
         [human.name, human.surname].filter(Boolean).join(" ").trim() || human.username;
     const answer = await generateAssistantReply(
         {
             text: event.text,
+            history,
             channelId: event.channelId,
             companyId: event.companyId,
             userId: event.userId,

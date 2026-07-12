@@ -16,7 +16,8 @@
  * - TELEGRAM: Telegram bot configuration
  * - CONSTANTS: Application constants (languages, etc.)
  * - PROMETHEUS: Metrics and observability settings
- * 
+ * - AI_ASSISTANT: Local LLM (Ollama) config for the AI-channel assistant
+ *
  * All configuration values are loaded from environment variables via dotenv.
  * Use validateConfiguration() from validator.ts to ensure all required values are present.
  * 
@@ -238,6 +239,25 @@ export const PROMETHEUS = {
     SCRAPE_INTERVAL: process.env.PROMETHEUS_SCRAPE_INTERVAL || '15s',
     METRICS_PATH: process.env.PROMETHEUS_METRICS_PATH || '/auxiliary/metrics'
 }
+
+/**
+ * AI-assistant brain (local LLM). The in-app AI channel's replies are generated
+ * by a local model served over an Ollama-compatible HTTP API. When ENABLED is
+ * false the assistant brain returns its "not connected yet" placeholder instead
+ * of calling the model, so the feature degrades cleanly with no model running.
+ */
+export const AI_ASSISTANT = {
+    ENABLED: process.env.AI_ASSISTANT_ENABLED === 'true',
+    // Base URL of the local Ollama server (no trailing /api/chat).
+    BASE_URL: process.env.AI_ASSISTANT_BASE_URL || 'http://localhost:11434',
+    // Model tag pulled into Ollama, e.g. `ollama pull llama3.1:8b`.
+    MODEL: process.env.AI_ASSISTANT_MODEL || 'llama3.1:8b',
+    // Per-request timeout. Local generation on a cold model can be slow.
+    TIMEOUT_MS: parseInt(process.env.AI_ASSISTANT_TIMEOUT_MS || '60000', 10),
+    TEMPERATURE: parseFloat(process.env.AI_ASSISTANT_TEMPERATURE || '0.7'),
+    // Optional override for the assistant's system prompt.
+    SYSTEM_PROMPT: process.env.AI_ASSISTANT_SYSTEM_PROMPT || ''
+};
 
 export const REQUEST_VALIDATION = {
     MAX_ARRAY_SIZE: parseInt(process.env.REQUEST_MAX_ARRAY_SIZE, 10),
