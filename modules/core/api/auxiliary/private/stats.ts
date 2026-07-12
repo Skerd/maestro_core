@@ -18,6 +18,7 @@
 import {Request, Response, Router} from "express";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {AllRoomsUsers, AllUsersWebSockets} from "@coreModule/websocket/webSocket";
+import {getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
 import {redisGet} from "@coreModule/connections/connectToRedis";
 import {STATS_SNAPSHOT_KEY, StatsSnapshotEnvelope} from "@coreModule/utilities/timing/statsSnapshotPublisher";
 import ServerPerformance1h from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1h";
@@ -236,13 +237,22 @@ function computeWebSocketStats(): ServerStatsDto["websocket"] {
             0
         ),
         totalRooms: Object.keys(AllRoomsUsers).length,
-        rooms: Object.values(AllRoomsUsers).map((room) => ({
-            id: room.id,
-            name: room.name,
-            userCount: room.users.length,
-            totalInstances: room.users.reduce((sum, u) => sum + u.instances, 0),
-            messages: room.messages
-        }))
+        rooms: Object.values(AllRoomsUsers).map((room) => {
+            const name = getRoomDisplayName(room.id);
+            room.name = name;
+            return {
+                id: room.id,
+                name,
+                userCount: room.users.length,
+                totalInstances: room.users.reduce((sum, u) => sum + u.instances, 0),
+                messages: room.messages,
+                users: room.users.map((u) => ({
+                    id: u.id,
+                    username: u.username,
+                    instances: u.instances
+                }))
+            };
+        })
     };
 }
 

@@ -48,6 +48,7 @@ import {applyMessageReceipts} from "@coreModule/domain/messages/applyMessageRece
 import {validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
 import {webSocketCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {getStoredRoomMessages} from "@coreModule/utilities/serviceMetrics/wsMessageStore";
+import {getKnownRoomIds, getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
 
 /**
  * Extended WebSocket type with client-specific metadata
@@ -120,36 +121,10 @@ type RoomType = {
  */
 export const AllRoomsUsers: {[room: string]: RoomType} = {};
 
-/**
- * Friendly display names for rooms shown in the admin dashboard. Anything not
- * present here falls back to the room id.
- *
- * NOTE: literal room ids are used here because the `Room` enum is declared
- * further down in this file (TS forbids `[Room.SERVER_HEALTH]` keys before
- * the enum is in scope). The values match `Room.*` exactly.
- */
-const ROOM_DISPLAY_NAMES: Record<string, string> = {
-    serverHealth: "Server health",
-    serverStats: "Server stats",
-    mongoData: "MongoDb Online Data",
-    webSocketData: "WebSocket Online Data",
-    allUsersList: "All users list",
-    createNewUser: "Create new user",
-    allChats: "All chats",
-    siteActivity: "Site activity"
-};
-
-/**
- * List of room ids known at startup. We seed the in-memory map from the
- * persisted Redis store on boot so dashboards see non-zero per-room message
- * counters before any user has reconnected.
- */
-const KNOWN_ROOMS: string[] = Object.keys(ROOM_DISPLAY_NAMES);
-
 function buildRoomEntry(room: string, user: JWTTokenType): RoomType {
     return {
         id: room,
-        name: ROOM_DISPLAY_NAMES[room] ?? room,
+        name: getRoomDisplayName(room),
         messages: getStoredRoomMessages(room),
         users: [{
             id: user.id,
@@ -178,9 +153,8 @@ async function addRoomToAllRoomsUsers(room: string, user: JWTTokenType) {
         return;
     }
 
-    if (Object.values(Room).includes(room as Room) || KNOWN_ROOMS.includes(room)) {
-        AllRoomsUsers[room] = buildRoomEntry(room, user);
-    }
+    // Any room that passed roomLogic should appear in the subscriber map.
+    AllRoomsUsers[room] = buildRoomEntry(room, user);
 }
 
 /**
@@ -191,14 +165,16 @@ async function addRoomToAllRoomsUsers(room: string, user: JWTTokenType) {
  *
  * Placeholder entries have an empty `users` array — they hold history only.
  * They become "real" rooms (with users) when the first subscriber joins.
+ *
+ * Call {@link registerAllRoomContributions} before this so module rooms are known.
  */
 export function hydrateKnownRoomsFromStore(): void {
-    for (const roomId of KNOWN_ROOMS) {
+    for (const roomId of getKnownRoomIds()) {
         const stored = getStoredRoomMessages(roomId);
         if (stored > 0 && !AllRoomsUsers[roomId]) {
             AllRoomsUsers[roomId] = {
                 id: roomId,
-                name: ROOM_DISPLAY_NAMES[roomId] ?? roomId,
+                name: getRoomDisplayName(roomId),
                 messages: stored,
                 users: []
             };
@@ -234,80 +210,58 @@ export enum Room {
     ADMINISTRATION = "administration",
     USERS = "users",
     CHATS = "chats",
+    ALL_CHATS = "allChats",
     COMPANY = "company",
     ACCOUNT = "account",
     SECURITY = "security",
     NOTIFICATIONS = "notifications",
     ACTIVITY = "activity",
     CONNECTED_APPS = "connectedApps",
+    SERVER_PERFORMANCE = "serverPerformance",
     COMPANIES_CONFIGURATIONS = "companies_configurations",
     ROLES_CONFIGURATIONS = "roles_configurations",
     COUNTRIES_CONFIGURATIONS = "country_configurations",
     STATES_CONFIGURATIONS = "states_configurations",
     CITIES_CONFIGURATIONS = "cities_configurations",
-    CURRENCIES_CONFIGURATIONS = "currencies_configurations"
+    CURRENCIES_CONFIGURATIONS = "currencies_configurations",
+    SMTP_SERVERS_CONFIGURATIONS = "smtpServers_configurations",
+    MESSAGING_PROVIDERS_CONFIGURATIONS = "messagingProviders_configurations"
 }
 export enum RoomCode {
     SERVER_HEALTH = "ServerHealthUpdater",
     SERVER_STATS = "ServerStatsUpdater"
 }
 
-async function roomLogic(room: Room, code: string, user: any, logger: serverLogger, ws: ClientWebSocket): Promise<boolean> {
+/** Site presence rooms from panel routes (e.g. bookings). Max 64 chars; camelCase allowed. */
+const SITE_ROOM_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
 
-    try{
-        if( Object.values(Room).includes(room) ){
-            if( room === Room.SERVER_HEALTH ){
-                // const { getHealthData } = await import("@server/xServers/webSocketServer");
-                // const healthData = await getHealthData();
-                // ws.send(JSON.stringify({
-                //     code: RoomCode.SERVER_HEALTH,
-                //     payload: healthData
-                // }))
-            }
-            else if( room === Room.SERVER_STATS ){
-                // const { getStatsData } = await import("@server/xServers/webSocketServer");
-                // const statsData = await getStatsData();
-                // ws.send(JSON.stringify({
-                //     code: RoomCode.SERVER_STATS,
-                //     payload: statsData
-                // }))
-            }
-        }
-        else{
-            throw {
-                message: "Request room not supported"
-            }
+function isSupportedRoom(room: string): boolean {
+    return Object.values(Room).includes(room as Room)
+        || getKnownRoomIds().includes(room)
+        || SITE_ROOM_ID_PATTERN.test(room);
+}
+
+async function roomLogic(room: string, code: string, user: any, logger: serverLogger, ws: ClientWebSocket): Promise<boolean> {
+    try {
+        if (!isSupportedRoom(room)) {
+            throw {message: "Request room not supported"};
         }
 
-        // if(  ["mongoData", "webSocketData", "serverHealth", "serverStats"].includes(room) ){
-        //     if( room === "serverHealth" ){
-        //         // Import and get health data dynamically to avoid circular dependencies
-        //         const {getHealthData} = await import("@server/xServers/webSocketServer");
-        //         const healthData = await getHealthData();
-        //         ws.send(JSON.stringify({
-        //             code: "ServerHealthUpdater",
-        //             data: healthData
-        //         }))
-        //     }
-        //     else if( room === "serverStats" ){
-        //         // Import and get stats data dynamically to avoid circular dependencies
-        //         const {getStatsData} = await import("@server/xServers/webSocketServer");
-        //         const statsData = await getStatsData();
-        //         ws.send(JSON.stringify({
-        //             code: "ServerStatsUpdater",
-        //             data: statsData
-        //         }))
-        //     }
-        // }
+        if (room === Room.SERVER_HEALTH) {
+            // Optional: push an initial health snapshot on join.
+        }
+        else if (room === Room.SERVER_STATS) {
+            // Optional: push an initial stats snapshot on join.
+        }
     }
-    catch (e: any){
+    catch (e: any) {
         logger.err(e.message);
         return false;
     }
     return true;
 }
 
-async function onJoinRoomMessage(code: string, payload: Room[], user: any, logger: serverLogger, ws: ClientWebSocket){
+async function onJoinRoomMessage(code: string, payload: string[], user: any, logger: serverLogger, ws: ClientWebSocket){
     logger.updateSpace();
     logger.debug(`[${code}] Ready to add user [${ws.userId}] to the following rooms: [${payload.join(", ")}]`);
 
@@ -358,7 +312,7 @@ async function onJoinRoomMessage(code: string, payload: Room[], user: any, logge
     }));
 
 }
-async function onLeaveRoomMessage(code: string, payload: Room[], user: any, logger: serverLogger, ws: ClientWebSocket){
+async function onLeaveRoomMessage(code: string, payload: string[], user: any, logger: serverLogger, ws: ClientWebSocket){
     logger.updateSpace();
     logger.debug(`[${code} ${user.id}] Ready to remove user '${ws.userId}' from the following rooms: [${payload.join(", ")}]`);
     let removeTheseRooms: string [] = [];
@@ -777,7 +731,10 @@ export function getLocalWebSocketServerHealth(): import("armonia/src/modules/cor
     // counters in `AllRoomsUsers` (used by the stats endpoint for the
     // breakdown) are persisted separately via `wsMessageStore`.
     const counterStats = webSocketCounter.getStats();
-    const roomNames = Object.values(AllRoomsUsers).map((room) => room.name);
+    const roomNames = Object.values(AllRoomsUsers).map((room) => {
+        room.name = getRoomDisplayName(room.id);
+        return room.name;
+    });
 
     const port = WEBSOCKET?.PORT;
     const host = os.hostname();

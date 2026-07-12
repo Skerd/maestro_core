@@ -38,6 +38,8 @@ import {
     updateWebSocketInstance,
     webSocketOnNewConnection
 } from "@coreModule/websocket/webSocket";
+import {registerAllRoomContributions} from "@coreModule/websocket/registerAllRoomContributions";
+import {getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
 import User from "@coreModule/database/schemas/user/user";
 
 import {SERVER, WEBSOCKET} from "@coreModule/environment";
@@ -288,6 +290,7 @@ async function setWebSocketServerUp(logger: serverLogger): Promise<void> {
     // with `messages: 0` instead of the persisted historical value.
     await hydrateAllServiceCounters();
     await hydrateRoomMessages();
+    await registerAllRoomContributions(logger);
     hydrateKnownRoomsFromStore();
     startServiceCountersFlush();
 
@@ -456,13 +459,23 @@ export async function getStatsData(): Promise<ServerStatsDto> {
             0
         ),
         totalRooms: Object.keys(AllRoomsUsers).length,
-        rooms: Object.values(AllRoomsUsers).map((room) => ({
-            id: room.id,
-            name: room.name,
-            userCount: room.users.length,
-            totalInstances: room.users.reduce((sum, u) => sum + u.instances, 0),
-            messages: room.messages
-        }))
+        rooms: Object.values(AllRoomsUsers).map((room) => {
+            const name = getRoomDisplayName(room.id);
+            // Keep in-memory entry in sync so health / later snapshots also show labels.
+            room.name = name;
+            return {
+                id: room.id,
+                name,
+                userCount: room.users.length,
+                totalInstances: room.users.reduce((sum, u) => sum + u.instances, 0),
+                messages: room.messages,
+                users: room.users.map((u) => ({
+                    id: u.id,
+                    username: u.username,
+                    instances: u.instances
+                }))
+            };
+        })
     };
 
     try {
