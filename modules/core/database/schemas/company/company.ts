@@ -414,14 +414,14 @@ CompanySchema.methods.addCompanyDemoData = async function (parentLogger?: server
         logger.fail("Failed to add company demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
     }
 
-    // try{
-    //     logger.debug(`Adding optional module demo data...`);
-    //     await runModuleCompanyDemoSeeds(logger, this);
-    //     logger.debug(`Added optional module demo data!`);
-    // }catch (e){
-    //     console.log(e);
-    //     logger.fail("Failed to add module demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
-    // }
+    try{
+        logger.debug(`Adding optional module demo data...`);
+        await runModuleCompanyDemoSeeds(logger, this);
+        logger.debug(`Added optional module demo data!`);
+    }catch (e){
+        console.log(e);
+        logger.fail("Failed to add module demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
+    }
 
     logger.finish(`Finished adding company demo data for company named '${this.name}' with VAT '${this.vat}'!`);
 }
