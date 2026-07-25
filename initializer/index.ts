@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import mongoose, {Model} from "mongoose";
 import Currency from "@coreModule/database/schemas/currency/currency";
 import Role from "@coreModule/database/schemas/role/role";
@@ -25,7 +27,7 @@ import "@coreModule/database/schemas/smtpServer/smtpServer";
 import "@coreModule/database/schemas/messagingProvider/messagingProvider";
 import "@coreModule/database/schemas/cronJob/cronJob";
 import MessagingProvider from "@coreModule/database/schemas/messagingProvider/messagingProvider";
-import {getEnabledModuleNames, isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {createUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {createCompanies} from "@coreModule/database/schemas/company/company.defaults";
 
@@ -61,16 +63,44 @@ const coreModels: Model<any>[] = [
     MessagingProvider,
 ];
 
-const OPTIONAL_MODULE_BOOTSTRAPS: Record<string, () => Promise<ModuleBootstrap>> = {};
+/**
+ * Discover `{module}/database/moduleBootstrap.ts` for enabled packages.
+ * Each file should export `moduleBootstrap: { models?, dropModuleCollections? }`.
+ * Core never hardcodes feature-module bootstrap loaders.
+ */
+async function loadOptionalModuleBootstraps(parentLogger?: serverLogger): Promise<ModuleBootstrap[]> {
+    const logger = getLogger("module_bootstrap", parentLogger);
+    const modulesPath = path.resolve(__dirname, "../modules");
+    if (!fs.existsSync(modulesPath)) {
+        return [];
+    }
 
-async function loadOptionalModuleBootstraps(): Promise<ModuleBootstrap[]> {
     const bootstraps: ModuleBootstrap[] = [];
-    for (const moduleName of getEnabledModuleNames()) {
-        const loader = OPTIONAL_MODULE_BOOTSTRAPS[moduleName];
-        if (!loader || !isModuleEnabled(moduleName)) {
+    const moduleDirs = fs.readdirSync(modulesPath, {withFileTypes: true}).filter(
+        entry => entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "core",
+    );
+
+    for (const moduleEntry of moduleDirs) {
+        if (!isModuleEnabled(moduleEntry.name)) {
             continue;
         }
-        bootstraps.push(await loader());
+        const bootstrapFile = path.join(modulesPath, moduleEntry.name, "database", "moduleBootstrap.ts");
+        if (!fs.existsSync(bootstrapFile)) {
+            continue;
+        }
+        try {
+            const importPath = bootstrapFile.replace(/\.ts$/, "");
+            const mod = await import(importPath);
+            const bootstrap = mod.moduleBootstrap as ModuleBootstrap | undefined;
+            if (!bootstrap || (typeof bootstrap !== "object")) {
+                logger.warn(`Skipping ${moduleEntry.name}: no moduleBootstrap export`);
+                continue;
+            }
+            bootstraps.push(bootstrap);
+            logger.debug(`Loaded moduleBootstrap for [${moduleEntry.name}]`);
+        } catch (error: any) {
+            logger.err(`Failed to load moduleBootstrap for ${moduleEntry.name}`, error);
+        }
     }
     return bootstraps;
 }

@@ -21,6 +21,10 @@ export function listCronHandlers(): string[] {
     return [...handlers.keys()];
 }
 
+export function listCronHandlerRegistrations(): CronHandlerRegistration[] {
+    return [...handlers.values()];
+}
+
 export function assertCronHandlerRegistered(handler: string): void {
     if (!handlers.has(handler)) {
         throw new Error(`Unknown cron handler: ${handler}. Registered: ${listCronHandlers().join(", ")}`);

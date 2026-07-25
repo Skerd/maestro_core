@@ -1,114 +1,51 @@
 import CronJobModel from "@coreModule/database/schemas/cronJob/cronJob";
 import {computeNextRunAt} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
-import {listCronHandlers} from "@coreModule/cronjobs/registry/handlerRegistry";
+import {listCronHandlerRegistrations} from "@coreModule/cronjobs/registry/handlerRegistry";
+import type {CronJobSeed} from "@coreModule/cronjobs/registry/types";
 import {getLogger} from "@coreModule/loggers/serverLog";
 
 const logger = getLogger("cron_seed");
 
-const PLATFORM_JOBS = [
-    {
-        code: "eCommerce.orderAutoComplete",
-        name: "Order auto-complete",
-        handler: "eCommerce.orderAutoComplete",
-        type: "cron" as const,
-        cronExpression: "0 0 * * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 20,
-    },
-    {
-        code: "eCommerce.taskRequestExpiry",
-        name: "Task request expiry",
-        handler: "eCommerce.taskRequestExpiry",
-        type: "cron" as const,
-        cronExpression: "0 0 * * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 20,
-    },
-    {
-        code: "propertyManagement.reservationExpirationReminder",
-        name: "Reservation expiration reminder",
-        handler: "propertyManagement.reservationExpirationReminder",
-        type: "cron" as const,
-        cronExpression: "0 10 8 * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 15,
-    },
-    {
-        code: "propertyManagement.paymentPlanInstallmentReminder",
-        name: "Payment plan installment reminder",
-        handler: "propertyManagement.paymentPlanInstallmentReminder",
-        type: "cron" as const,
-        cronExpression: "0 12 8 * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 15,
-    },
-    {
-        code: "propertyManagement.rentalMaintenance",
-        name: "Rental payment overdue and lease expiry",
-        handler: "propertyManagement.rentalMaintenance",
-        type: "cron" as const,
-        cronExpression: "0 15 8 * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 15,
-    },
-    {
-        code: "eCommerce.lowStockAlert",
-        name: "Low stock alert",
-        handler: "eCommerce.lowStockAlert",
-        type: "cron" as const,
-        cronExpression: "0 0 * * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 10,
-    },
-    {
-        code: "eCommerce.collectionRebuild",
-        name: "Collection rebuild",
-        handler: "eCommerce.collectionRebuild",
-        type: "cron" as const,
-        cronExpression: "0 30 * * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 5,
-    },
-    {
-        code: "eCommerce.scheduledPublish",
-        name: "Scheduled publish",
-        handler: "eCommerce.scheduledPublish",
-        type: "cron" as const,
-        cronExpression: "0 */5 * * * *",
-        timezone: "UTC",
-        singleton: true,
-        executionStrategy: "distributed" as const,
-        scope: "global" as const,
-        priority: 25,
-    },
-];
+function resolveSeed(reg: {code: string; defaultJob?: Partial<CronJobSeed>}): CronJobSeed | null {
+    const partial = reg.defaultJob;
+    if (!partial) {
+        return null;
+    }
+    const code = partial.code ?? reg.code;
+    const name = partial.name;
+    const type = partial.type;
+    if (!name || !type) {
+        logger.warn(`Skipping seed ${reg.code}: defaultJob requires name and type`);
+        return null;
+    }
+    return {
+        code,
+        name,
+        handler: partial.handler ?? reg.code,
+        type,
+        cronExpression: partial.cronExpression,
+        interval: partial.interval,
+        timezone: partial.timezone ?? "UTC",
+        active: partial.active,
+        singleton: partial.singleton ?? true,
+        executionStrategy: partial.executionStrategy ?? "distributed",
+        maxRetries: partial.maxRetries,
+        retryDelaySeconds: partial.retryDelaySeconds,
+        timeoutSeconds: partial.timeoutSeconds,
+        priority: partial.priority,
+        scope: partial.scope ?? "global",
+        missedRunPolicy: partial.missedRunPolicy,
+    };
+}
 
+/**
+ * Upsert platform cron jobs from each registered handler's `defaultJob`.
+ * Modules own their seeds; core never lists feature-module job catalogs.
+ */
 export async function seedPlatformCronJobs(): Promise<void> {
-    const registered = new Set(listCronHandlers());
-    for (const seed of PLATFORM_JOBS) {
-        if (!registered.has(seed.handler)) {
-            logger.warn(`Skipping seed ${seed.code}: handler not registered`);
+    for (const reg of listCronHandlerRegistrations()) {
+        const seed = resolveSeed(reg);
+        if (!seed) {
             continue;
         }
         const existing = await CronJobModel.findOne({code: seed.code, company: null});
@@ -117,7 +54,6 @@ export async function seedPlatformCronJobs(): Promise<void> {
             await CronJobModel.updateOne(
                 {_id: existing._id},
                 {
-                    $setOnInsert: {},
                     $set: {
                         name: seed.name,
                         handler: seed.handler,
@@ -135,11 +71,11 @@ export async function seedPlatformCronJobs(): Promise<void> {
             ...seed,
             company: null,
             active: true,
-            maxRetries: 3,
-            retryDelaySeconds: 60,
-            timeoutSeconds: 600,
+            maxRetries: seed.maxRetries ?? 3,
+            retryDelaySeconds: seed.retryDelaySeconds ?? 60,
+            timeoutSeconds: seed.timeoutSeconds ?? 600,
             allowParallelRuns: false,
-            missedRunPolicy: "skip",
+            missedRunPolicy: seed.missedRunPolicy ?? "skip",
             nextRunAt,
         });
         logger.debug(`Seeded cron job ${seed.code}`);
