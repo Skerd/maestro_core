@@ -5,24 +5,27 @@ import {ICompany} from "@coreModule/database/schemas/company/company";
 const currencyCodes = require("currency-codes");
 const getSymbolFromCurrency = require("currency-symbol-map");
 
-const SEED_CURRENCY_CODE = "EUR";
+const SEED_CURRENCY_CODES = ["EUR", "CHF"];
+const FALLBACK_SYMBOLS: Record<string, string> = {EUR: "€", CHF: "CHF"};
 
 export async function createCurrencies(parentLogger: serverLogger, company: ICompany) {
     const logger = getLogger("mongoDbInitialization-createCurrencies", parentLogger);
     logger.start("Creating currencies...");
 
-    const eur = currencyCodes.code(SEED_CURRENCY_CODE);
-    if (!eur) {
-        logger.fail(`Currency code '${SEED_CURRENCY_CODE}' not found in currency-codes`);
-        return;
+    const currencies = [];
+    for (const code of SEED_CURRENCY_CODES) {
+        const meta = currencyCodes.code(code);
+        if (!meta) {
+            logger.fail(`Currency code '${code}' not found in currency-codes`);
+            continue;
+        }
+        currencies.push({
+            name: meta.currency,
+            symbol: getSymbolFromCurrency(meta.code) || FALLBACK_SYMBOLS[code] || meta.code,
+            decimalPlaces: meta.digits ?? 2,
+            abbreviation: meta.code,
+        });
     }
-
-    const currencies = [{
-        name: eur.currency,
-        symbol: getSymbolFromCurrency(eur.code) || "€",
-        decimalPlaces: eur.digits ?? 2,
-        abbreviation: eur.code,
-    }];
 
     for (const currency of currencies) {
         try {

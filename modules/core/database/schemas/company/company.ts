@@ -65,9 +65,6 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     isActive: boolean;
     isDefaultForSignUp: boolean;
     allowedDomains: string[];
-    propertyManagementSettings?: {
-        requiresSaleApproval?: boolean;
-    };
     createBot: () => Promise<void>;
     ensureAiChannels: (session?: ClientSession | null) => Promise<void>;
     getRobotId: () => Promise<ObjectId>,
@@ -209,17 +206,6 @@ const CompanySchema: Schema = new Schema(
             type: [SchemaTypes.String],
             default: [],
             required: true
-        },
-        propertyManagementSettings: {
-            type: {
-                requiresSaleApproval: {type: SchemaTypes.Boolean, required: false, default: false},
-            },
-            required: false,
-            default: undefined,
-            permissions: {
-                self: {write: "no-permission"},
-                others: {write: "no-permission"},
-            },
         },
     },
     {
@@ -535,5 +521,5 @@ normalizeSchemaPermissions(Company);
 export default Company;
 
 addModelData(Company, companyViews);
-validateSchemaDefAgainstMongoose(CompanySchema, CompanySchemaDef, "Company", ["isDefaultForSignUp", "propertyManagementSettings"]);
+validateSchemaDefAgainstMongoose(CompanySchema, CompanySchemaDef, "Company", ["isDefaultForSignUp"]);
 
