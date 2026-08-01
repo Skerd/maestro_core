@@ -34,6 +34,7 @@ import bodyParser from "body-parser";
 import {CONSTANTS, SERVER} from "@coreModule/environment";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {createRouteRegistry} from "@coreModule/utilities/endpoints/routeRegistry";
+import {shouldPreserveRawBody} from "@coreModule/utilities/endpoints/rawBodyRouteRegistry";
 import {connectToKafka} from "@coreModule/connections/connectToKafka";
 import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import express, {Application, NextFunction, Response} from 'express';
@@ -45,7 +46,6 @@ import {
     startServiceCountersFlush
 } from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {registerAllNotificationHandlers} from "@coreModule/domain/notifications/registerAllNotificationHandlers";
-import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
 import {randomUUID} from "crypto";
 import {requestTimeout, requestValidator} from "@coreModule/utilities/middlewares/requestValidator";
 import {metricsMiddleware} from "@coreModule/utilities/middlewares/metricsMW";
@@ -166,6 +166,13 @@ function updateServerBodyParserSettings(parentLogger?: serverLogger){
         limit: bodyLimit,
         // Validate request size
         verify: (req: any, res: Response, buf: Buffer) => {
+            // Routes export `needsRawBody` (collected at discovery into
+            // rawBodyRouteRegistry) when signature verification needs the
+            // exact unparsed payload
+            if (shouldPreserveRawBody(req.originalUrl)) {
+                req.rawBody = Buffer.from(buf);
+            }
+
             let maxSize = 10 * 1024 * 1024; // Default 10MB
 
             const units: { [key: string]: number } = {

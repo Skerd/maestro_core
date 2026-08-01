@@ -7,6 +7,7 @@
 
 import {Application, Router} from 'express';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
+import {registerRawBodyPrefix} from '@coreModule/utilities/endpoints/rawBodyRouteRegistry';
 import path from 'path';
 import fs from 'fs';
 
@@ -137,6 +138,11 @@ export class RouteRegistry {
                     metadata: routeModule.metadata
                 };
                 this.register(routePath, moduleWithPath);
+
+                if (routeModule.needsRawBody === true) {
+                    registerRawBodyPrefix(routePath);
+                    this.logger?.debug(`Registered rawBody prefix: [${routePath}]`);
+                }
                 
                 if (routeModule.metadata) {
                     this.metadata.push({
