@@ -162,7 +162,11 @@ export function validateConfiguration(): void {
             validateString('KAFKA_TOPIC_INVITATION_EMAIL', process.env.KAFKA_TOPIC_INVITATION_EMAIL, true),
             validateString('KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL, true),
             validateString('KAFKA_TOPIC_SALE_CLIENT_EMAIL', process.env.KAFKA_TOPIC_SALE_CLIENT_EMAIL, true),
+            validateString('KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL, true),
+            validateString('KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL, true),
             validateString('KAFKA_TOPIC_API_ACCESS', process.env.KAFKA_TOPIC_API_ACCESS, true),
+            validateString('KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE, false),
+            validateString('KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE, false),
             validateString('KAFKA_CONSUMER_GROUP_LOGIN_HISTORY', process.env.KAFKA_CONSUMER_GROUP_LOGIN_HISTORY, true),
             validateString('KAFKA_CONSUMER_GROUP_ACTIVATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_ACTIVATION_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL, true),
@@ -170,6 +174,8 @@ export function validateConfiguration(): void {
             validateString('KAFKA_CONSUMER_GROUP_INVITATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL, true),
+            validateString('KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL, true),
+            validateString('KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_API_ACCESS', process.env.KAFKA_CONSUMER_GROUP_API_ACCESS, true),
         ].filter((e): e is ValidationError => e !== null));
 
@@ -355,6 +361,16 @@ export function validateConfiguration(): void {
             validateString('AI_ASSISTANT_BASE_URL', process.env.AI_ASSISTANT_BASE_URL, false),
             validateString('AI_ASSISTANT_MODEL', process.env.AI_ASSISTANT_MODEL, false),
             validateNumber('AI_ASSISTANT_TIMEOUT_MS', process.env.AI_ASSISTANT_TIMEOUT_MS, false, 1000, 600000),
+        ].filter((e): e is ValidationError => e !== null));
+    }
+
+    // SWISS OUTREACH (optional module; soft validation only)
+    if ((process.env.ENABLED_MODULES || "").split(",").map((s) => s.trim()).includes("swissOutreach")) {
+        errors.push(...[
+            validateString('SWISS_OUTREACH_ZEFIX_BASE_URL', process.env.SWISS_OUTREACH_ZEFIX_BASE_URL, false),
+            validateNumber('SWISS_OUTREACH_MAX_COMPANIES_DEFAULT', process.env.SWISS_OUTREACH_MAX_COMPANIES_DEFAULT, false, 1, 500),
+            validateNumber('SWISS_OUTREACH_REQUEST_TIMEOUT_MS', process.env.SWISS_OUTREACH_REQUEST_TIMEOUT_MS, false, 1000, 300000),
+            validateNumber('SWISS_OUTREACH_RETRY_COUNT', process.env.SWISS_OUTREACH_RETRY_COUNT, false, 1, 10),
         ].filter((e): e is ValidationError => e !== null));
     }
 

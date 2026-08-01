@@ -19,3 +19,4 @@ secrets/*
 /modules/propertyManagement/utilities/edifice/floorAndUnitsGenerator/_test/results/
 /logs/
 /secrets/
+/scripts/

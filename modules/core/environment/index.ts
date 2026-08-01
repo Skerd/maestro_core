@@ -165,9 +165,12 @@ export const KAFKA = {
         INVITATION_EMAIL: process.env.KAFKA_TOPIC_INVITATION_EMAIL,
         RESERVATION_CLIENT_EMAIL: process.env.KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL,
         SALE_CLIENT_EMAIL: process.env.KAFKA_TOPIC_SALE_CLIENT_EMAIL,
+        MANAGER_PIN_RESET_EMAIL: process.env.KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL,
+        PRODUCT_ORDER_CLIENT_EMAIL: process.env.KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL,
         API_ACCESS: process.env.KAFKA_TOPIC_API_ACCESS,
         CRON_EXECUTE: process.env.KAFKA_TOPIC_CRON_EXECUTE,
         AI_CHANNEL_MESSAGE: process.env.KAFKA_TOPIC_AI_CHANNEL_MESSAGE,
+        SWISS_OUTREACH_PIPELINE: process.env.KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE || "swissOutreach.pipeline",
     },
     CONSUMER_GROUP: {
         LOGIN_HISTORY: process.env.KAFKA_CONSUMER_GROUP_LOGIN_HISTORY,
@@ -177,9 +180,12 @@ export const KAFKA = {
         INVITATION_EMAIL: process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL,
         RESERVATION_CLIENT_EMAIL: process.env.KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL,
         SALE_CLIENT_EMAIL: process.env.KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL,
+        MANAGER_PIN_RESET_EMAIL: process.env.KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL,
+        PRODUCT_ORDER_CLIENT_EMAIL: process.env.KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL,
         API_ACCESS: process.env.KAFKA_CONSUMER_GROUP_API_ACCESS,
         CRON_EXECUTE: process.env.KAFKA_CONSUMER_GROUP_CRON_EXECUTE,
         AI_CHANNEL_MESSAGE: process.env.KAFKA_CONSUMER_GROUP_AI_CHANNEL_MESSAGE,
+        SWISS_OUTREACH_PIPELINE: process.env.KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE || "SWISS_OUTREACH_PIPELINE",
     },
 };
 
@@ -201,6 +207,31 @@ export const CLIENT_SIDE = {
     HOST: process.env.CLIENT_HOST,
     NAME: process.env.CLIENT_NAME
 }
+
+/**
+ * Payment gateway configuration (eCommerce checkout + marketplace escrow).
+ * The secret key never leaves maestro; sinfonia only ever receives the
+ * publishable key / client secrets produced per PaymentIntent.
+ */
+export const PAYMENTS = {
+    STRIPE_ENABLED: process.env.STRIPE_ENABLED === 'true',
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
+    STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY || '',
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
+    // Marketplace Connect Express onboarding redirect targets (provider browser flows)
+    STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || '',
+    STRIPE_CONNECT_REFRESH_URL: process.env.STRIPE_CONNECT_REFRESH_URL || '',
+};
+
+/**
+ * Commerce calculation providers. "internal" uses the zone engines
+ * (taxZones / shippingZones collections); external adapters (Avalara,
+ * TaxJar, EasyPost, Shippo) register themselves under their own name.
+ */
+export const COMMERCE_PROVIDERS = {
+    TAX_PROVIDER: process.env.TAX_PROVIDER || 'internal',
+    SHIPPING_PROVIDER: process.env.SHIPPING_PROVIDER || 'internal',
+};
 
 export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
@@ -280,4 +311,12 @@ export const CRON = {
     SERVER_ID: process.env.CRON_SERVER_ID || `${os.hostname()}:${process.pid}`,
     TOPIC_EXECUTE: process.env.KAFKA_TOPIC_CRON_EXECUTE || "cron.execute",
     CONSUMER_GROUP_EXECUTE: process.env.KAFKA_CONSUMER_GROUP_CRON_EXECUTE || "CRON_WORKERS",
+};
+/** Optional swissOutreach module settings (full config via getSwissOutreachConfig()). */
+export const SWISS_OUTREACH = {
+    ZEFIX_BASE_URL:
+        process.env.SWISS_OUTREACH_ZEFIX_BASE_URL ||
+        "https://www.zefix.ch/ZefixREST/api/v1",
+    WEB_SEARCH_PROVIDER: process.env.SWISS_OUTREACH_WEB_SEARCH_PROVIDER || "none",
+    LLM_PROVIDER: process.env.SWISS_OUTREACH_LLM_PROVIDER || "ollama",
 };

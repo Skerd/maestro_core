@@ -54,6 +54,7 @@
     "@types/socket.io": "^3.0.2",
     "@types/websocket": "^1.0.5",
     "@u4/opencv4nodejs": "^7.1.2",
+    "@xmldom/xmldom": "^0.9.10",
     "adm-zip": "^0.5.16",
     "armonia": "../armonia",
     "auth0": "^4.0.1",
@@ -81,6 +82,7 @@
     "formik": "^2.1.5",
     "fuse.js": "^7.0.0",
     "generate-password": "^1.7.1",
+    "https-proxy-agent": "^7.0.6",
     "jsonwebtoken": "^9.0.2",
     "kafkajs": "^2.2.4",
     "moment-timezone": "^0.5.43",
@@ -107,6 +109,7 @@
     "slugify": "^1.6.6",
     "socket.io": "^4.5.3",
     "speakeasy": "^2.0.0",
+    "stripe": "^22.3.1",
     "telegraf": "^4.16.3",
     "tesseract.js": "^7.0.0",
     "timezones.json": "^1.7.1",
@@ -117,8 +120,9 @@
     "winston": "^3.10.0",
     "winston-daily-rotate-file": "^4.7.1",
     "ws": "^8.16.0",
+    "xml-crypto": "^6.1.2",
     "xml2js": "^0.6.2",
-    "zod": "^4.3.6"
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/cors": "^2.8.12",
