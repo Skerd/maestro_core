@@ -82,9 +82,18 @@ declare module "mongoose" {
              * For ref/ObjectId columns: ordered field paths from the populated document used to build the display label.
              * Passed to client as-is (fully serializable). Client joins values with space.
              * E.g. ["name", "surname"] → "John Doe".
+             * Prefix a segment with `!` for a literal (no field lookup); when any literal is present,
+             * segments are concatenated with no separator (put spaces inside the literal if needed).
+             * E.g. ["quantity", "!x ", "snapshot.title"].
              * Fallback when unset: single "name" field for backward compatibility.
              */
             refDisplayKey?: string[];
+
+            /**
+             * Max badges to show inline for multi-value objectId/array cells before collapsing
+             * to a count popover. Default on the client is 2.
+             */
+            maxInlineItems?: number;
 
             /**
              * When true, the field is excluded from filters and from table config columns.

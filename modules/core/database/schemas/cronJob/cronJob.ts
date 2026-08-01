@@ -15,7 +15,6 @@ import type {
 } from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.constants";
 import {cronJobViews} from "@coreModule/database/schemas/cronJob/cronJob.views";
 import {applyCronJobIndexes} from "@coreModule/database/schemas/cronJob/cronJob.indexes";
-import {CronIntervalUnits} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.constants";
 
 export interface ICronJobInterval {
     value: number;
@@ -57,18 +56,6 @@ export interface ICronJob extends Document, ISoftDeletePluginFields {
     updatedAt: Date;
 }
 
-const CronJobIntervalSchema = new Schema<ICronJobInterval>(
-    {
-        value: {type: SchemaTypes.Number, required: true, min: 1},
-        unit: {
-            type: SchemaTypes.String,
-            required: true,
-            enum: ["seconds", "minutes", "hours", "days"],
-        },
-    },
-    {_id: false},
-);
-
 const CronJobSchema = new Schema<ICronJob>(
     {
         company: {
@@ -96,7 +83,18 @@ const CronJobSchema = new Schema<ICronJob>(
             enum: ["interval", "cron", "once", "queue"],
         },
         cronExpression: {type: SchemaTypes.String, required: false, trim: true},
-        interval: {type: CronJobIntervalSchema, required: false},
+        interval: {
+            type: {
+                value: {type: SchemaTypes.Number, required: true, min: 1},
+                unit: {
+                    type: SchemaTypes.String,
+                    required: true,
+                    enum: ["seconds", "minutes", "hours", "days"],
+                },
+            },
+            _id: false,
+            required: false,
+        },
         timezone: {type: SchemaTypes.String, required: false, default: "UTC"},
         nextRunAt: {type: SchemaTypes.Date, required: false, index: true},
         lastRunAt: {type: SchemaTypes.Date, required: false},

@@ -37,6 +37,7 @@ const DEF_TYPE_TO_MONGOOSE_INSTANCE: Record<string, string[]> = {
  *
  * What is intentionally NOT checked:
  * - Optional Mongoose fields absent from the SchemaDef (server-side / computed fields are allowed)
+ * - Required Mongoose fields marked `immutable: true` (server-owned; set outside forms)
  * - `required` direction from SchemaDef → Mongoose (forms may be stricter than the DB)
  *
  * @param schema     - The Mongoose Schema instance (after all plugins are applied)
@@ -75,8 +76,10 @@ export function validateSchemaDefAgainstMongoose(
 
     // ── Check 2: required Mongoose fields must be present in SchemaDef ──────────
     // An optional Mongoose field may be intentionally absent (server-side / computed).
-    // A required one being absent means the form will never validate it — that is a bug.
+    // Immutable required fields are server-owned (e.g. generated slugs) and stay out of forms.
+    // A required mutable one being absent means the form will never validate it — that is a bug.
     for (const [pathName, mongoosePath] of Object.entries(mongoosePaths)) {
+        if ((mongoosePath.options ?? {}).immutable === true) continue;
         if (mongoosePath.isRequired && !(pathName in def)) {
             errors.push(`"${pathName}" is required in the Mongoose schema but is missing from SchemaDef — add it to the def so the form validates it`);
         }

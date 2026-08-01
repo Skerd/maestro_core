@@ -163,13 +163,23 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
             }
 
             if( !!schemaType?.options?.dynamicTableConfiguration ){
+                const dtc = schemaType.options.dynamicTableConfiguration;
+                const meta: TableColumnConfig["meta"] = {};
+                if (Array.isArray(dtc.refDisplayKey) && dtc.refDisplayKey.length > 0) {
+                    meta.refDisplayKey = dtc.refDisplayKey;
+                }
+                if (typeof dtc.maxInlineItems === "number" && dtc.maxInlineItems > 0) {
+                    meta.maxInlineItems = dtc.maxInlineItems;
+                }
                 addColumn({
                     id: path,
                     accessorPath: path,
                     labelKey: path,
-                    cellType: schemaType?.options?.dynamicTableConfiguration?.cellType || COLUMN_TYPE.MIXED,
-                    sortable: !(schemaType?.options?.dynamicTableConfiguration?.sortable === false),
-                    visible: !(schemaType?.options?.dynamicTableConfiguration?.visible === false),
+                    cellType: dtc.cellType || COLUMN_TYPE.MIXED,
+                    sortable: !(dtc.sortable === false),
+                    visible: !(dtc.visible === false),
+                    ...(dtc.dtoPath ? {dtoPath: dtc.dtoPath} : {}),
+                    ...(Object.keys(meta).length > 0 ? {meta} : {}),
                 });
             }
             continue;
@@ -210,6 +220,13 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
         }
         if( Array.isArray(schemaType?.options?.dynamicTableConfiguration?.refDisplayKey) && schemaType.options.dynamicTableConfiguration.refDisplayKey.length > 0 ){
             columnConfig["meta"] = { ...columnConfig.meta, refDisplayKey: schemaType.options.dynamicTableConfiguration.refDisplayKey };
+        }
+        if (typeof schemaType?.options?.dynamicTableConfiguration?.maxInlineItems === "number"
+            && schemaType.options.dynamicTableConfiguration.maxInlineItems > 0) {
+            columnConfig["meta"] = {
+                ...columnConfig.meta,
+                maxInlineItems: schemaType.options.dynamicTableConfiguration.maxInlineItems,
+            };
         }
 
         addColumn(columnConfig);

@@ -133,7 +133,10 @@ function buildAllowlist(schema: Schema, options: SchemaToFieldAllowlistOptions, 
 
         if (isExcludedByPermission(schemaType)) return;
 
-        const schemaRefAllowlist = (schemaType as any).options?.refAllowlist as UnSanitizedFields | undefined;
+        const schemaRefAllowlist = (
+            (schemaType as any).options?.refAllowlist ??
+            (schemaType as any)?.caster?.options?.refAllowlist
+        ) as UnSanitizedFields | undefined;
         if( path === "roles" && schemaRefAllowlist){
             let a = 5;
         }

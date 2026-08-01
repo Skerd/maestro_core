@@ -313,7 +313,7 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
 
     logger.start(`Fetching company users for select...`);
 
-    SchemaGuard.sanitizeFields(User, {name: {}, surname: {}}, "read", actionUserCtx, languageCode);
+    SchemaGuard.sanitizeFields(User, {name: {}, surname: {}, photo: {}}, "read", actionUserCtx, languageCode);
 
     const filter: FilterQuery<IUser> = {
         companies: company._id,
@@ -361,7 +361,7 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
             filter,
             opts,
             null,
-            "_id fullName",
+            "_id fullName photo",
             { fullName: 1 },
             limit,
             (page - 1) * limit
@@ -372,7 +372,11 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
     logger.finish(`Finished fetching company users for select!`);
 
     return {
-        data: users.map((user) => ({value: user._id.toString(), label: user.fullName})),
+        data: users.map((user) => ({
+            value: user._id.toString(),
+            label: user.fullName,
+            photo: user.photo ? String((user.photo as any)._id ?? user.photo) : undefined,
+        })),
         total
     };
 }

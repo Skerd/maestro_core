@@ -133,6 +133,14 @@ export interface CrudRouterConfig<T extends Document> {
      */
     selectSearchField?: string;
 
+    /**
+     * Mongoose projection for the select route (space-separated fields).
+     * Use when `toSelect` needs fields beyond `_id` and `selectSearchField`
+     * (e.g. warehouse labels that include `code`).
+     * @default `_id ${selectSearchField}`
+     */
+    selectProjection?: string;
+
     /** Used in log messages. Defaults to `model.modelName`. */
     entityName?: string;
 
@@ -305,6 +313,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
 
     const defaultSort  = config.defaultSort  ?? {_id: -1};
     const selectSort   = config.selectSort   ?? {[selectSearchField]: 1};
+    const selectProjection = config.selectProjection ?? `_id ${selectSearchField}`;
 
     const listSchema         = config.listSchema         ?? ((lang: string, form: any) => validateTableForm(lang, form));
     const selectSchema       = config.selectSchema       ?? ((lang: string, form: any) => validateSelectForm(lang, form));
@@ -344,7 +353,13 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
 
             logger.start(`Fetching ${entityName} for select...`);
 
-            SchemaGuard.sanitizeFields(model, {[selectSearchField]: {}}, "read", actionUserCtx, languageCode);
+            const selectSanitizeFields = Object.fromEntries(
+                selectProjection
+                    .split(/\s+/)
+                    .filter((f) => f && f !== "_id" && !f.startsWith("-"))
+                    .map((f) => [f, {}]),
+            );
+            SchemaGuard.sanitizeFields(model, selectSanitizeFields, "read", actionUserCtx, languageCode);
 
             const filter: Record<string, unknown> = {
                 company: company._id,
@@ -362,7 +377,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
                     filter,
                     {logger, languageCode},
                     undefined,
-                    `_id ${selectSearchField}`,
+                    selectProjection,
                     selectSort,
                     params.limit,
                     (params.page - 1) * params.limit,

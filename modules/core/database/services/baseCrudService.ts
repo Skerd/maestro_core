@@ -1156,6 +1156,11 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
 
         const operation = async () => {
             let countQuery: any = this.model.countDocuments(query);
+            if (options.withDeleted === true && typeof countQuery.withDeleted === 'function') {
+                countQuery = countQuery.withDeleted();
+            } else if (options.withDeleted === false && typeof countQuery.noDeleted === 'function') {
+                countQuery = countQuery.noDeleted();
+            }
             if (session) {
                 countQuery = countQuery.session(session);
             }

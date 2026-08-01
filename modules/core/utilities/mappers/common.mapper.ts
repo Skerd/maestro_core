@@ -462,11 +462,20 @@ export function mapPopulatedUserWithPhoto(user: unknown): MessageSenderType | un
         return undefined;
     }
     const u = user as IUser;
+    const photoRef = u.photo as {_id?: unknown} | string | null | undefined;
+    let photo: string | undefined;
+    if (photoRef != null) {
+        if (typeof photoRef === "object" && photoRef._id != null) {
+            photo = String(photoRef._id);
+        } else {
+            photo = String(photoRef);
+        }
+    }
     return {
         _id: u._id.toString(),
         name: u.name,
         surname: u.surname,
-        photo: u.photo?._id != null ? String(u.photo._id) : undefined
+        photo,
     };
 }
 
