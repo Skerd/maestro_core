@@ -1,6 +1,10 @@
 import {City} from "armonia/src/modules/core/api/auxiliary/private/city/city.dto";
 import {ICity} from "@coreModule/database/schemas/city/city";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {
+    mapLifeCycleToDTO,
+    mapOwnershipToDTO,
+    mapSoftDeleteToDTO
+} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function cityToDTO(city: ICity): City {
     return {
@@ -17,6 +21,7 @@ export function cityToDTO(city: ICity): City {
         } : undefined,
         ...mapSoftDeleteToDTO(city),
         ...mapOwnershipToDTO(city),
+        ...mapLifeCycleToDTO(city),
     };
 }
 

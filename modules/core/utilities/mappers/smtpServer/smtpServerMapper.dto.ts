@@ -1,6 +1,10 @@
 import type {SmtpServer} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.dto";
 import type {ISmtpServer} from "@coreModule/database/schemas/smtpServer/smtpServer";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {
+    mapLifeCycleToDTO,
+    mapOwnershipToDTO,
+    mapSoftDeleteToDTO
+} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function smtpServerToDTO(doc: ISmtpServer): SmtpServer {
     return {
@@ -22,6 +26,7 @@ export function smtpServerToDTO(doc: ISmtpServer): SmtpServer {
         lastTestMessage: doc.lastTestMessage?.trim() ? doc.lastTestMessage : undefined,
         ...mapSoftDeleteToDTO(doc),
         ...mapOwnershipToDTO(doc),
+        ...mapLifeCycleToDTO(doc),
     };
 }
 

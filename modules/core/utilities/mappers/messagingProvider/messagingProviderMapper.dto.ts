@@ -1,6 +1,10 @@
 import type {MessagingProvider} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.dto";
 import type {IMessagingProvider} from "@coreModule/database/schemas/messagingProvider/messagingProvider";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {
+    mapLifeCycleToDTO,
+    mapOwnershipToDTO,
+    mapSoftDeleteToDTO
+} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function messagingProviderToDTO(doc: IMessagingProvider): MessagingProvider {
     return {
@@ -17,6 +21,7 @@ export function messagingProviderToDTO(doc: IMessagingProvider): MessagingProvid
         lastTestMessage: doc.lastTestMessage?.trim() || undefined,
         ...mapSoftDeleteToDTO(doc),
         ...mapOwnershipToDTO(doc),
+        ...mapLifeCycleToDTO(doc),
     };
 }
 

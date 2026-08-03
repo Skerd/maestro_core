@@ -1,6 +1,10 @@
 import {State} from "armonia/src/modules/core/api/auxiliary/private/state/state.dto";
 import {IState} from "@coreModule/database/schemas/state/state";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {
+    mapLifeCycleToDTO,
+    mapOwnershipToDTO,
+    mapSoftDeleteToDTO
+} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function stateToDTO(state: IState): State {
     return {
@@ -13,7 +17,8 @@ export function stateToDTO(state: IState): State {
             code: state.country.code,
         } : undefined,
         ...mapSoftDeleteToDTO(state),
-        ...mapOwnershipToDTO(state)
+        ...mapOwnershipToDTO(state),
+        ...mapLifeCycleToDTO(state)
     };
 }
 

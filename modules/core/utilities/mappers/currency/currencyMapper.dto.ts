@@ -1,6 +1,10 @@
 import {Currency} from "armonia/src/modules/core/api/finance/private/currency/currency.dto";
 import {ICurrency} from "@coreModule/database/schemas/currency/currency";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {
+    mapLifeCycleToDTO,
+    mapOwnershipToDTO,
+    mapSoftDeleteToDTO
+} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function currencyToDTO(currency: ICurrency): Currency {
     return {
@@ -11,6 +15,7 @@ export function currencyToDTO(currency: ICurrency): Currency {
         abbreviation: currency.abbreviation,
         ...mapSoftDeleteToDTO(currency),
         ...mapOwnershipToDTO(currency),
+        ...mapLifeCycleToDTO(currency),
     };
 }
 
