@@ -3,7 +3,12 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields
+} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {smtpServerViews} from "@coreModule/database/schemas/smtpServer/smtpServer.views";
 import {applySmtpServerIndexes} from "@coreModule/database/schemas/smtpServer/smtpServer.indexes";
@@ -11,7 +16,7 @@ import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/v
 import {SmtpServerSchemaDef} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.schema-def";
 import type {SmtpAuthType, SmtpEncryptionType, SmtpTestStatus} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.constants";
 
-export interface ISmtpServer extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface ISmtpServer extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     sequence: number;
     active: boolean;
@@ -147,6 +152,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
 ownershipPlugin(SmtpServerSchema);
 auditPlugin(SmtpServerSchema);
 softDeletePlugin(SmtpServerSchema);
+lifeCyclePlugin(SmtpServerSchema);
 applySmtpServerIndexes(SmtpServerSchema);
 const SmtpServer = model<ISmtpServer>("SmtpServer", SmtpServerSchema);
 normalizeSchemaPermissions(SmtpServer);

@@ -22,6 +22,7 @@ export const messagingProviderSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "providerType",
+                            permissions: {read: "providerType"},
                             field: {
                                 name: "providerType",
                                 widget: "#SmallInfoCard",
@@ -32,6 +33,7 @@ export const messagingProviderSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "active",
+                            permissions: {read: "active"},
                             field: {
                                 name: "active",
                                 widget: "#SmallInfoCard",
@@ -54,6 +56,7 @@ export const messagingProviderSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "accountSid",
+                            permissions: {read: "accountSid"},
                             field: {
                                 name: "accountSid",
                                 widget: "#SmallInfoCard",
@@ -64,6 +67,7 @@ export const messagingProviderSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "hasAuthToken",
+                            permissions: {read: "accountSid"},
                             field: {
                                 name: "hasAuthToken",
                                 widget: "#SmallInfoCard",
@@ -86,6 +90,7 @@ export const messagingProviderSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "fromPhone",
+                            permissions: {read: "fromPhone"},
                             field: {
                                 name: "fromPhone",
                                 widget: "#SmallInfoCard",
@@ -96,6 +101,7 @@ export const messagingProviderSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "fromWhatsapp",
+                            permissions: {read: "fromWhatsapp"},
                             field: {
                                 name: "fromWhatsapp",
                                 widget: "#SmallInfoCard",
@@ -117,7 +123,7 @@ export const messagingProviderSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#SmallInfoCard",
-                            dependent: "lastTestStatus",
+                            permissions: {read: "lastTestStatus"},
                             field: {
                                 name: "lastTestStatus",
                                 widget: "#SmallInfoCard",
@@ -132,7 +138,7 @@ export const messagingProviderSheetView: ViewConfig = {
                         },
                         {
                             render: "#SmallInfoCard",
-                            dependent: "lastTestedAt",
+                            permissions: {read: "lastTestedAt"},
                             field: {
                                 name: "lastTestedAt",
                                 widget: "#SmallInfoCard",
@@ -142,12 +148,86 @@ export const messagingProviderSheetView: ViewConfig = {
                         },
                         {
                             render: "#SmallInfoCard",
-                            dependent: "lastTestMessage",
+                            permissions: {read: "lastTestMessage"},
                             field: {
                                 name: "lastTestMessage",
                                 widget: "#SmallInfoCard",
                                 label: "lastTestMessage",
                                 widgetProps: {icon: "#MessageSquare"},
+                            },
+                        },
+                    ],
+                },
+            ],
+        },
+        {
+            render: "#SheetGroup",
+            props: {title: "lifecycle", defaultOpen: true},
+            children: [
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 2},
+                    children: [
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "createdAt"},
+                            field: {
+                                name: "createdAt",
+                                widget: "#SmallInfoCard",
+                                label: "createdAt",
+                                widgetProps: {icon: "#Calendar", format: "dateTime"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "updatedAt"},
+                            field: {
+                                name: "updatedAt",
+                                widget: "#SmallInfoCard",
+                                label: "updatedAt",
+                                widgetProps: {icon: "#Calendar", format: "dateTime"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "createdBy"},
+                            field: {
+                                name: "createdBy",
+                                widget: "#SmallInfoCard",
+                                label: "createdBy",
+                                widgetProps: {
+                                    icon: "#User",
+                                    parent: "createdBy",
+                                    valuePath: ["name", "surname"],
+                                    joinSeparator: " ",
+                                },
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            dependent: "deletedAt",
+                            permissions: {read: "deletedAt"},
+                            field: {
+                                name: "deletedAt",
+                                widget: "#SmallInfoCard",
+                                label: "deletedAt",
+                                widgetProps: {icon: "#Calendar", format: "dateTime"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            dependent: "deletedBy",
+                            permissions: {read: "deletedBy"},
+                            field: {
+                                name: "deletedBy",
+                                widget: "#SmallInfoCard",
+                                label: "deletedBy",
+                                widgetProps: {
+                                    icon: "#User",
+                                    parent: "deletedBy",
+                                    valuePath: ["name", "surname"],
+                                    joinSeparator: " ",
+                                },
                             },
                         },
                     ],

@@ -22,6 +22,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "sequence",
+                            permissions: {read: "sequence"},
                             field: {
                                 name: "sequence",
                                 widget: "#SmallInfoCard",
@@ -32,6 +33,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "active",
+                            permissions: {read: "active"},
                             field: {
                                 name: "active",
                                 widget: "#SmallInfoCard",
@@ -54,6 +56,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "host",
+                            permissions: {read: "host"},
                             field: {
                                 name: "host",
                                 widget: "#SmallInfoCard",
@@ -64,6 +67,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "port",
+                            permissions: {read: "port"},
                             field: {
                                 name: "port",
                                 widget: "#SmallInfoCard",
@@ -74,6 +78,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "encryption",
+                            permissions: {read: "encryption"},
                             field: {
                                 name: "encryption",
                                 widget: "#SmallInfoCard",
@@ -84,6 +89,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "authType",
+                            permissions: {read: "authType"},
                             field: {
                                 name: "authType",
                                 widget: "#SmallInfoCard",
@@ -94,6 +100,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "username",
+                            permissions: {read: "username"},
                             field: {
                                 name: "username",
                                 widget: "#SmallInfoCard",
@@ -104,6 +111,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "hasPassword",
+                            permissions: {read: "username"},
                             field: {
                                 name: "hasPassword",
                                 widget: "#SmallInfoCard",
@@ -126,6 +134,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "fromEmail",
+                            permissions: {read: "fromEmail"},
                             field: {
                                 name: "fromEmail",
                                 widget: "#SmallInfoCard",
@@ -136,6 +145,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "fromName",
+                            permissions: {read: "fromName"},
                             field: {
                                 name: "fromName",
                                 widget: "#SmallInfoCard",
@@ -146,6 +156,7 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             dependent: "replyTo",
+                            permissions: {read: "replyTo"},
                             field: {
                                 name: "replyTo",
                                 widget: "#SmallInfoCard",
@@ -167,7 +178,7 @@ export const smtpServerSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#SmallInfoCard",
-                            dependent: "lastTestStatus",
+                            permissions: {read: "lastTestStatus"},
                             field: {
                                 name: "lastTestStatus",
                                 widget: "#SmallInfoCard",
@@ -182,7 +193,7 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#SmallInfoCard",
-                            dependent: "lastTestedAt",
+                            permissions: {read: "lastTestedAt"},
                             field: {
                                 name: "lastTestedAt",
                                 widget: "#SmallInfoCard",
@@ -192,12 +203,86 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#SmallInfoCard",
-                            dependent: "lastTestMessage",
+                            permissions: {read: "lastTestMessage"},
                             field: {
                                 name: "lastTestMessage",
                                 widget: "#SmallInfoCard",
                                 label: "lastTestMessage",
                                 widgetProps: {icon: "#MessageSquare"},
+                            },
+                        },
+                    ],
+                },
+            ],
+        },
+        {
+            render: "#SheetGroup",
+            props: {title: "lifecycle", defaultOpen: true},
+            children: [
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 2},
+                    children: [
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "createdAt"},
+                            field: {
+                                name: "createdAt",
+                                widget: "#SmallInfoCard",
+                                label: "createdAt",
+                                widgetProps: {icon: "#Calendar", format: "dateTime"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "updatedAt"},
+                            field: {
+                                name: "updatedAt",
+                                widget: "#SmallInfoCard",
+                                label: "updatedAt",
+                                widgetProps: {icon: "#Calendar", format: "dateTime"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "createdBy"},
+                            field: {
+                                name: "createdBy",
+                                widget: "#SmallInfoCard",
+                                label: "createdBy",
+                                widgetProps: {
+                                    icon: "#User",
+                                    parent: "createdBy",
+                                    valuePath: ["name", "surname"],
+                                    joinSeparator: " ",
+                                },
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            dependent: "deletedAt",
+                            permissions: {read: "deletedAt"},
+                            field: {
+                                name: "deletedAt",
+                                widget: "#SmallInfoCard",
+                                label: "deletedAt",
+                                widgetProps: {icon: "#Calendar", format: "dateTime"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            dependent: "deletedBy",
+                            permissions: {read: "deletedBy"},
+                            field: {
+                                name: "deletedBy",
+                                widget: "#SmallInfoCard",
+                                label: "deletedBy",
+                                widgetProps: {
+                                    icon: "#User",
+                                    parent: "deletedBy",
+                                    valuePath: ["name", "surname"],
+                                    joinSeparator: " ",
+                                },
                             },
                         },
                     ],

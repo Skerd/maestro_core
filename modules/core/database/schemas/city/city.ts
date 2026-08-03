@@ -3,7 +3,12 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields
+} from "@coreModule/database/types/plugin-fields";
 import {IState} from "@coreModule/database/schemas/state/state";
 import {ICountry} from "@coreModule/database/schemas/country/country";
 import {StateSimpleSnippet} from "@coreModule/database/schemas/state/state.snippets";
@@ -14,7 +19,7 @@ import {applyCityIndexes} from "@coreModule/database/schemas/city/city.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CitySchemaDef} from "armonia/src/modules/core/api/auxiliary/private/city/city.schema-def";
 
-export interface ICity extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface ICity extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     state?: IState;
     country: ICountry;
@@ -71,6 +76,7 @@ const CitySchema = new Schema<ICity>(
 ownershipPlugin(CitySchema);
 auditPlugin(CitySchema);
 softDeletePlugin(CitySchema);
+lifeCyclePlugin(CitySchema);
 applyCityIndexes(CitySchema);
 const City = model<ICity>("City", CitySchema);
 normalizeSchemaPermissions(City);

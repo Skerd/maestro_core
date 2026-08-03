@@ -3,14 +3,19 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields
+} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {currencyViews} from "@coreModule/database/schemas/currency/currency.views";
 import {applyCurrencyIndexes} from "@coreModule/database/schemas/currency/currency.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CurrencySchemaDef} from "armonia/src/modules/core/api/finance/private/currency/currency.schema-def";
 
-export interface ICurrency extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface ICurrency extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     symbol: string;
     decimalPlaces: number;
@@ -72,6 +77,7 @@ const CurrencySchema = new Schema<ICurrency>(
 ownershipPlugin(CurrencySchema);
 auditPlugin(CurrencySchema);
 softDeletePlugin(CurrencySchema);
+lifeCyclePlugin(CurrencySchema);
 applyCurrencyIndexes(CurrencySchema);
 const Currency = model<ICurrency>("Currency", CurrencySchema);
 normalizeSchemaPermissions(Currency);

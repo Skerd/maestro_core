@@ -3,14 +3,19 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields
+} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {countryViews} from "@coreModule/database/schemas/country/country.views";
 import {applyCountryIndexes} from "@coreModule/database/schemas/country/country.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CountrySchemaDef} from "armonia/src/modules/core/api/auxiliary/private/country/country.schema-def";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 
-export interface ICountry extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface ICountry extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     code: string;
     phoneCode?: string;
@@ -59,6 +64,7 @@ const CountrySchema = new Schema<ICountry>(
 ownershipPlugin(CountrySchema);
 auditPlugin(CountrySchema);
 softDeletePlugin(CountrySchema);
+lifeCyclePlugin(CountrySchema);
 applyCountryIndexes(CountrySchema);
 const Country = model<ICountry>("Country", CountrySchema);
 normalizeSchemaPermissions(Country);

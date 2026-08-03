@@ -3,14 +3,19 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields
+} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {MessagingProviderSchemaDef} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.schema-def";
 import {messagingProviderViews} from "@coreModule/database/schemas/messagingProvider/messagingProvider.views";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 
-export interface IMessagingProvider extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface IMessagingProvider extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     providerType: string;
     accountSid: string;
@@ -95,6 +100,7 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
 ownershipPlugin(MessagingProviderSchema);
 auditPlugin(MessagingProviderSchema);
 softDeletePlugin(MessagingProviderSchema);
+lifeCyclePlugin(MessagingProviderSchema);
 
 const MessagingProvider = model<IMessagingProvider>("MessagingProvider", MessagingProviderSchema);
 normalizeSchemaPermissions(MessagingProvider);
