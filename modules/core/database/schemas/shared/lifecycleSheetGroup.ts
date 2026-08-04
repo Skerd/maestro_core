@@ -10,7 +10,7 @@ export const lifecycleSheetGroup: ViewNode = {
     children: [
         {
             render: "#SheetGrid",
-            props: {columns: 2},
+            props: {columns: 3},
             children: [
                 {
                     render: "#SmallInfoCard",
