@@ -60,6 +60,9 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     description: string;
     logo: ObjectId;
     website: string;
+    linkedin?: string;
+    instagram?: string;
+    facebook?: string;
     vat: string;
     parentCompany?: ICompany;
     isActive: boolean;
@@ -170,6 +173,15 @@ const CompanySchema: Schema = new Schema(
             }
         },
         website: {
+            type: SchemaTypes.String
+        },
+        linkedin: {
+            type: SchemaTypes.String
+        },
+        instagram: {
+            type: SchemaTypes.String
+        },
+        facebook: {
             type: SchemaTypes.String
         },
         vat: {

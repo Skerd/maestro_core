@@ -32,7 +32,22 @@ export const companySheetView: ViewConfig = {
                         {
                             render: "#SmallInfoCard",
                             permissions: {read: "website"},
-                            field: {name: "website", widget: "#SmallInfoCard", label: "website", widgetProps: {icon: "#World"}},
+                            field: {name: "website", widget: "#SmallInfoCard", label: "website", widgetProps: {icon: "#World", externalLink: true}},
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "linkedin"},
+                            field: {name: "linkedin", widget: "#SmallInfoCard", label: "linkedin", widgetProps: {icon: "#World", externalLink: true}},
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "instagram"},
+                            field: {name: "instagram", widget: "#SmallInfoCard", label: "instagram", widgetProps: {icon: "#World", externalLink: true}},
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "facebook"},
+                            field: {name: "facebook", widget: "#SmallInfoCard", label: "facebook", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
                             render: "#SmallInfoCard",
@@ -166,7 +181,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
     {
         render: "#TitleWithCollapse",
         props: {title: "generalInfo"},
-        permissions: {writeAny: ["name", "email", "phoneNumber", "website", "allowedDomains", "vat"]},
+        permissions: {writeAny: ["name", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
         children: [
             {
                 render: "#FormGrid",
@@ -186,6 +201,9 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                         },
                     },
                     {render: "#Field", field: {name: "website", widget: "#Input", label: "form.websiteLabel", placeholder: "form.websitePlaceholder"}},
+                    {render: "#Field", field: {name: "linkedin", widget: "#Input", label: "form.linkedinLabel", placeholder: "form.linkedinPlaceholder"}},
+                    {render: "#Field", field: {name: "instagram", widget: "#Input", label: "form.instagramLabel", placeholder: "form.instagramPlaceholder"}},
+                    {render: "#Field", field: {name: "facebook", widget: "#Input", label: "form.facebookLabel", placeholder: "form.facebookPlaceholder"}},
                     {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder", required: true}},
                     {
                         render: "div",
@@ -233,15 +251,15 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                 rowTemplate: [
                     {
                         render: "div",
-                        props: {className: "grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch"},
+                        props: {className: "grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch"},
                         children: [
                             {
                                 render: "div",
-                                props: {className: "lg:col-span-2 space-y-4 min-w-0"},
+                                props: {className: "lg:col-span-2 space-y-6 min-w-0"},
                                 children: [
                                     {
                                         render: "#FormGrid",
-                                        props: {columns: 3},
+                                        props: {columns: 3, className: "gap-6"},
                                         children: [
                                             {
                                                 render: "#Field",
@@ -295,7 +313,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                                     },
                                     {
                                         render: "#FormGrid",
-                                        props: {columns: 2},
+                                        props: {columns: 2, className: "gap-6"},
                                         children: [
                                             {
                                                 render: "#Field",
@@ -309,7 +327,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                                     },
                                     {
                                         render: "#FormGrid",
-                                        props: {columns: 2},
+                                        props: {columns: 2, className: "gap-6"},
                                         children: [
                                             {
                                                 render: "#Field",

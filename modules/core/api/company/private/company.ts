@@ -246,7 +246,7 @@ type CreateNewCompanyType = TransactionRequiredParams & CreateCompanyFormType & 
  * @remarks Validates VAT uniqueness; creates addresses if provided; adds to userInfo.companies/roles/finance
  */
 async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, website, vat, allowedDomains, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
+    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, allowedDomains, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
 
     logger.start(`Trying to create new company...`);
 
@@ -269,6 +269,9 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
             description,
             logo: !!fileIds && !!fileIds[0] ? fileIds[0] : null,
             website,
+            linkedin,
+            instagram,
+            facebook,
             vat,
             company: company._id,
             allowedDomains: allowedDomains?.map((domain: string) => domain.trim()).filter((domain: string) => domain !== "") || ["none.none.com"],
@@ -296,7 +299,7 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
  * @returns {Promise<ActionMessage>} Success message
  *
  * @remarks
- * - Supports updating: name, email, phone, description, website, VAT, parentCompany, allowedDomains
+ * - Supports updating: name, email, phone, description, website, social URLs, VAT, parentCompany, allowedDomains
  * - Can add, modify, or delete addresses in a single operation
  * - Logo upload replaces existing logo (old logo is deleted)
  */
@@ -321,7 +324,7 @@ type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & Media
  * @returns Success message
  */
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, vat, allowedDomains, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, allowedDomains, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -352,6 +355,9 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
         existingCompany.logo = new ObjectId(fileIds[0])
     }
     if (website && sanitizedWriteFields.website) existingCompany.website = website;
+    if (linkedin !== undefined && sanitizedWriteFields.linkedin) existingCompany.linkedin = linkedin;
+    if (instagram !== undefined && sanitizedWriteFields.instagram) existingCompany.instagram = instagram;
+    if (facebook !== undefined && sanitizedWriteFields.facebook) existingCompany.facebook = facebook;
     if (vat && sanitizedWriteFields.vat) existingCompany.vat = vat;
     if (allowedDomains && sanitizedWriteFields.allowedDomains) {
         existingCompany.allowedDomains = allowedDomains
