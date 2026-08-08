@@ -1,12 +1,25 @@
 import {Schema, SchemaTypes} from "mongoose";
+import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
 
 export const lifeCyclePlugin = (schema: Schema): void => {
     schema.add({
         createdAt: {
             type: SchemaTypes.Date,
+            dynamicTableConfiguration: {
+                filterable: true,
+                sortable: true,
+                cellType: COLUMN_TYPE.DATE,
+                visible: false,
+            },
         },
         updatedAt: {
             type: SchemaTypes.Date,
+            dynamicTableConfiguration: {
+                filterable: true,
+                sortable: true,
+                cellType: COLUMN_TYPE.DATE,
+                visible: false,
+            },
         },
     });
 
