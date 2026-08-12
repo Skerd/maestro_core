@@ -97,7 +97,7 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         // validate company domain
         const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "allowedDomains name isActive");
         req.body.company = company;
-        let isAdmin = await user.isAdmin(company._id);
+        const {isAdmin, permissions} = await user.getCompanyAccess(company._id);
 
         if( !company.isActive && !isAdmin ){
             throw apiValidationException("company_is_inactive", "company", null, languageCode);
@@ -119,8 +119,8 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         req.body.actionUserCtx = {
             userId: user._id.toString(),
             orgId: company._id.toString(),
-            isAdmin: await user.isAdmin(company._id),
-            permissions: await user.getCompanyRolePermissions(company._id),
+            isAdmin,
+            permissions,
             isSelf: true
         };
 

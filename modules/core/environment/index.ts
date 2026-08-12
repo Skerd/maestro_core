@@ -243,6 +243,7 @@ export const REDIS = {
     KEY_PREFIX: process.env.REDIS_KEY_PREFIX,
     CONNECT_TIMEOUT: parseInt(process.env.REDIS_CONNECT_TIMEOUT, 10),
     CONNECTION_TIMER: parseInt(process.env.REDIS_CONNECTION_TIMER, 10),
+    ROLE_ACCESS_CACHE_TTL: parseInt(process.env.REDIS_ROLE_ACCESS_CACHE_TTL || "300", 10),
 }
 
 export const METRICS = {

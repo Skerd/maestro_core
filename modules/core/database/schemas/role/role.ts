@@ -8,6 +8,7 @@ import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
+import {invalidateRoleAccess} from "@coreModule/utilities/security/roleAccessCache";
 
 export interface IRole extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
     name: string,
@@ -141,6 +142,53 @@ RoleSchema.methods.hasPermission = async function(permission: string): Promise<b
     await this.populate("permissions");
     return this.permissions.map((permission) => permission.tag).includes(permission);
 }
+
+/**
+ * Keep the Redis role-access cache honest.
+ *
+ * authMW resolves permission tags through `roleAccessCache`, keyed per role. Anything that
+ * mutates a role — the roles API, the boot-time permission sync, a soft delete (which the
+ * soft-delete plugin rewrites into an update) — has to drop that entry, so invalidation
+ * lives here rather than at each call site where it could be forgotten.
+ *
+ * Query-based writes don't carry the affected ids, so they are resolved from the filter
+ * before invalidating. Role writes are rare, so the extra lookup costs nothing in practice.
+ */
+RoleSchema.post("save", async function (doc: any) {
+    await invalidateRoleAccess([doc._id]);
+});
+
+const ROLE_WRITE_QUERIES = [
+    "findOneAndUpdate",
+    "findOneAndDelete",
+    "updateOne",
+    "updateMany",
+    "deleteOne",
+    "deleteMany"
+] as any;
+
+// Ids are resolved before the write: a soft delete flips `deletedAt`, so the same filter
+// would match nothing by the time the post hook runs.
+RoleSchema.pre(ROLE_WRITE_QUERIES, async function (this: any) {
+    try {
+        const affected = await this.model
+            .find(this.getFilter())
+            .withDeleted()
+            .select("_id")
+            .lean();
+        this._roleAccessInvalidationIds = affected.map((role: any) => role._id);
+    } catch {
+        this._roleAccessInvalidationIds = [];
+    }
+});
+
+RoleSchema.post(ROLE_WRITE_QUERIES, async function (this: any) {
+    try {
+        await invalidateRoleAccess(this._roleAccessInvalidationIds ?? []);
+    } catch {
+        // Cache invalidation must never fail a write; the TTL bounds any staleness.
+    }
+});
 
 ownershipPlugin(RoleSchema);
 auditPlugin(RoleSchema);

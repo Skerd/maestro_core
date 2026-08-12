@@ -47,6 +47,7 @@ import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperator
 import {addModelData} from "@coreModule/database/collections";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets";
+import {getRolesAccess} from "@coreModule/utilities/security/roleAccessCache";
 
 let userService: any;
 let roleService: any;
@@ -191,6 +192,8 @@ export interface IUser extends Document, IOwnershipPluginFields {
     getUnsuccessfulLogins: (companyId: ObjectId) => Promise<number>,
     isUserActive: (companyId: ObjectId) => Promise<boolean>,
     changeAccountStatus: (companyId: ObjectId, status: boolean, session?: ClientSession) => Promise<void>,
+    getCompanyAccess: (companyId: ObjectId) => Promise<{isAdmin: boolean, permissions: string[]}>;
+
     getCompanyRolePermissions: (companyId: ObjectId) => Promise<string[]>;
     companyRoleHasPermission: (companyId: ObjectId, permission: string) => Promise<boolean>;
     hasAtLeastOneRole: (companyId: ObjectId) => Promise<boolean>;
@@ -1643,50 +1646,34 @@ UserSchema.methods.changeAccountStatus = async function (companyId: ObjectId, st
     await this.save({session});
 }
 
-UserSchema.methods.getCompanyRolePermissions = async function (companyId: ObjectId): Promise<string[]> {
+/**
+ * Resolves admin status and permission tags for this user in one pass.
+ *
+ * `isAdmin` and `getCompanyRolePermissions` both derive from the same role documents, so
+ * callers that need both (authMW does, on every private request) should ask once rather
+ * than resolve the roles twice. Backed by the Redis role cache.
+ */
+UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId): Promise<{isAdmin: boolean, permissions: string[]}> {
     const companyRole = findCompanyRole(this.roles, companyId);
-    if (!companyRole?.roles?.length) {
-        return [];
-    }
-    const roleIds = companyRole?.roles.map((role) => role._id);
+    const roleIds = companyRole?.roles?.map((role) => role._id) ?? [];
     if (!roleIds.length) {
-        return [];
+        return {isAdmin: false, permissions: []};
     }
 
-    const { roleService } = await getServices();
-    const userRoles = await roleService.find({_id: {$in: roleIds}}, {}, {path: "permissions", select: "tag"});
+    // Resolved through the Redis-backed role cache: populating the permission refs here
+    // hydrated thousands of documents on every private request just to read their tags.
+    const {isAdmin, tags} = await getRolesAccess(roleIds);
+    return {isAdmin, permissions: tags};
+}
 
-    const permissionSet = new Set<string>();
-    for (const role of userRoles) {
-        const rolePermissions = (role.permissions).map((permission) => permission.tag);
-        rolePermissions.forEach(perm => permissionSet.add(perm));
-    }
-
-    return Array.from(permissionSet);
+UserSchema.methods.getCompanyRolePermissions = async function (companyId: ObjectId): Promise<string[]> {
+    const {permissions} = await this.getCompanyAccess(companyId);
+    return permissions;
 }
 
 UserSchema.methods.companyRoleHasPermission = async function(companyId: ObjectId, permission: string): Promise<boolean> {
-    const companyRole = findCompanyRole(this.roles, companyId);
-    if (!companyRole?.roles?.length) {
-        return false;
-    }
-    const roleIds = companyRole.roles.map((role) => role._id);
-    if (!roleIds.length) {
-        return false;
-    }
-
-    const { roleService } = await getServices();
-    const userRoles = await roleService.find({_id: {$in: roleIds}}, {}, {path: "permissions", select: "tag"});
-
-    // Check for permission with early exit
-    for (const role of userRoles) {
-        const rolePermissions = role.permissions.map((permission) => permission.tag);
-        if (rolePermissions.includes(permission)) {
-            return true;
-        }
-    }
-
-    return false;
+    const {permissions} = await this.getCompanyAccess(companyId);
+    return permissions.includes(permission);
 }
 
 UserSchema.methods.hasAtLeastOneRole = async function (companyId: ObjectId){
@@ -1728,18 +1715,8 @@ UserSchema.methods.getCompanyIds = async function (): Promise<ObjectId[]>{
 }
 
 UserSchema.methods.isAdmin = async function (companyId: ObjectId): Promise<boolean>{
-    const companyRole = findCompanyRole(this.roles, companyId);
-    if (!companyRole?.roles?.length) {
-        return false;
-    }
-    const roleIds = companyRole.roles.map((role) => role._id);
-    if (!roleIds.length) {
-        return false;
-    }
-
-    const { roleService } = await getServices();
-    const userRoles = await roleService.find({_id: {$in: roleIds}, isAdmin: true}, {});
-    return userRoles.length > 0;
+    const {isAdmin} = await this.getCompanyAccess(companyId);
+    return isAdmin;
 }
 
 UserSchema.methods.getTransactionAmounts = async function (companyId: ObjectId, userId: ObjectId, transactionType: TransactionType, startDate: Date = firstOfMonth(), endDate: Date = lastOfMonth() ):Promise<{[key: string]: number}>{
