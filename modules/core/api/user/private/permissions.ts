@@ -26,7 +26,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/permissions/changeUserRoles.form.response.type";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
-import {ensureAiChannel, hideAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
+import {ensureAiChannel, hideAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import Role, {IRole} from "@coreModule/database/schemas/role/role";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";

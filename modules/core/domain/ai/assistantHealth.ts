@@ -55,12 +55,23 @@ export type AssistantResponderHealth = {
     totalMs: number;
     /** Mean answer-composition time in ms (0 when nothing answered yet). */
     averageMs: number;
+    /**
+     * Of the answered replies, how many were for the PUBLIC website chat rather
+     * than the internal assistant. Public traffic is unauthenticated and
+     * therefore the volume most worth watching separately — a spike here is an
+     * abuse signal, the same spike internally is just a busy day.
+     */
+    publicAnswered: number;
+    /** Failed replies on the public website chat. */
+    publicFailed: number;
 };
 
 // In-process cumulative counters (owned by whichever process runs the consumer).
 let answered = 0;
 let failed = 0;
 let totalMs = 0;
+let publicAnswered = 0;
+let publicFailed = 0;
 /** Latched once so uptime does not reset on every heartbeat tick. */
 let startedAt = 0;
 let heartbeatTimer: NodeJS.Timeout | null = null;
@@ -70,15 +81,25 @@ let heartbeatTimer: NodeJS.Timeout | null = null;
  * {@link respondToAiChannelMessage}. Duration is only accrued for answered
  * replies so `averageMs` reflects real answer-composition time.
  */
-export function recordAssistantResult(outcome: "answered" | "failed", durationMs: number): void {
+export function recordAssistantResult(
+    outcome: "answered" | "failed",
+    durationMs: number,
+    audience: "internal" | "public" = "internal"
+): void {
     if (outcome === "answered") {
         answered += 1;
+        if (audience === "public") {
+            publicAnswered += 1;
+        }
         if (Number.isFinite(durationMs) && durationMs > 0) {
             totalMs += Math.round(durationMs);
         }
     }
     else {
         failed += 1;
+        if (audience === "public") {
+            publicFailed += 1;
+        }
     }
 }
 
@@ -99,7 +120,9 @@ export async function publishAssistantHeartbeat(): Promise<void> {
             lastStart: startedAt,
             answered,
             failed,
-            totalMs
+            totalMs,
+            publicAnswered,
+            publicFailed
         }));
     }
     catch {
@@ -145,7 +168,8 @@ export async function isAssistantResponderOnline(): Promise<boolean> {
  */
 export async function getAssistantResponderHealth(): Promise<AssistantResponderHealth> {
     const empty: AssistantResponderHealth = {
-        connected: false, processed: 0, answered: 0, failed: 0, totalMs: 0, averageMs: 0
+        connected: false, processed: 0, answered: 0, failed: 0, totalMs: 0, averageMs: 0,
+        publicAnswered: 0, publicFailed: 0
     };
     try {
         const raw = await redisGet(ASSISTANT_HEARTBEAT_KEY);
@@ -157,6 +181,8 @@ export async function getAssistantResponderHealth(): Promise<AssistantResponderH
             answered?: number;
             failed?: number;
             totalMs?: number;
+            publicAnswered?: number;
+            publicFailed?: number;
         };
         const answeredN = p.answered ?? 0;
         const failedN = p.failed ?? 0;
@@ -171,7 +197,9 @@ export async function getAssistantResponderHealth(): Promise<AssistantResponderH
             answered: answeredN,
             failed: failedN,
             totalMs: totalMsN,
-            averageMs: answeredN > 0 ? Math.round(totalMsN / answeredN) : 0
+            averageMs: answeredN > 0 ? Math.round(totalMsN / answeredN) : 0,
+            publicAnswered: p.publicAnswered ?? 0,
+            publicFailed: p.publicFailed ?? 0
         };
     }
     catch {

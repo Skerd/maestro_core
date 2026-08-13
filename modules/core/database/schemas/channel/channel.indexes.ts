@@ -35,6 +35,15 @@ export function applyChannelIndexes(ChannelSchema: Schema): void {
     // For listing/looking up a user's AI-assistant channel quickly
     ChannelSchema.index({ company: 1, isAiAssistant: 1, aiOwnerUser: 1 });
 
+    // Public visitor chats: the agent inbox (by status, most recent first)
+    ChannelSchema.index({ company: 1, isPublicChat: 1, "publicChat.status": 1, lastAction: -1 });
+
+    // Public visitor chats: "my assigned chats" for an agent
+    ChannelSchema.index({ company: 1, isPublicChat: 1, "publicChat.assignedTo": 1 });
+
+    // Public visitor chats: retention cron sweeps by idle time
+    ChannelSchema.index({ "publicChat.lastVisitorActivity": 1 });
+
     // For pinned messages queries
     ChannelSchema.index({ pinnedMessages: 1 });
 

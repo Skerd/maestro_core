@@ -25,6 +25,7 @@ export function registerCoreRoomContributions(): void {
         administration: "Administration",
         users: "Users",
         chats: "Chats",
+        websiteChats: "Website chats",
         company: "Company",
         account: "Account",
         security: "Security",

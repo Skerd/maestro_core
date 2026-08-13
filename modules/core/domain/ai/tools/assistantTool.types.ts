@@ -16,6 +16,23 @@
 
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 
+/**
+ * Who a tool may be exposed to.
+ *
+ * - `internal` — company-role users only (the in-app assistant channel).
+ * - `public`   — anonymous website visitors only.
+ * - `both`     — safe for either.
+ *
+ * There is no default of convenience here: a tool that does not declare an
+ * audience is treated as `internal` (see {@link toolAudience}). New tools are
+ * private until someone deliberately opens them up, which is the correct
+ * failure direction for a registry that reaches real CRM data.
+ */
+export type AssistantAudience = "internal" | "public" | "both";
+
+/** Audience a reply is being generated for. `both` is not a caller-side value. */
+export type AssistantReplyAudience = Exclude<AssistantAudience, "both">;
+
 /** Minimal JSON Schema (object) describing a tool's arguments for the LLM. */
 export interface AssistantToolParameters {
     type: "object";
@@ -29,6 +46,18 @@ export interface AssistantToolContext {
     companyId: string;
     /** The human user the assistant is answering (for auditing/ownership). */
     userId: string;
+    /**
+     * The conversation the tool call belongs to. Needed by tools that act on the
+     * conversation itself (escalating to a human, attaching a captured lead)
+     * rather than merely reading data.
+     */
+    channelId: string;
+    /**
+     * Who is on the other end. A tool that serves both audiences MUST narrow its
+     * output for `public` — an anonymous visitor sees only what the marketing
+     * site would already show them.
+     */
+    audience: AssistantReplyAudience;
     /** Language for any localized lookups/among results. */
     languageCode?: string;
     /** Logger for tracing tool execution. */
@@ -42,6 +71,11 @@ export interface AssistantToolContext {
 export interface AssistantTool {
     /** Unique function name the model calls (snake_case, e.g. `search_properties`). */
     name: string;
+    /**
+     * Who this tool may be offered to. OMITTING THIS MEANS `internal` — do not
+     * add `public` without checking every field the tool can return.
+     */
+    audience?: AssistantAudience;
     /** Natural-language description the model uses to decide when to call it. */
     description: string;
     /** JSON Schema of the arguments, shown to the model. */

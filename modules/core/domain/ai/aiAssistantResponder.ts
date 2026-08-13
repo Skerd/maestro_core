@@ -1,11 +1,24 @@
 /**
  * AI-Assistant Channel Responder ("Layer 2", in-app)
  *
- * The in-app internal chat is the ONLY transport for the AI-assistant. When a
- * human user posts in their dedicated AI-assistant channel, this composes the
- * assistant's reply and delivers it back over WebSocket. Telegram is
- * deliberately decoupled and does NOT route messages here (Telegram is a
- * notifications-only transport; see connectToTelegram.ts).
+ * Composes the assistant's reply to a message and delivers it back over
+ * WebSocket.
+ *
+ * SCOPE — two kinds of conversation, one responder:
+ *
+ *   - An internal company user's own assistant channel → answered with the
+ *     INTERNAL persona and the full internal tool set.
+ *   - A public website visitor's chat → answered with the OUTWARD-facing
+ *     persona and the public tool set only.
+ *
+ * The one case that is NEVER answered is a visitor chat a human agent has taken
+ * over. Company users reach such a channel through the private message endpoint,
+ * which declines to dispatch for `isPublicChat` channels, and this module
+ * re-checks the live handoff status before composing — otherwise the bot would
+ * talk over the colleague who joined to help.
+ *
+ * Telegram is deliberately decoupled and does NOT route messages here (Telegram
+ * is a notifications-only transport; see connectToTelegram.ts).
  *
  * The reply itself comes from {@link generateAssistantReply} — an empty shell
  * with no commands or protocols, waiting for a real LLM. This responder only
@@ -19,6 +32,7 @@
  */
 
 import User from "@coreModule/database/schemas/user/user";
+import Company from "@coreModule/database/schemas/company/company";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
@@ -112,18 +126,22 @@ export async function respondToAiChannelMessage(event: AiChannelMessageEvent): P
     logger.start(`Responding in AI channel ${event.channelId} for user ${event.userId}`);
 
     const startedAt = Date.now();
+    // Filled in once the channel is known. Shared by reference so the catch
+    // block can still attribute a failure that happened mid-compose — a failure
+    // before the channel lookup is attributed to "internal", the safe default.
+    const outcome: {audience: "internal" | "public"} = {audience: "internal"};
     try {
-        const delivered = await composeAndDeliverAiReply(event, logger);
+        const delivered = await composeAndDeliverAiReply(event, logger, outcome);
         // Only delivered replies count as "answered"; skips (channel/user
         // missing) are neither answered nor failed.
         if (delivered) {
-            recordAssistantResult("answered", Date.now() - startedAt);
+            recordAssistantResult("answered", Date.now() - startedAt, outcome.audience);
         }
     }
     catch (err) {
         // Count the failure for the performance UI, then rethrow so the
         // consumer's retry/DLQ machinery still handles it.
-        recordAssistantResult("failed", Date.now() - startedAt);
+        recordAssistantResult("failed", Date.now() - startedAt, outcome.audience);
         throw err;
     }
 }
@@ -136,7 +154,8 @@ export async function respondToAiChannelMessage(event: AiChannelMessageEvent): P
  */
 async function composeAndDeliverAiReply(
     event: AiChannelMessageEvent,
-    logger: ReturnType<typeof getLogger>
+    logger: ReturnType<typeof getLogger>,
+    outcome: {audience: "internal" | "public"}
 ): Promise<boolean> {
     // Confirm the channel is still an AI-assistant channel in this company.
     const channel = await channelService.findOne(
@@ -148,10 +167,28 @@ async function composeAndDeliverAiReply(
         return false;
     }
 
+    // Which conversation this is decides BOTH the persona and — far more
+    // importantly — which tools the model is offered. A visitor chat gets the
+    // outward-facing persona and the public tool set; an internal company user's
+    // own assistant chat gets the full internal set.
+    const isPublic = channel.isPublicChat === true;
+    outcome.audience = isPublic ? "public" : "internal";
+
+    // A public chat that a human agent has taken over is NOT bot-served: the
+    // agent is handling it. The private message endpoint already declines to
+    // dispatch these, but a Kafka retry or DLQ replay could still arrive after
+    // the takeover, so re-check the live status here.
+    if (isPublic && (channel.publicChat?.status ?? "bot") !== "bot") {
+        logger.debug(
+            `Public chat ${event.channelId} is handled by a human (status: ${channel.publicChat?.status}); skipping bot reply`
+        );
+        return false;
+    }
+
     // The bot user that authors the reply, and the human it answers.
-    const bot = await User.findOne({ isBot: true, companies: new ObjectId(event.companyId) }).select("_id isBot");
+    const botId = await Company.findRobotId(new ObjectId(event.companyId));
     const human = await User.findById(event.userId).select("username name surname");
-    if (!bot) {
+    if (!botId) {
         logger.err(`No bot user for company ${event.companyId}; cannot answer`);
         return false;
     }
@@ -164,15 +201,27 @@ async function composeAndDeliverAiReply(
     const history = await loadConversationHistory(
         channel._id,
         new ObjectId(event.companyId),
-        bot._id,
+        botId,
         event.messageId,
         logger,
         event.languageCode
     );
 
+    // The tenant's public persona is only relevant to the outward-facing chat.
+    let companyName: string | undefined;
+    let companyPersona: string | undefined;
+    if (isPublic) {
+        const company = await Company.findById(event.companyId).select("name publicAiChat");
+        companyName = company?.name;
+        companyPersona = company?.publicAiChat?.persona;
+    }
+
     // Ask the assistant brain for the reply, grounded in tools and past turns.
-    const userDisplayName =
-        [human.name, human.surname].filter(Boolean).join(" ").trim() || human.username;
+    // An anonymous visitor has no meaningful name to personalise with; a
+    // colleague does.
+    const userDisplayName = isPublic
+        ? undefined
+        : ([human.name, human.surname].filter(Boolean).join(" ").trim() || human.username);
     const answer = await generateAssistantReply(
         {
             text: event.text,
@@ -181,7 +230,10 @@ async function composeAndDeliverAiReply(
             companyId: event.companyId,
             userId: event.userId,
             userDisplayName,
-            languageCode: event.languageCode
+            languageCode: event.languageCode,
+            audience: isPublic ? "public" : "internal",
+            companyName,
+            companyPersona
         },
         logger
     );
@@ -189,20 +241,20 @@ async function composeAndDeliverAiReply(
     // Persist the bot's reply authored by the company bot user.
     const reply = await messageService.create(
         {
-            sender: bot,
+            sender: botId,
             channel: channel,
             text: EncryptString(answer),
             type: "message",
             status: "active",
             company: channel.company
         } as any,
-        { logger, languageCode: event.languageCode, auditUserId: bot._id.toString() }
+        { logger, languageCode: event.languageCode, auditUserId: botId.toString() }
     );
 
     await channelService.updateById(
         channel._id,
         { lastAction: new Date() },
-        { logger, languageCode: event.languageCode, auditUserId: bot._id.toString() }
+        { logger, languageCode: event.languageCode, auditUserId: botId.toString() }
     );
 
     // Deliver the reply to the human over WebSocket (same path as normal messages).
@@ -223,14 +275,14 @@ async function composeAndDeliverAiReply(
     // so their message advances to "read" once the assistant answers.
     try {
         await applyMessageReceipts({
-            readerUserId: bot._id,
+            readerUserId: botId,
             channelId: event.channelId,
             companyId: new ObjectId(event.companyId),
             messageIds: [event.messageId],
             kind: "read",
             logger,
             languageCode: event.languageCode,
-            auditUserId: bot._id.toString()
+            auditUserId: botId.toString()
         });
     }
     catch (e: any) {

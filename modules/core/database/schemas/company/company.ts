@@ -36,7 +36,6 @@ import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
-import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 
 function documentObjectId(ref: unknown): ObjectId | null {
@@ -82,11 +81,15 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     };
     createBot: () => Promise<void>;
     ensureAiChannels: (session?: ClientSession | null) => Promise<void>;
-    getRobotId: () => Promise<ObjectId>,
+    getRobotId: (session?: ClientSession | null) => Promise<ObjectId | null>;
     createDefaultRoles: (parentLogger?: serverLogger, session?: ClientSession) => Promise<void>;
     assignCreatorFinanceAndRoles: (session?: ClientSession | null) => Promise<void>;
     addCompanyDemoData: (parentLogger?: serverLogger, session?: ClientSession) => Promise<void>;
     getAllRoles: (fetchAdminRoles?: boolean) => Promise<IRole[]>;
+}
+
+export interface ICompanyModel extends mongoose.Model<ICompany> {
+    findRobotId(companyId: ObjectId, session?: ClientSession | null): Promise<ObjectId | null>;
 }
 
 const CompanySchema: Schema = new Schema(
@@ -532,6 +535,7 @@ CompanySchema.methods.createBot = async function (){
  * Requires the bot user to already exist (see createBot).
  */
 CompanySchema.methods.ensureAiChannels = async function (session?: ClientSession | null) {
+    const {ensureAiChannel} = await import("@coreModule/database/schemas/channel/channel.helper");
     const query = User.find({
         companies: this._id,
         isBot: {$ne: true},
@@ -551,13 +555,18 @@ CompanySchema.methods.ensureAiChannels = async function (session?: ClientSession
     }
 };
 
-CompanySchema.methods.getRobotId = async function (): Promise<ObjectId>{
-    let robotAggregate = await User.findOne({
-        isBot: true,
-        companies: {$in: [this._id]}
-    });
-    return robotAggregate?._id || null;
-}
+CompanySchema.statics.findRobotId = async function (
+    companyId: ObjectId,
+    session?: ClientSession | null,
+): Promise<ObjectId | null> {
+    const q = User.findOne({isBot: true, companies: {$in: [companyId]}}).select("_id");
+    const bot = session ? await q.session(session) : await q;
+    return bot?._id ?? null;
+};
+
+CompanySchema.methods.getRobotId = async function (session?: ClientSession | null): Promise<ObjectId | null> {
+    return (this.constructor as ICompanyModel).findRobotId(this._id, session);
+};
 CompanySchema.methods.getAllRoles = async function (fetchAdminRoles: boolean = false): Promise<IRole[]>{
     let filter = {
         company: this._id,
@@ -573,7 +582,7 @@ auditPlugin(CompanySchema);
 softDeletePlugin(CompanySchema);
 lifeCyclePlugin(CompanySchema);
 applyCompanyIndexes(CompanySchema);
-const Company = mongoose.model<ICompany>('Company', CompanySchema);
+const Company = mongoose.model<ICompany, ICompanyModel>('Company', CompanySchema);
 normalizeSchemaPermissions(Company);
 export default Company;
 

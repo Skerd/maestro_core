@@ -1,4 +1,4 @@
-import {Router} from "express";
+import {Router, type RequestHandler} from "express";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
@@ -14,7 +14,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/chats/channels/deleteChannel.form.response.type";
 import {channelsToDTO, channelToDTO} from "@coreModule/utilities/mappers/channel/channelMapper.dto";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
-import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
@@ -60,6 +60,8 @@ import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMe
 import {
     UpdateChannelDescriptionFormResponseType
 } from "armonia/src/modules/core/api/user/private/chats/channels/updateChannelDescription.form.response.type";
+import {getRegisteredActions} from "@coreModule/api/actionDecorator";
+import {ChannelActions} from "@coreModule/database/schemas/channel/channel.actions";
 
 const router = Router();
 
@@ -102,7 +104,7 @@ type UserChannelsType = AuthenticatedMWType & SchemaSanitizerMWType;
  * @returns Paginated list of channels
  */
 async function userChannels(params: UserChannelsType & AllChannelsFormType): Promise<AllChannelsFormResponseType> {
-    const { logger, userInfo, company, name, languageCode, offset, limit, actionUserCtx, sanitizedReadFields } = params;
+    const { logger, userInfo, actionUserInfo, company, name, languageCode, offset, limit, actionUserCtx, sanitizedReadFields, websiteChannels } = params;
 
     logger.start(`Fetching channels for user ${userInfo._id.toString()} in company ${company._id.toString()} (offset ${offset}, limit ${limit})...`);
     logger.debug(`Filter name: ${name || 'none'}`);
@@ -113,6 +115,7 @@ async function userChannels(params: UserChannelsType & AllChannelsFormType): Pro
     const baseMatch: any = {
         company: company._id,
         deleted: false,
+        isPublicChat: !!websiteChannels,
         $or: [
             {
                 users: userInfo._id
@@ -127,6 +130,25 @@ async function userChannels(params: UserChannelsType & AllChannelsFormType): Pro
             }
         ]
     };
+
+    if( !!websiteChannels ){
+        switch (websiteChannels) {
+            case "waiting":
+                baseMatch["publicChat.status"] = "requested_human";
+                baseMatch["publicChat.assignedTo"] = null;
+                delete baseMatch["$or"];
+                break;
+            case "mine":
+                baseMatch["publicChat.assignedTo"] = actionUserInfo._id;
+                break;
+            case "active":
+                baseMatch["publicChat.status"] = {$in: ["requested_human", "human"]};
+                break;
+            case "all":
+            default:
+                break;
+        }
+    }
 
     // Apply name filter early if provided (before expensive lookups)
     if (name && name.trim()) {
@@ -148,10 +170,8 @@ async function userChannels(params: UserChannelsType & AllChannelsFormType): Pro
             baseMatch,
             {logger, languageCode},
             populate.populate,
-            (populate.select || "") + " isGroup",
-            {
-                lastAction: -1
-            },
+            (populate.select || "") + " isGroup isPublicChat",
+            !!websiteChannels && websiteChannels === "waiting" ? {"publicChat.handoffRequestedAt": 1} : {lastAction: -1},
             limit,
             offset
         ),
@@ -232,7 +252,7 @@ async function getChannelSingle(params: GetChannelSingleType & GetChannelSingleF
         },
         { logger, languageCode },
         populate.populate,
-        (populate.select || "") + " isGroup"
+        (populate.select || "") + " isGroup isPublicChat"
     );
 
     if (!channel) {
@@ -289,7 +309,7 @@ async function getOrCreateAiChannel(params: GetOrCreateAiChannelType): Promise<G
 
     logger.start(`Get-or-create AI channel for user ${userInfo._id.toString()} in company ${company._id.toString()}...`);
 
-    const aiChannel = await ensureAiChannel({
+    const {aiChannel} = await ensureAiChannel({
         userId: userInfo._id,
         companyId: company._id,
         logger,
@@ -433,7 +453,7 @@ async function createUserChannel(params: CreateUserChannelType & CreateChannelFo
         }
 
         logger.debug(`Direct message targets the AI bot - routing to the dedicated AI-assistant channel`);
-        const aiChannel = await ensureAiChannel({
+        const {aiChannel, alreadyExist} = await ensureAiChannel({
             userId: userInfo._id,
             companyId: company._id,
             session,
@@ -456,7 +476,7 @@ async function createUserChannel(params: CreateUserChannelType & CreateChannelFo
         logger.finish(`Returning AI-assistant channel ${aiChannel._id.toString()}`);
         return {
             message: "Channel already exists",
-            alreadyExist: true,
+            alreadyExist,
             channelInfo: await channelToDTO(populatedAiChannel ?? aiChannel, userInfo._id.toString(), actionUserCtx)
         };
     }
@@ -1035,6 +1055,27 @@ async function deleteUserChannel(params: DeleteUserChannelType & DeleteChannelFo
         message: "Channel deleted",
         ...response
     };
+}
+
+const channelActions = new ChannelActions();
+for (const {methodName, options} of getRegisteredActions(ChannelActions)) {
+    const mw: RequestHandler[] = [];
+    if (options.auth !== false) {
+        mw.push(authMW((options.auth ?? "private") as any));
+    }
+    if (options.rateLimit) {
+        mw.push(rateLimiter(options.rateLimit));
+    }
+    if (options.transaction) {
+        mw.push(transactionHandler());
+    }
+    if (options.middleware?.length) {
+        mw.push(...options.middleware as RequestHandler[]);
+    }
+    if (options.schema) {
+        mw.push(validateFormZod((lang, form) => options.schema!(lang ?? "", form)));
+    }
+    router.post(`/${methodName}`, ...mw, asyncHandler((channelActions as any)[methodName].bind(channelActions)));
 }
 
 export const basePath = '/api/user/chats/channels';

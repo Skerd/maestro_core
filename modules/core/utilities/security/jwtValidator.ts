@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {JWTTokenType} from "armonia/src/modules/core/api/user/public/login/login.form.response.type";
 import {AUTHENTICATION, CONSTANTS} from "@coreModule/environment";
+import {VISITOR_TOKEN_TYPE} from "@coreModule/utilities/security/visitorToken";
 
 /**
  * Validate and decode JWT token
@@ -31,6 +32,12 @@ export function validateJWTToken(token: string, languageCode: string = CONSTANTS
         const decoded = jwt.verify(token, AUTHENTICATION.JWT_SECRET as string, options) as JWTTokenType & {type?: string};
         if (decoded.type === "refresh") {
             throw new Error("Refresh tokens cannot authenticate API or websocket requests");
+        }
+        // Public-chat visitor tokens are signed with the same secret but grant
+        // authority over a single chat channel only. They must never reach the
+        // private API or a normal websocket connection.
+        if (decoded.type === VISITOR_TOKEN_TYPE) {
+            throw new Error("Public-chat visitor tokens cannot authenticate API or websocket requests");
         }
         return decoded;
     }

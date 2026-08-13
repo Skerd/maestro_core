@@ -29,6 +29,8 @@ export const NotificationEventCodes = {
     ACCOUNT_STATUS_CHANGED_BY_ADMIN: "ACCOUNT_STATUS_CHANGED_BY_ADMIN",
     COMPANY_UPDATED: "COMPANY_UPDATED",
     SYSTEM_MAINTENANCE: "SYSTEM_MAINTENANCE",
+    /** A public-website visitor is waiting for a human to join their chat. */
+    PUBLIC_CHAT_HANDOFF_REQUESTED: "PUBLIC_CHAT_HANDOFF_REQUESTED",
 } as const;
 
 export interface NotificationEvent {

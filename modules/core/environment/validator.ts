@@ -355,11 +355,34 @@ export function validateConfiguration(): void {
         ].filter((e): e is ValidationError => e !== null));
     }
 
-    // AI ASSISTANT (local LLM via Ollama; only validated when enabled)
+    // AI ASSISTANT (only validated when enabled). Two backends: a local model
+    // via Ollama, or the hosted Claude API.
     if (process.env.AI_ASSISTANT_ENABLED === 'true') {
+        const provider = process.env.AI_ASSISTANT_PROVIDER || 'ollama';
+
+        if (provider !== 'ollama' && provider !== 'anthropic') {
+            errors.push({
+                key: 'AI_ASSISTANT_PROVIDER',
+                message: `must be "ollama" or "anthropic" (got "${provider}")`,
+            });
+        }
+
+        if (provider === 'anthropic') {
+            // Fail at boot rather than 401-ing on the first visitor message.
+            errors.push(...[
+                validateString('ANTHROPIC_API_KEY', process.env.ANTHROPIC_API_KEY, true),
+                validateString('ANTHROPIC_MODEL', process.env.ANTHROPIC_MODEL, false),
+                validateNumber('ANTHROPIC_MAX_TOKENS', process.env.ANTHROPIC_MAX_TOKENS, false, 256, 128000),
+            ].filter((e): e is ValidationError => e !== null));
+        }
+        else {
+            errors.push(...[
+                validateString('AI_ASSISTANT_BASE_URL', process.env.AI_ASSISTANT_BASE_URL, false),
+                validateString('AI_ASSISTANT_MODEL', process.env.AI_ASSISTANT_MODEL, false),
+            ].filter((e): e is ValidationError => e !== null));
+        }
+
         errors.push(...[
-            validateString('AI_ASSISTANT_BASE_URL', process.env.AI_ASSISTANT_BASE_URL, false),
-            validateString('AI_ASSISTANT_MODEL', process.env.AI_ASSISTANT_MODEL, false),
             validateNumber('AI_ASSISTANT_TIMEOUT_MS', process.env.AI_ASSISTANT_TIMEOUT_MS, false, 1000, 600000),
         ].filter((e): e is ValidationError => e !== null));
     }

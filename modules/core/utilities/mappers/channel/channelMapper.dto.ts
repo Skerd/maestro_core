@@ -189,7 +189,9 @@ export async function channelToDTO(channel: IChannel, actionUserId: string, acti
                 readOnly: !!actionUserLeft,
                 unreadMessages: unreadInChannel,
                 lastUserReadTime: time,
-                isAiAssistant: !!channel.isAiAssistant
+                isAiAssistant: !!channel.isAiAssistant,
+                isPublicChat: !!channel.isPublicChat,
+                ...(channel.isPublicChat && channel.publicChat?.status ? {publicChatStatus: channel.publicChat.status} : {}),
             }
         };
 

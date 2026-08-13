@@ -49,6 +49,7 @@ import {validateActiveUserSession} from "@coreModule/utilities/security/sessionV
 import {webSocketCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {getStoredRoomMessages} from "@coreModule/utilities/serviceMetrics/wsMessageStore";
 import {getKnownRoomIds, getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
+import {tryResolveVisitorSession, VisitorSession} from "@coreModule/domain/publicChat/visitorSession";
 
 /**
  * Extended WebSocket type with client-specific metadata
@@ -76,6 +77,14 @@ type ClientWebSocket = WebSocket & {
     machineName?: string;
     /** Whether this is a machine-to-machine connection */
     isMachine?: boolean;
+    /**
+     * Whether this is an anonymous public-website chat visitor. Such a
+     * connection is confined to ONE channel: it joins no rooms, receives no
+     * system broadcasts, and may only emit typing indicators for its own chat.
+     */
+    isVisitor?: boolean;
+    /** The single channel a visitor connection is allowed to touch. */
+    visitorChannelId?: string;
 }
 
 /** WebSocket server instance (set by updateWebSocketInstance) */
@@ -211,6 +220,7 @@ export enum Room {
     USERS = "users",
     CHATS = "chats",
     ALL_CHATS = "allChats",
+    WEBSITE_CHATS = "websiteChats",
     COMPANY = "company",
     ACCOUNT = "account",
     SECURITY = "security",
@@ -361,6 +371,67 @@ async function onLeaveRoomMessage(code: string, payload: string[], user: any, lo
     }))
 }
 
+/**
+ * Handle an inbound message on a visitor connection.
+ *
+ * Allowlist of exactly one capability — typing indicators, forwarded only to the
+ * other members of the visitor's own channel (i.e. an agent who has joined).
+ * Everything else is ignored rather than errored, so a curious visitor probing
+ * codes learns nothing and stays connected.
+ */
+async function onVisitorMessage(
+    code: string,
+    rawMessage: string,
+    ws: ClientWebSocket,
+    logger: serverLogger,
+): Promise<void> {
+    const isTyping = [WebSocketMessageCodes.TYPING_START, WebSocketMessageCodes.TYPING_STOP].includes(code as any);
+    if (!isTyping) {
+        logger.debug(`Ignoring code [${code}] from visitor connection ${ws.userId}`);
+        return;
+    }
+
+    try {
+        const channelId = ws.visitorChannelId;
+        if (!channelId) {
+            return;
+        }
+
+        // The channel is taken from the CONNECTION, never from the payload, so a
+        // visitor cannot address a channel that is not theirs.
+        const channel = await channelService.findOne(
+            {_id: new ObjectId(channelId), isPublicChat: true},
+            {},
+            {path: "users", select: "_id"},
+            "users",
+        );
+        const recipients = (channel?.users ?? [])
+            .map((user: any) => (user?._id ?? user).toString())
+            .filter((userId: string) => userId !== ws.userId);
+
+        for (const recipientId of recipients) {
+            for (const recipientSocket of AllUsersWebSockets[recipientId] ?? []) {
+                try {
+                    recipientSocket.send(JSON.stringify({
+                        code,
+                        payload: {
+                            channelId,
+                            userId: ws.userId,
+                            typing: code === WebSocketMessageCodes.TYPING_START,
+                        },
+                    }));
+                }
+                catch (error) {
+                    logger.err(`Error sending visitor typing indicator to ${recipientId}: ${error}`);
+                }
+            }
+        }
+    }
+    catch (error) {
+        logger.err(`Error handling visitor websocket message: ${error}`);
+    }
+}
+
 async function webSocketOnMessage<T>(message: string, ws: ClientWebSocket){
     const logger = getLogger("webSocketServer-newMessage");
     logger.start(`Ready to calculate ${ws.isMachine ? "machine" : "client"}'s websocket request`);
@@ -409,6 +480,13 @@ async function webSocketOnMessage<T>(message: string, ws: ClientWebSocket){
                     }
                 }
             }
+        }
+        else if( ws.isVisitor ){
+            // An anonymous visitor may do exactly one thing over the socket:
+            // signal typing in its OWN chat. No rooms, no receipts, no reading
+            // another channel. Note `validateJWTToken` below would reject a
+            // visitor token anyway — this branch must stay ahead of it.
+            await onVisitorMessage(code, message, ws, logger);
         }
         else {
             const userFromToken = validateJWTToken(ws.token, ws.languageCode);
@@ -507,6 +585,91 @@ async function webSocketOnMessage<T>(message: string, ws: ClientWebSocket){
     }
 }
 
+/**
+ * Maximum simultaneous sockets one visitor token may hold. A visitor legitimately
+ * has one tab open; this bounds a trivial socket-exhaustion attempt.
+ */
+const MAX_VISITOR_CONNECTIONS = 3;
+
+/**
+ * Set up a public-website visitor connection.
+ *
+ * Deliberately a reduced version of the normal connection setup:
+ *   - registers in {@link AllUsersWebSockets} under the visitor id, which is all
+ *     `pushWebsocketMessage({userIds: [visitorId]})` needs to reach the widget;
+ *   - joins NO rooms — not its own channel room, and certainly not the system
+ *     rooms (`allChats`, `allUsersList`, server-health feeds);
+ *   - does NOT touch `user.online` or the Redis connection registry, so an
+ *     anonymous visitor never appears in presence or the admin dashboards.
+ */
+async function setupVisitorConnection(
+    ws: ClientWebSocket,
+    session: VisitorSession,
+    token: string,
+    languageCode: string,
+    logger: serverLogger,
+): Promise<void> {
+    const visitorId = session.visitorUser._id.toString();
+    const channelId = session.visitorChannel._id.toString();
+
+    const existing = AllUsersWebSockets[visitorId] ?? [];
+    if (existing.length >= MAX_VISITOR_CONNECTIONS) {
+        logger.fail(`Visitor ${visitorId} exceeded ${MAX_VISITOR_CONNECTIONS} connections; refusing`);
+        ws.close(1008, "Too many connections");
+        return;
+    }
+
+    ws.id = generateRandomString(24) + "_" + visitorId;
+    ws.userId = visitorId;
+    ws.token = token;
+    ws.isAlive = true;
+    ws.username = `visitor:${visitorId}`;
+    ws.languageCode = languageCode;
+    ws.rooms = [];
+    ws.isVisitor = true;
+    ws.visitorChannelId = channelId;
+
+    ws.timer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.ping();
+        }
+        ws.deathTimer = setTimeout(() => {
+            ws.isAlive = false;
+            ws.close();
+        }, 5000);
+    }, 5000);
+
+    ws.on("pong", () => {
+        if (ws.deathTimer) {
+            clearTimeout(ws.deathTimer);
+        }
+    });
+
+    ws.on("close", () => {
+        clearInterval(ws.timer);
+        if (ws.deathTimer) {
+            clearTimeout(ws.deathTimer);
+        }
+        const sockets = AllUsersWebSockets[visitorId];
+        if (sockets) {
+            AllUsersWebSockets[visitorId] = sockets.filter((socket) => socket.id !== ws.id);
+            if (AllUsersWebSockets[visitorId].length === 0) {
+                delete AllUsersWebSockets[visitorId];
+            }
+        }
+        ws.terminate();
+    });
+
+    ws.on("message", async (message: any) => {
+        await webSocketOnMessage(message, ws);
+    });
+
+    AllUsersWebSockets[visitorId] = [...existing, ws];
+
+    ws.send(`Welcome visitor. WS connection is ready.`);
+    logger.finish(`Finished setting up visitor connection for chat [${channelId}]`);
+}
+
 export async function webSocketOnNewConnection(ws: ClientWebSocket, req: any){
 
     const logger = getLogger("webSocketServer-newConnection");
@@ -524,6 +687,15 @@ export async function webSocketOnNewConnection(ws: ClientWebSocket, req: any){
     const token: string = splitUrl[0] as string;
     const languageCode = splitUrl[1] as string || "en-US";
     if (token) {
+        // Public-website chat visitor? Checked first and cheaply: a visitor token
+        // carries `type: "publicChat"`, which validateJWTToken below rejects
+        // outright, so the two paths can never be confused for one another.
+        const visitorSession = await tryResolveVisitorSession({token, languageCode});
+        if (visitorSession) {
+            await setupVisitorConnection(ws, visitorSession, token, languageCode, logger);
+            return;
+        }
+
         try{
             let userFromToken: JWTTokenType = validateJWTToken(token, languageCode);
             const {id, username} = userFromToken;

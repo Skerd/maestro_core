@@ -166,7 +166,7 @@ async function ensureLastReadMessageTimestamp(params: {
 router.post(
     "",
     authMW("private"),
-    rateLimiter({windowMs: 60000, max: 60}),
+    rateLimiter({windowMs: 60000, max: 600}),
     validateFormZod(messagesFormSchema),
     schemaSanitizer({model: "messages", requiredModes: ["read"]}),
     asyncHandler(getMessages)
@@ -325,7 +325,7 @@ async function getMessages(params: GetMessagesType & MessagesFormType): Promise<
 router.post(
     "/single",
     authMW("private"),
-    rateLimiter({windowMs: 60000, max: 60}),
+    rateLimiter({windowMs: 60000, max: 600}),
     validateFormZod(getMessageSingleFormSchema),
     schemaSanitizer({model: "messages", requiredModes: ["read"]}),
     asyncHandler(getMessageSingle)
@@ -598,8 +598,18 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
     // the user's message is already saved/delivered. The responder runs in its own
     // process (assistantServer); if it is offline the dispatcher DISCARDS the
     // message (no queuing) and posts a "not available" notice instead of answering.
+    //
+    // `!isPublicChat` is essential, not incidental. Public visitor chats also
+    // carry `isAiAssistant: true` (that is what makes the responder pick them
+    // up), and a company user reaching THIS endpoint on such a channel is an
+    // agent who has taken the conversation over. Dispatching on the assistant
+    // flag alone would put the bot on top of the human who just joined to help.
+    // Visitor messages are dispatched by the public chat endpoint instead, which
+    // additionally gates on `isBotServing(channel)`.
+    //
     // Never trigger on the bot's own messages, which would loop.
-    if ((selectedChannel as IChannel).isAiAssistant && !userInfo.isBot) {
+    const selectedChannelInfo = selectedChannel as IChannel;
+    if (selectedChannelInfo.isAiAssistant && !selectedChannelInfo.isPublicChat && !userInfo.isBot) {
         void dispatchAiChannelMessage({
             companyId: company._id.toString(),
             channelId: selectedChannel._id.toString(),

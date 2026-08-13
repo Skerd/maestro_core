@@ -25,23 +25,24 @@
  */
 
 import {ObjectId} from "mongodb";
-import User from "@coreModule/database/schemas/user/user";
+import Company from "@coreModule/database/schemas/company/company";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
 import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
 import {isAssistantResponderOnline} from "@coreModule/domain/ai/assistantHealth";
+import {AI_ASSISTANT} from "@coreModule/environment";
 import {publishAiChannelMessageEvent} from "@coreModule/kafka/kafkaProducer";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 
 /**
- * Message shown when the assistant responder process is offline. Because the
- * message is discarded (not queued), this asks the user to retry rather than
- * promising a later reply.
+ * Message shown when the assistant responder process is unreachable. Shares
+ * `AI_ASSISTANT_OFFLINE_MESSAGE` with the switched-off path in the brain, so a
+ * maintenance window reads identically whether the responder is down or the
+ * assistant is simply turned off.
  */
-const ASSISTANT_UNAVAILABLE_MESSAGE =
-    "The AI assistant is not available at this time. Please try again in a little while.";
+const assistantUnavailableMessage = () => AI_ASSISTANT.OFFLINE_MESSAGE;
 
 export interface AiChannelDispatchParams {
     companyId: string;
@@ -114,28 +115,28 @@ export async function postAssistantUnavailableNotice(params: AssistantUnavailabl
         const channelObjectId = new ObjectId(channelId);
 
         // The bot user that authors the notice (one per company; same as the responder).
-        const bot = await User.findOne({isBot: true, companies: companyObjectId}).select("_id isBot");
-        if (!bot) {
+        const botId = await Company.findRobotId(companyObjectId);
+        if (!botId) {
             logger.warn(`No bot user for company ${companyId}; cannot post assistant-offline notice`);
             return false;
         }
 
         const notice = await messageService.create(
             {
-                sender: bot,
+                sender: botId,
                 channel: channelObjectId,
-                text: EncryptString(ASSISTANT_UNAVAILABLE_MESSAGE),
+                text: EncryptString(assistantUnavailableMessage()),
                 type: "message",
                 status: "active",
                 company: companyObjectId
             } as any,
-            {logger, languageCode, auditUserId: bot._id.toString()}
+            {logger, languageCode, auditUserId: botId.toString()}
         );
 
         await channelService.updateById(
             channelObjectId,
             {lastAction: new Date()},
-            {logger, languageCode, auditUserId: bot._id.toString()}
+            {logger, languageCode, auditUserId: botId.toString()}
         );
 
         // Deliver to the human over WebSocket, same path as a normal reply.

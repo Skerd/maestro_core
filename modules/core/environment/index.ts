@@ -280,15 +280,84 @@ export const PROMETHEUS = {
  */
 export const AI_ASSISTANT = {
     ENABLED: process.env.AI_ASSISTANT_ENABLED === 'true',
+    /**
+     * Which model backend answers. `ollama` runs a local model (no API key, no
+     * per-token cost, but needs the daemon running and a pulled model);
+     * `anthropic` calls the hosted Claude API (no local dependency, far stronger
+     * tool-calling, billed per token).
+     */
+    PROVIDER: (process.env.AI_ASSISTANT_PROVIDER || 'ollama') as 'ollama' | 'anthropic',
     // Base URL of the local Ollama server (no trailing /api/chat).
     BASE_URL: process.env.AI_ASSISTANT_BASE_URL || 'http://localhost:11434',
     // Model tag pulled into Ollama, e.g. `ollama pull llama3.1:8b`.
     MODEL: process.env.AI_ASSISTANT_MODEL || 'llama3.1:8b',
+    /**
+     * Lighter model for the high-volume public visitor chat. Falls back to
+     * MODEL when unset, so a single-model setup keeps working unchanged.
+     */
+    MODEL_LIGHT: process.env.AI_ASSISTANT_MODEL_LIGHT || '',
     // Per-request timeout. Local generation on a cold model can be slow.
     TIMEOUT_MS: parseInt(process.env.AI_ASSISTANT_TIMEOUT_MS || '60000', 10),
+    // Ollama only — the Claude models used here reject sampling parameters.
     TEMPERATURE: parseFloat(process.env.AI_ASSISTANT_TEMPERATURE || '0.7'),
     // Optional override for the assistant's system prompt.
-    SYSTEM_PROMPT: process.env.AI_ASSISTANT_SYSTEM_PROMPT || ''
+    SYSTEM_PROMPT: process.env.AI_ASSISTANT_SYSTEM_PROMPT || '',
+    /**
+     * What every AI chat replies while the assistant is switched off
+     * (`AI_ASSISTANT_ENABLED=false`) or its responder is unreachable. One
+     * message for both surfaces, so a maintenance window reads the same to a
+     * website visitor and to a colleague.
+     */
+    OFFLINE_MESSAGE: process.env.AI_ASSISTANT_OFFLINE_MESSAGE
+        || "Thanks for your message — our assistant will be online soon."
+};
+
+/**
+ * Hosted Claude backend, used when `AI_ASSISTANT_PROVIDER=anthropic`.
+ *
+ * The SDK reads `ANTHROPIC_API_KEY` from the environment itself; it is mirrored
+ * here only so the config validator can fail fast with a clear message instead
+ * of letting the first visitor message 401.
+ */
+export const ANTHROPIC = {
+    API_KEY: process.env.ANTHROPIC_API_KEY || '',
+    MODEL: process.env.ANTHROPIC_MODEL || 'claude-opus-5',
+    /**
+     * Cheaper, faster model for the public visitor chat — that surface is
+     * high-volume and its questions are lookup-and-summarise, so it does not
+     * need the flagship. Falls back to MODEL when unset.
+     */
+    MODEL_LIGHT: process.env.ANTHROPIC_MODEL_LIGHT || 'claude-haiku-4-5',
+    /** Hard ceiling on a single reply. Chat answers are short; this is headroom. */
+    MAX_TOKENS: parseInt(process.env.ANTHROPIC_MAX_TOKENS || '4096', 10),
+    /**
+     * Thinking depth / token spend. Default `low` because a visitor is waiting
+     * on the reply and these are lookup-and-summarise questions — raise it if
+     * answers need more reasoning.
+     */
+    EFFORT: (process.env.ANTHROPIC_EFFORT || 'low') as 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+};
+
+/**
+ * Public-website visitor chat limits. These bound cost and abuse for a surface
+ * that is, unlike everything else in the chat stack, reachable without an
+ * account. The per-tenant on/off switch is NOT here — it lives on the company
+ * document (`company.publicAiChat.enabled`) because it is per-tenant.
+ */
+export const PUBLIC_CHAT = {
+    // Cap on messages in one visitor conversation. Bounds both abuse and the
+    // cost of an unbounded thread; the widget asks the visitor to start a new
+    // chat past it.
+    MAX_MESSAGES: parseInt(process.env.PUBLIC_CHAT_MAX_MESSAGES || '50', 10),
+    // Messages one visitor may send per hour / per day, on top of the
+    // per-endpoint IP rate limits.
+    MAX_MESSAGES_PER_HOUR: parseInt(process.env.PUBLIC_CHAT_MAX_MESSAGES_PER_HOUR || '60', 10),
+    MAX_MESSAGES_PER_DAY: parseInt(process.env.PUBLIC_CHAT_MAX_MESSAGES_PER_DAY || '200', 10),
+    // Ceiling on assistant replies per tenant per day, so one company's traffic
+    // cannot exhaust the shared model server for everyone else.
+    MAX_COMPANY_REPLIES_PER_DAY: parseInt(process.env.PUBLIC_CHAT_MAX_COMPANY_REPLIES_PER_DAY || '2000', 10),
+    // Abandoned, never-escalated, lead-free conversations are swept after this.
+    RETENTION_DAYS: parseInt(process.env.PUBLIC_CHAT_RETENTION_DAYS || '90', 10)
 };
 
 export const REQUEST_VALIDATION = {

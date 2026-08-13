@@ -38,7 +38,7 @@ import {
     ValidateInvitationCodeFormResponseType
 } from "armonia/src/modules/core/api/user/public/acceptInvitation/validateInvitationCode.form.response.type";
 import {userService} from "@coreModule/database/schemas/user/user.service";
-import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";

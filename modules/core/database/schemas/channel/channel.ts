@@ -9,6 +9,43 @@ import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import {IOwnershipPluginFields} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {SimpleUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
+import {ILead} from "@propertyManagement/database/schemas/lead/lead";
+import {IProject} from "@propertyManagement/database/schemas/project/project";
+import {IUnit} from "@propertyManagement/database/schemas/unit/unit";
+
+/**
+ * Lifecycle of a public visitor chat.
+ * - `bot` — the assistant answers every visitor message.
+ * - `requested_human` — escalated (by the visitor or by the bot's own `request_human_agent` tool); AI dispatch stops.
+ * - `human` — an agent took over; AI dispatch stays off.
+ * - `closed` — read-only; a new visitor session starts a new channel.
+ */
+export type PublicChatStatus = "bot" | "requested_human" | "human" | "closed";
+
+export const PUBLIC_CHAT_STATUS_VALUES: PublicChatStatus[] = ["bot", "requested_human", "human", "closed"];
+
+/** Visitor metadata and handoff state carried by a public chat channel. */
+export interface IPublicChatMeta {
+    status: PublicChatStatus,
+    assignedTo?: IUser,
+    lead?: ILead,
+    visitor: {
+        displayName?: string,
+        email?: string,
+        phone?: string,
+        ip?: string,
+        userAgent?: string,
+        entryUrl?: string,
+        referrer?: string,
+    },
+    context?: {
+        project?: IProject,
+        unit?: IUnit,
+    },
+    lastVisitorActivity: Date,
+    handoffRequestedAt?: Date,
+    closedAt?: Date,
+}
 
 export interface IChannel extends Document, IOwnershipPluginFields {
     users: IUser[],
@@ -19,20 +56,17 @@ export interface IChannel extends Document, IOwnershipPluginFields {
     description?: string,
     avatar?: ObjectId,
     isGroup: boolean,
-    /** True for the dedicated 1-1 channel between a company-role user and the company AI bot. */
     isAiAssistant: boolean,
-    /** The human user this AI-assistant channel belongs to. Only set when isAiAssistant is true. */
     aiOwnerUser?: IUser,
+    isPublicChat: boolean,
+    publicChat?: IPublicChatMeta,
     adminUsers: IUser[],
-
     leftUsers: {
         user: IUser,
         time: Date,
         showChannel: boolean
     }[],
-
     pinnedMessages?: ObjectId[],
-
     lastAction: Date,
     createdAt: Date,
 }
@@ -103,6 +137,108 @@ export const ChannelSchema = new mongoose.Schema<IChannel>(
             required: false,
             default: null,
             refAllowlist: SimpleUserSnippet,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
+        },
+        isPublicChat: {
+            type: SchemaTypes.Boolean,
+            default: false,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
+        },
+        publicChat: {
+            type: {
+                status: {
+                    type: SchemaTypes.String,
+                    enum: PUBLIC_CHAT_STATUS_VALUES,
+                    default: "bot"
+                },
+                assignedTo: {
+                    type: SchemaTypes.ObjectId,
+                    ref: "User",
+                    required: false,
+                    default: null,
+                    refAllowlist: SimpleUserSnippet
+                },
+                lead: {
+                    type: SchemaTypes.ObjectId,
+                    required: false,
+                    default: null
+                },
+                visitor: {
+                    type: {
+                        displayName: {
+                            type: SchemaTypes.String,
+                            required: false
+                        },
+                        email: {
+                            type: SchemaTypes.String,
+                            required: false
+                        },
+                        phone: {
+                            type: SchemaTypes.String,
+                            required: false
+                        },
+                        ip: {
+                            type: SchemaTypes.String,
+                            required: false
+                        },
+                        userAgent: {
+                            type: SchemaTypes.String,
+                            required: false
+                        },
+                        entryUrl: {
+                            type: SchemaTypes.String,
+                            required: false
+                        },
+                        referrer: {
+                            type: SchemaTypes.String,
+                            required: false
+                        }
+                    },
+                },
+                context: {
+                    type: {
+                        project: {
+                            type: SchemaTypes.ObjectId,
+                            ref: "Project",
+                            required: false
+                        },
+                        unit: {
+                            type: SchemaTypes.ObjectId,
+                            ref: "Unit",
+                            required: false
+                        }
+                    },
+                    required: false
+                },
+                lastVisitorActivity: {
+                    type: SchemaTypes.Date,
+                    default: Date.now
+                },
+                handoffRequestedAt: {
+                    type: SchemaTypes.Date,
+                    required: false
+                },
+                closedAt: {
+                    type: SchemaTypes.Date,
+                    required: false
+                }
+            },
+            required: false,
+            default: null,
             permissions: {
                 self: {
                     write: "no-permission"

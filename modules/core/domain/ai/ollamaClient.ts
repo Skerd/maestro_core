@@ -16,12 +16,28 @@ import axios from "axios";
 import {AI_ASSISTANT} from "@coreModule/environment";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 
-/** A single turn in the chat transcript sent to the model. */
+/**
+ * A single turn in the chat transcript sent to the model.
+ *
+ * This is the brain's internal format, shared by both backends — the Anthropic
+ * client translates it on the way out (see {@link module:anthropicClient}).
+ */
 export interface OllamaChatMessage {
     role: "system" | "user" | "assistant" | "tool";
     content: string;
     /** Present on assistant turns that requested tools (echoed back on the next call). */
     tool_calls?: OllamaToolCall[];
+    /**
+     * On `tool` turns: which tool call this result answers. Ollama pairs results
+     * positionally and ignores it; Claude requires it.
+     */
+    tool_call_id?: string;
+    /**
+     * Provider-native content blocks for an assistant turn, replayed verbatim on
+     * the next call. Claude needs its own blocks back intact (thinking blocks
+     * included, or it rejects the turn); Ollama ignores this.
+     */
+    raw?: unknown;
 }
 
 /** A tool invocation the model asked for. `arguments` is already parsed by Ollama. */
@@ -48,6 +64,8 @@ export interface OllamaAssistantMessage {
     role: "assistant";
     content: string;
     tool_calls?: OllamaToolCall[];
+    /** Provider-native blocks to replay on the next turn. See {@link OllamaChatMessage.raw}. */
+    raw?: unknown;
 }
 
 interface OllamaChatResponse {
@@ -59,6 +77,11 @@ export interface OllamaChatOptions {
     /** Tools to advertise for this call. Omit for a plain chat completion. */
     tools?: OllamaTool[];
     logger?: serverLogger;
+    /**
+     * Override the configured model for this call — used to route the public
+     * visitor chat to a lighter model. Falls back to the provider default.
+     */
+    model?: string;
 }
 
 /**
@@ -75,14 +98,15 @@ export async function ollamaChat(
     options: OllamaChatOptions = {}
 ): Promise<OllamaAssistantMessage> {
     const {tools, logger} = options;
+    const model = options.model || AI_ASSISTANT.MODEL;
     const url = `${AI_ASSISTANT.BASE_URL.replace(/\/+$/, "")}/api/chat`;
 
     logger?.debug?.(
-        `Ollama chat → ${url} (model=${AI_ASSISTANT.MODEL}${tools?.length ? `, tools=${tools.length}` : ""})`
+        `Ollama chat → ${url} (model=${model}${tools?.length ? `, tools=${tools.length}` : ""})`
     );
 
     const body: Record<string, unknown> = {
-        model: AI_ASSISTANT.MODEL,
+        model,
         messages,
         stream: false,
         options: {temperature: AI_ASSISTANT.TEMPERATURE}

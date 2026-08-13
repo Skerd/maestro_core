@@ -23,10 +23,15 @@
  */
 
 import type {serverLogger} from "@coreModule/loggers/serverLog";
-import {AI_ASSISTANT} from "@coreModule/environment";
-import {ollamaChat, OllamaChatMessage, OllamaTool, OllamaToolCall} from "@coreModule/domain/ai/ollamaClient";
+import {AI_ASSISTANT, ANTHROPIC} from "@coreModule/environment";
+import {OllamaChatMessage, OllamaTool, OllamaToolCall} from "@coreModule/domain/ai/ollamaClient";
+import {assistantChat} from "@coreModule/domain/ai/assistantModelClient";
 import {getAssistantTool, getAssistantTools} from "@coreModule/domain/ai/tools/toolRegistry";
-import type {AssistantTool, AssistantToolContext} from "@coreModule/domain/ai/tools/assistantTool.types";
+import type {
+    AssistantReplyAudience,
+    AssistantTool,
+    AssistantToolContext,
+} from "@coreModule/domain/ai/tools/assistantTool.types";
 
 /**
  * One prior turn in the AI-channel conversation, already decrypted and reduced to
@@ -62,14 +67,25 @@ export interface AssistantReplyContext {
     userDisplayName?: string;
     /** Language the reply should be produced in, when available. */
     languageCode?: string;
+    /**
+     * Who the assistant is answering. Defaults to `internal`; the public-website
+     * visitor chat passes `public`, which both narrows the tool set and swaps in
+     * the outward-facing persona.
+     */
+    audience?: AssistantReplyAudience;
+    /** Tenant name, so a public-facing reply can speak as the company. */
+    companyName?: string;
+    /** Tenant-configured persona appended to the public system prompt. */
+    companyPersona?: string;
 }
 
 /**
- * Placeholder reply returned when no LLM is configured (AI_ASSISTANT_ENABLED is
- * not `true`). Surfaced verbatim so it is obvious the assistant is idle, not broken.
+ * Reply used when the assistant is switched off (`AI_ASSISTANT_ENABLED` is not
+ * `true`). Configurable via `AI_ASSISTANT_OFFLINE_MESSAGE` so a maintenance
+ * window can say something the public is happy to read, and so it matches the
+ * responder-unreachable notice word for word.
  */
-const NOT_YET_CONNECTED_REPLY =
-    "The AI assistant isn't connected yet — this chat is ready and waiting for it to come online.";
+const offlineReply = () => AI_ASSISTANT.OFFLINE_MESSAGE;
 
 /** Default system prompt when AI_ASSISTANT_SYSTEM_PROMPT is not set. */
 const DEFAULT_SYSTEM_PROMPT =
@@ -94,13 +110,43 @@ const EMPTY_REPLY_FALLBACK =
     "Sorry, I couldn't produce an answer for that. Could you rephrase or add a little more detail?";
 
 /**
+ * Base prompt for the public website chat.
+ *
+ * NOTE: this prompt is manners, not security. What an anonymous visitor can
+ * reach is decided by the tool audience filter in the registry — internal tools
+ * are never offered to the model in a public conversation, so no amount of
+ * prompt injection can call them. Keep the wording here about tone and
+ * helpfulness, and never rely on it to withhold data.
+ */
+const PUBLIC_SYSTEM_PROMPT =
+    "You are the assistant on a real-estate company's public website, talking to a " +
+    "prospective buyer or tenant who is browsing anonymously. Be warm, brief, and " +
+    "concrete. Use the available tools to answer questions about available properties, " +
+    "projects, and buildings, and base every factual claim strictly on what a tool " +
+    "returned — never invent listings, prices, or availability. You have no access to " +
+    "information about other customers, and you must never discuss internal business " +
+    "details such as costs, commissions, or other clients. If you cannot answer from " +
+    "the tools, or the visitor asks for something that needs a person, say so plainly " +
+    "and offer to connect them with the team.";
+
+/**
  * Build the system prompt, layering the configured/default base prompt with the
  * per-conversation context the model should be aware of (who it's talking to and
  * which language to reply in).
  */
 function buildSystemPrompt(context: AssistantReplyContext): string {
-    const base = AI_ASSISTANT.SYSTEM_PROMPT.trim() || DEFAULT_SYSTEM_PROMPT;
+    const isPublic = context.audience === "public";
+    const base = isPublic
+        ? PUBLIC_SYSTEM_PROMPT
+        : (AI_ASSISTANT.SYSTEM_PROMPT.trim() || DEFAULT_SYSTEM_PROMPT);
     const parts = [base];
+
+    if (isPublic && context.companyName) {
+        parts.push(`You represent ${context.companyName}.`);
+    }
+    if (isPublic && context.companyPersona?.trim()) {
+        parts.push(context.companyPersona.trim());
+    }
     if (context.userDisplayName) {
         parts.push(`You are speaking with ${context.userDisplayName}.`);
     }
@@ -192,10 +238,15 @@ async function dispatchToolCall(
     logger?: serverLogger
 ): Promise<string> {
     const name = call.function?.name;
-    const tool = name ? getAssistantTool(name) : undefined;
+    // Resolved through the audience filter: a model that names a tool it was
+    // never offered (hallucination or injection) gets "unknown tool", not the
+    // tool. This is defence in depth behind the offered-tool list.
+    const tool = name ? getAssistantTool(name, ctx.audience) : undefined;
 
     if (!tool) {
-        logger?.warn?.(`Assistant requested unknown tool "${name}"`);
+        logger?.warn?.(
+            `Assistant requested unknown or out-of-audience tool "${name}" (audience: ${ctx.audience})`
+        );
         return serializeToolResult({error: `Unknown tool: ${name ?? "(unnamed)"}`});
     }
 
@@ -237,16 +288,34 @@ export async function generateAssistantReply(
         logger?.debug?.(
             `Assistant brain: AI_ASSISTANT_ENABLED is false; returning placeholder for channel ${context.channelId}`
         );
-        return NOT_YET_CONNECTED_REPLY;
+        return offlineReply();
     }
 
-    const ollamaTools = getAssistantTools().map(toOllamaTool);
+    // Fail closed: an absent audience is treated as internal, and only tools
+    // declared for that audience are ever shown to the model.
+    const audience: AssistantReplyAudience = context.audience ?? "internal";
+
+    // The public visitor chat runs on the lighter model: high volume, and its
+    // questions are lookup-and-summarise rather than deep reasoning. Internal
+    // chats keep the stronger default.
+    const model = audience === "public"
+        ? (AI_ASSISTANT.PROVIDER === "anthropic"
+            ? (ANTHROPIC.MODEL_LIGHT || ANTHROPIC.MODEL)
+            : (AI_ASSISTANT.MODEL_LIGHT || AI_ASSISTANT.MODEL))
+        : undefined;
+
+    const ollamaTools = getAssistantTools(audience).map(toOllamaTool);
     const toolCtx: AssistantToolContext = {
         companyId: context.companyId,
         userId: context.userId,
+        channelId: context.channelId,
+        audience,
         languageCode: context.languageCode,
         logger
     };
+    logger?.debug?.(
+        `Assistant brain: ${ollamaTools.length} tool(s) offered for audience "${audience}"`
+    );
 
     const historyMessages: OllamaChatMessage[] = (context.history ?? []).map(
         (turn): OllamaChatMessage => ({ role: turn.role, content: turn.content })
@@ -259,9 +328,10 @@ export async function generateAssistantReply(
     ];
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-        const message = await ollamaChat(messages, {
+        const message = await assistantChat(messages, {
             tools: ollamaTools.length > 0 ? ollamaTools : undefined,
-            logger
+            logger,
+            ...(model ? { model } : {})
         });
 
         const toolCalls = message.tool_calls ?? [];
@@ -271,10 +341,20 @@ export async function generateAssistantReply(
         }
 
         // Record the model's tool-request turn, then run each call and append its result.
-        messages.push({ role: "assistant", content: message.content, tool_calls: toolCalls });
+        // `raw` carries the provider's own content blocks so they can be replayed
+        // verbatim next turn — Claude rejects an assistant turn whose thinking
+        // blocks were dropped. Ollama ignores it.
+        messages.push({
+            role: "assistant",
+            content: message.content,
+            tool_calls: toolCalls,
+            ...(message.raw !== undefined ? { raw: message.raw } : {})
+        });
         for (const call of toolCalls) {
             const resultText = await dispatchToolCall(call, toolCtx, logger);
-            messages.push({ role: "tool", content: resultText });
+            // `tool_call_id` pairs the result to its call for Claude; Ollama
+            // pairs positionally and ignores it.
+            messages.push({ role: "tool", content: resultText, tool_call_id: call.id });
         }
     }
 
@@ -282,6 +362,6 @@ export async function generateAssistantReply(
     logger?.warn?.(
         `Assistant brain: tool-call budget (${MAX_TOOL_ITERATIONS}) exhausted for channel ${context.channelId}; forcing a text answer`
     );
-    const finalMessage = await ollamaChat(messages, { logger });
+    const finalMessage = await assistantChat(messages, { logger, ...(model ? { model } : {}) });
     return finalMessage.content || EMPTY_REPLY_FALLBACK;
 }
