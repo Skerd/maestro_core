@@ -15,7 +15,11 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields
+} from "@coreModule/database/types/plugin-fields";
 import {createCurrencies} from "@coreModule/database/schemas/currency/currency.defaults";
 import {createCountries} from "@coreModule/database/schemas/country/country.defaults";
 import {createStates} from "@coreModule/database/schemas/state/state.defaults";
@@ -33,6 +37,7 @@ import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModule
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 
 function documentObjectId(ref: unknown): ObjectId | null {
     if (ref == null) return null;
@@ -43,7 +48,7 @@ function documentObjectId(ref: unknown): ObjectId | null {
     return null;
 }
 
-export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     email: string;
     phoneNumber: string;
@@ -566,6 +571,7 @@ CompanySchema.methods.getAllRoles = async function (fetchAdminRoles: boolean = f
 ownershipPlugin(CompanySchema);
 auditPlugin(CompanySchema);
 softDeletePlugin(CompanySchema);
+lifeCyclePlugin(CompanySchema);
 applyCompanyIndexes(CompanySchema);
 const Company = mongoose.model<ICompany>('Company', CompanySchema);
 normalizeSchemaPermissions(Company);

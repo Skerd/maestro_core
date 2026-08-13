@@ -1,4 +1,5 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {lifecycleSheetGroup} from "@coreModule/database/schemas/shared/lifecycleSheetGroup";
 
 export const companySheetView: ViewConfig = {
     model: "companies",
@@ -154,6 +155,94 @@ export const companySheetView: ViewConfig = {
                 },
             ],
         },
+        {
+            render: "#SheetGroup",
+            props: {title: "publicAiChat"},
+            permissions: {read: "publicAiChat"},
+            children: [
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 3},
+                    children: [
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "publicAiChat"},
+                            field: {
+                                name: "publicAiChat.enabled",
+                                widget: "#SmallInfoCard",
+                                label: "enabled",
+                                widgetProps: {icon: "#IconToggleRight", valueType: "boolean"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "publicAiChat"},
+                            field: {
+                                name: "publicAiChat.requireIdentification",
+                                widget: "#SmallInfoCard",
+                                label: "requireIdentification",
+                                widgetProps: {icon: "#IconId", valueType: "boolean"},
+                            },
+                        },
+                        {
+                            render: "#SmallInfoCard",
+                            permissions: {read: "publicAiChat"},
+                            field: {
+                                name: "publicAiChat.humanHandoffEnabled",
+                                widget: "#SmallInfoCard",
+                                label: "humanHandoffEnabled",
+                                widgetProps: {icon: "#IconUsers", valueType: "boolean"},
+                            },
+                        },
+                    ],
+                },
+                {
+                    render: "#SheetGroup",
+                    props: {title: "greeting", collapsible: false},
+                    permissions: {read: "publicAiChat"},
+                    children: [
+                        {
+                            render: "div",
+                            props: {className: "p-2 rounded-lg bg-muted/30 border border-border/50"},
+                            children: [
+                                {
+                                    render: "#ExpandableText",
+                                    permissions: {read: "publicAiChat"},
+                                    field: {
+                                        name: "publicAiChat.greeting",
+                                        widget: "#ExpandableText",
+                                        widgetProps: {className: "text-sm"},
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    render: "#SheetGroup",
+                    props: {title: "persona", collapsible: false},
+                    permissions: {read: "publicAiChat"},
+                    children: [
+                        {
+                            render: "div",
+                            props: {className: "p-2 rounded-lg bg-muted/30 border border-border/50"},
+                            children: [
+                                {
+                                    render: "#ExpandableText",
+                                    permissions: {read: "publicAiChat"},
+                                    field: {
+                                        name: "publicAiChat.persona",
+                                        widget: "#ExpandableText",
+                                        widgetProps: {className: "text-sm"},
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        lifecycleSheetGroup,
     ],
 };
 
@@ -402,9 +491,30 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                 render: "#FormGrid",
                 props: {columns: 1},
                 children: [
-                    {render: "#Field", field: {name: "publicAiChat.enabled", widget: "#Switch", label: "form.enabledLabel"}},
-                    {render: "#Field", field: {name: "publicAiChat.requireIdentification", widget: "#Switch", label: "form.requireIdentificationLabel"}},
-                    {render: "#Field", field: {name: "publicAiChat.humanHandoffEnabled", widget: "#Switch", label: "form.humanHandoffEnabledLabel"}},
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "publicAiChat.enabled",
+                            widget: "#Switch",
+                            label: "form.enabledLabel"
+                        }
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "publicAiChat.requireIdentification",
+                            widget: "#Switch",
+                            label: "form.requireIdentificationLabel"
+                        }
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "publicAiChat.humanHandoffEnabled",
+                            widget: "#Switch",
+                            label: "form.humanHandoffEnabledLabel"
+                        }
+                    },
                     {
                         render: "#Field",
                         field: {

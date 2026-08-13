@@ -1,7 +1,7 @@
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {Company} from "armonia/src/modules/core/api/company/private/company/company.dto";
 import {mapPopulatedRef, mapPopulatedSimpleCompany} from "@coreModule/utilities/mappers/common.mapper";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function companyToDTO(company: ICompany | null | undefined): Company | null {
     if (!company) {
@@ -42,7 +42,8 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
             humanHandoffEnabled: company.publicAiChat.humanHandoffEnabled,
         } : undefined,
         ...mapSoftDeleteToDTO(company),
-        ...mapOwnershipToDTO(company)
+        ...mapOwnershipToDTO(company),
+        ...mapLifeCycleToDTO(company),
     };
 }
 
