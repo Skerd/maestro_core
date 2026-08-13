@@ -366,13 +366,29 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
             .filter((domain: string) => domain !== "") || ["none.none.com"];
     }
     if (publicAiChat !== undefined && sanitizedWriteFields.publicAiChat) {
-        existingCompany.publicAiChat = {
-            enabled: publicAiChat.enabled ?? false,
-            requireIdentification: publicAiChat.requireIdentification ?? false,
-            humanHandoffEnabled: publicAiChat.humanHandoffEnabled ?? true,
-            greeting: publicAiChat.greeting,
-            persona: publicAiChat.persona,
+        const nextPublicAiChat = {
+            enabled: existingCompany.publicAiChat?.enabled ?? false,
+            requireIdentification: existingCompany.publicAiChat?.requireIdentification ?? false,
+            humanHandoffEnabled: existingCompany.publicAiChat?.humanHandoffEnabled ?? true,
+            greeting: existingCompany.publicAiChat?.greeting,
+            persona: existingCompany.publicAiChat?.persona,
         };
+        if (sanitizedWriteFields.publicAiChat.keys?.enabled && publicAiChat.enabled !== undefined) {
+            nextPublicAiChat.enabled = publicAiChat.enabled;
+        }
+        if (sanitizedWriteFields.publicAiChat.keys?.requireIdentification && publicAiChat.requireIdentification !== undefined) {
+            nextPublicAiChat.requireIdentification = publicAiChat.requireIdentification;
+        }
+        if (sanitizedWriteFields.publicAiChat.keys?.humanHandoffEnabled && publicAiChat.humanHandoffEnabled !== undefined) {
+            nextPublicAiChat.humanHandoffEnabled = publicAiChat.humanHandoffEnabled;
+        }
+        if (sanitizedWriteFields.publicAiChat.keys?.greeting && publicAiChat.greeting !== undefined) {
+            nextPublicAiChat.greeting = publicAiChat.greeting;
+        }
+        if (sanitizedWriteFields.publicAiChat.keys?.persona && publicAiChat.persona !== undefined) {
+            nextPublicAiChat.persona = publicAiChat.persona;
+        }
+        existingCompany.publicAiChat = nextPublicAiChat;
         existingCompany.markModified("publicAiChat");
     }
 
