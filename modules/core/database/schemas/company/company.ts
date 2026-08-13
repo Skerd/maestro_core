@@ -68,6 +68,13 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     isActive: boolean;
     isDefaultForSignUp: boolean;
     allowedDomains: string[];
+    publicAiChat?: {
+        enabled: boolean;
+        greeting?: string;
+        persona?: string;
+        requireIdentification: boolean;
+        humanHandoffEnabled: boolean;
+    };
     createBot: () => Promise<void>;
     ensureAiChannels: (session?: ClientSession | null) => Promise<void>;
     getRobotId: () => Promise<ObjectId>,
@@ -218,6 +225,38 @@ const CompanySchema: Schema = new Schema(
             type: [SchemaTypes.String],
             default: [],
             required: true
+        },
+        publicAiChat: {
+            type: {
+                enabled: {
+                    type: SchemaTypes.Boolean, 
+                    default: false
+                },
+                greeting: {
+                    type: SchemaTypes.String, 
+                    required: false, 
+                    maxlength: 500
+                },
+                persona: {
+                    type: SchemaTypes.String, 
+                    required: false, 
+                    maxlength: 2000
+                },
+                requireIdentification: {
+                    type: SchemaTypes.Boolean, 
+                    default: false
+                },
+                humanHandoffEnabled: {
+                    type: SchemaTypes.Boolean, 
+                    default: true
+                }
+            },
+            required: false,
+            default: () => ({
+                enabled: false,
+                requireIdentification: false,
+                humanHandoffEnabled: true
+            })
         },
     },
     {

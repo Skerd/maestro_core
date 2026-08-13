@@ -246,7 +246,7 @@ type CreateNewCompanyType = TransactionRequiredParams & CreateCompanyFormType & 
  * @remarks Validates VAT uniqueness; creates addresses if provided; adds to userInfo.companies/roles/finance
  */
 async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, allowedDomains, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
+    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, allowedDomains, publicAiChat, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
 
     logger.start(`Trying to create new company...`);
 
@@ -276,7 +276,8 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
             company: company._id,
             allowedDomains: allowedDomains?.map((domain: string) => domain.trim()).filter((domain: string) => domain !== "") || ["none.none.com"],
             addresses: await validateAndMapAddresses(addresses, newCompanyId, {languageCode, session, logger}),
-            parentCompany: company._id
+            parentCompany: company._id,
+            ...(publicAiChat ? {publicAiChat} : {}),
         } as any,
         { session, logger, languageCode, auditUserId: actionUserCtx.userId }
     );
@@ -299,7 +300,7 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
  * @returns {Promise<ActionMessage>} Success message
  *
  * @remarks
- * - Supports updating: name, email, phone, description, website, social URLs, VAT, parentCompany, allowedDomains
+ * - Supports updating: name, email, phone, description, website, social URLs, VAT, parentCompany, allowedDomains, publicAiChat
  * - Can add, modify, or delete addresses in a single operation
  * - Logo upload replaces existing logo (old logo is deleted)
  */
@@ -324,7 +325,7 @@ type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & Media
  * @returns Success message
  */
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, allowedDomains, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, allowedDomains, publicAiChat, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -363,6 +364,16 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
         existingCompany.allowedDomains = allowedDomains
             .map((domain: string) => domain.trim())
             .filter((domain: string) => domain !== "") || ["none.none.com"];
+    }
+    if (publicAiChat !== undefined && sanitizedWriteFields.publicAiChat) {
+        existingCompany.publicAiChat = {
+            enabled: publicAiChat.enabled ?? false,
+            requireIdentification: publicAiChat.requireIdentification ?? false,
+            humanHandoffEnabled: publicAiChat.humanHandoffEnabled ?? true,
+            greeting: publicAiChat.greeting,
+            persona: publicAiChat.persona,
+        };
+        existingCompany.markModified("publicAiChat");
     }
 
     if (sanitizedWriteFields.addresses) {

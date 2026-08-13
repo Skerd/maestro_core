@@ -34,6 +34,13 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
         vat: company.vat,
         parentCompany: company.parentCompany ? mapPopulatedSimpleCompany(company.parentCompany) : undefined,
         allowedDomains: company.allowedDomains,
+        publicAiChat: company.publicAiChat ? {
+            enabled: company.publicAiChat.enabled,
+            greeting: company.publicAiChat.greeting,
+            persona: company.publicAiChat.persona,
+            requireIdentification: company.publicAiChat.requireIdentification,
+            humanHandoffEnabled: company.publicAiChat.humanHandoffEnabled,
+        } : undefined,
         ...mapSoftDeleteToDTO(company),
         ...mapOwnershipToDTO(company)
     };

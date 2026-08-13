@@ -393,6 +393,42 @@ const companyFormEditFields: ViewConfig["nodes"] = [
             },
         ],
     },
+    {
+        render: "#TitleWithCollapse",
+        props: {title: "publicAiChat"},
+        permissions: {write: "publicAiChat"},
+        children: [
+            {
+                render: "#FormGrid",
+                props: {columns: 1},
+                children: [
+                    {render: "#Field", field: {name: "publicAiChat.enabled", widget: "#Switch", label: "form.enabledLabel"}},
+                    {render: "#Field", field: {name: "publicAiChat.requireIdentification", widget: "#Switch", label: "form.requireIdentificationLabel"}},
+                    {render: "#Field", field: {name: "publicAiChat.humanHandoffEnabled", widget: "#Switch", label: "form.humanHandoffEnabledLabel"}},
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "publicAiChat.greeting",
+                            widget: "#Textarea",
+                            label: "form.greetingLabel",
+                            placeholder: "form.greetingPlaceholder",
+                            widgetProps: {className: "resize-none max-h-[160px] overflow-y-auto"},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "publicAiChat.persona",
+                            widget: "#Textarea",
+                            label: "form.personaLabel",
+                            placeholder: "form.personaPlaceholder",
+                            widgetProps: {className: "resize-none max-h-[250px] overflow-y-auto"},
+                        },
+                    },
+                ],
+            },
+        ],
+    }
 ];
 
 export const companyCreateFormView: ViewConfig = {
