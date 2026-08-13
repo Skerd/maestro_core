@@ -34,10 +34,10 @@ export interface VisitorSession {
 /**
  * Resolve and verify a visitor token into its visitor/channel/company triple.
  *
- * @param originCompanyId - When supplied, the token's company must match it, so
  *                          a token minted on one tenant's site cannot be replayed
  *                          against another tenant's.
  * @throws when any link in the chain fails.
+ * @param params
  */
 export async function resolveVisitorSession(params: {
     token: string;
