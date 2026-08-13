@@ -251,16 +251,12 @@ async function getChannelSingle(params: GetChannelSingleType & GetChannelSingleF
                         }
                     }
                 },
-                {
-                    isPublicChat: true,
-                    "publicChat.status": "requested_human",
-                    "publicChat.assignedTo": null,
-                },
+                { isPublicChat: true },
             ]
         },
         { logger, languageCode },
         populate.populate,
-        (populate.select || "") + " isGroup isPublicChat publicChat"
+        (populate.select || "") + " isGroup isPublicChat"
     );
 
     if (!channel) {

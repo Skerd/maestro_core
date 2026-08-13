@@ -171,6 +171,9 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
                 if (typeof dtc.maxInlineItems === "number" && dtc.maxInlineItems > 0) {
                     meta.maxInlineItems = dtc.maxInlineItems;
                 }
+                if (typeof dtc.hrefTemplate === "string" && dtc.hrefTemplate.length > 0) {
+                    meta.hrefTemplate = dtc.hrefTemplate;
+                }
                 addColumn({
                     id: path,
                     accessorPath: path,
@@ -226,6 +229,13 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
             columnConfig["meta"] = {
                 ...columnConfig.meta,
                 maxInlineItems: schemaType.options.dynamicTableConfiguration.maxInlineItems,
+            };
+        }
+        if (typeof schemaType?.options?.dynamicTableConfiguration?.hrefTemplate === "string"
+            && schemaType.options.dynamicTableConfiguration.hrefTemplate.length > 0) {
+            columnConfig["meta"] = {
+                ...columnConfig.meta,
+                hrefTemplate: schemaType.options.dynamicTableConfiguration.hrefTemplate,
             };
         }
 

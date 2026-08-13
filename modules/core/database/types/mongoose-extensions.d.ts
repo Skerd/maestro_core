@@ -96,6 +96,12 @@ declare module "mongoose" {
             maxInlineItems?: number;
 
             /**
+             * Optional in-app path for objectId cells. `{_id}` is replaced with the
+             * referenced document id
+             */
+            hrefTemplate?: string;
+
+            /**
              * When true, the field is excluded from filters and from table config columns.
              */
             hideColumn?: boolean;

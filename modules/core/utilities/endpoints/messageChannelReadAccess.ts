@@ -19,7 +19,8 @@ const channelPopulate = [
 
 /**
  * Channel visibility for reading messages: current members, left-but-visible groups,
- * or a waiting public chat (`requested_human`, unassigned) so agents can peek before joining.
+ * waiting public chats (`requested_human`, unassigned) so agents can peek before joining,
+ * or any company public chat (e.g. opening a lead's linked website conversation).
  * Mutating a message still requires membership (pin, react, send).
  */
 export function channelMessageReadFilter(userId: ObjectId) {
@@ -37,8 +38,6 @@ export function channelMessageReadFilter(userId: ObjectId) {
             },
             {
                 isPublicChat: true,
-                "publicChat.status": "requested_human",
-                "publicChat.assignedTo": null
             }
         ]
     };
