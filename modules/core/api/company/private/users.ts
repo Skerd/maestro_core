@@ -42,7 +42,7 @@ import {currencyService} from "@coreModule/database/schemas/currency/currency.se
 import {financeService} from "@coreModule/database/schemas/finance/finance.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
-import {ensureAiChannel} from "@coreModule/database/schemas/channel/aiChannel.helper";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequired, TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
