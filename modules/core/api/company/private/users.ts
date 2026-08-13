@@ -385,7 +385,8 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
  * POST /api/company/users
  *
  * Paginated list of company users with optional filters (username, roles, status) and configurable sort.
- * Excludes the current user. Field-level read access enforced via schemaSanitizer.
+ * Excludes the current user. Administration lists include company bot users (empty roles);
+ * the non-admin list excludes them. Field-level read access enforced via schemaSanitizer.
  *
  * @route POST /api/company/users
  * @access Private
@@ -430,7 +431,12 @@ async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): 
 
     const findCorrectRoles = await roleService.find({company: company._id, isSignupDefault: !administration}, {logger, languageCode});
     if (!!administration) {
-        filterQuery["roles.roles"] = { $in: findCorrectRoles };
+        // Bots are created with empty roles, so they never match admin-role $in.
+        // Surface them on the administration list, not the signup-user list.
+        filterQuery["$or"] = [
+            { "roles.roles": { $in: findCorrectRoles } },
+            { isBot: true }
+        ];
     }
     else {
         filterQuery["$or"] = [
@@ -438,6 +444,7 @@ async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): 
             { "roles.roles": { $size: 0 } },
             { "roles.roles": { $exists: false } }
         ];
+        filterQuery.isBot = { $ne: true };
     }
 
     if (dslFilterQuery && Object.keys(dslFilterQuery as object).length > 0) {

@@ -105,6 +105,7 @@ export interface IUser extends Document, IOwnershipPluginFields {
     mfaSecret: string,
     online: boolean,
     isBot: boolean,
+    isVisitor: boolean,
     requests: {
         mfaActivation: {
             secret: string
@@ -368,6 +369,20 @@ const UserSchema = new Schema<IUser>(
             }
         },
         isBot: {
+            type: SchemaTypes.Boolean,
+            default: false,
+            permissions: {
+                self: {
+                    read: "no-permission",
+                    write: "no-permission"
+                },
+                others: {
+                    read: "no-permission",
+                    write: "no-permission"
+                }
+            }
+        },
+        isVisitor: {
             type: SchemaTypes.Boolean,
             default: false,
             permissions: {
