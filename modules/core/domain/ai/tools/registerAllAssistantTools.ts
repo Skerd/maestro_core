@@ -21,6 +21,19 @@ import {getAssistantToolCount} from "@coreModule/domain/ai/tools/toolRegistry";
 const REGISTER_FN_PATTERN = /^register.*AssistantTools?$/i;
 const BOOTSTRAP_FILENAME = "registerAllAssistantTools.ts";
 
+/**
+ * Exports that match {@link REGISTER_FN_PATTERN} by accident and must never be
+ * invoked by the scanner.
+ *
+ * `registerAssistantTool` is the registry's own single-tool primitive, which
+ * every tool file imports and re-exposes through the module graph. It takes a
+ * tool argument, so calling it the way a registration entry point is called —
+ * with none — throws. That failure was previously swallowed as a per-file load
+ * error on core's own tools directory, which is noise that would mask a genuine
+ * broken tool file.
+ */
+const NON_ENTRYPOINT_EXPORTS = new Set(["registerAllAssistantTools", "registerAssistantTool"]);
+
 function isToolSourceFile(filename: string): boolean {
     return filename.endsWith(".ts") && !filename.endsWith(".d.ts") && filename !== BOOTSTRAP_FILENAME;
 }
@@ -29,7 +42,7 @@ function findRegisterFunctions(moduleExports: Record<string, unknown>): Array<{n
     const fns: Array<{name: string; fn: () => void}> = [];
 
     for (const [name, value] of Object.entries(moduleExports)) {
-        if (name === "registerAllAssistantTools") {
+        if (NON_ENTRYPOINT_EXPORTS.has(name)) {
             continue;
         }
         if (typeof value === "function" && REGISTER_FN_PATTERN.test(name)) {

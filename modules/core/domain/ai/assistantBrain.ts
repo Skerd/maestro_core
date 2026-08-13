@@ -171,6 +171,24 @@ function buildSystemPrompt(context: AssistantReplyContext): string {
             "arguments the user actually asked for; do not add filters they did not request."
     );
 
+    // The search tools return a capped sample of rows alongside a real total.
+    // Left unsaid, a model counts the rows it can see and reports that as the
+    // answer — turning "we have 412 units" into "we have 10". This is the single
+    // most common way a tool-grounded answer still comes out wrong.
+    parts.push(
+        "Search tools return `total` (the true number of records matching the " +
+            "filter) alongside `results` (only a capped sample of those records, and " +
+            "`truncated` says whether more exist). ALWAYS answer \"how many\" from " +
+            "`total` — never by counting the rows in `results`. When `truncated` is " +
+            "true, say the listed items are examples rather than the full set. If a " +
+            "tool result carries a `note`, take it into account and pass on any " +
+            "caveat it raises."
+    );
+    parts.push(
+        "Money is reported per currency and is never converted. Never add amounts " +
+            "in different currencies together, and state the currency in your answer."
+    );
+
     return parts.join(" ");
 }
 
