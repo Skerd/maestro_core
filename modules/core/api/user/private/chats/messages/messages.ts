@@ -57,13 +57,15 @@ import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/
 import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {dispatchAiChannelMessage} from "@coreModule/domain/ai/notifyAssistantOffline";
+import {channelMessageReadFilter, isChannelMember} from "@coreModule/utilities/endpoints/messageChannelReadAccess";
 
 /**
  * Chat messages API – private endpoints for listing and managing messages.
  *
  * Mounted under the user private chat routes (e.g. `/user/chats/messages`). All handlers require
- * authentication. Read routes allow direct members or group channels where the user left but
- * `showChannel` is true; **creating messages (PUT)** requires the user to be in `channel.users`.
+ * authentication. Read routes allow direct members, group channels where the user left but
+ * `showChannel` is true, or waiting public chats (`requested_human`, unassigned) so agents can
+ * peek before joining. **Creating messages (PUT)** requires the user to be in `channel.users`.
  * Field-level access enforced via SchemaGuard where middleware is attached.
  *
  * **Routes (registration order):**
@@ -193,20 +195,7 @@ async function getMessages(params: GetMessagesType & MessagesFormType): Promise<
             _id: new ObjectId(channel),
             company: company._id,
             deleted: false,
-            $or: [
-                {
-                    users: userInfo._id,
-                },
-                {
-                    isGroup: true,
-                    leftUsers: {
-                        $elemMatch: {
-                            user: userInfo._id,
-                            showChannel: true
-                        }
-                    }
-                }
-            ]
+            ...channelMessageReadFilter(userInfo._id)
         },
         { logger, languageCode },
         [
@@ -286,16 +275,16 @@ async function getMessages(params: GetMessagesType & MessagesFormType): Promise<
     logger.debug(`Converting messages to DTOs...`);
     const returnThis = await messagesToDTO(messages, userInfo._id.toString());
 
-    // Update or create the last read message timestamp
-    logger.debug(`Updating last read message timestamp...`);
-    const lastReadMessageDate = await ensureLastReadMessageTimestamp({
-        user: userInfo,
-        channelId: selectedChannel._id,
-        time: new Date(),
-        logger,
-        languageCode,
-        auditUserId: actionUserCtx.userId
-    });
+    const lastReadMessageDate = isChannelMember(selectedChannel, userInfo._id)
+        ? await ensureLastReadMessageTimestamp({
+            user: userInfo,
+            channelId: selectedChannel._id,
+            time: new Date(),
+            logger,
+            languageCode,
+            auditUserId: actionUserCtx.userId
+        })
+        : new Date(0);
 
     logger.finish(`Successfully fetched ${returnThis.length} messages from channel ${channel}`);
 
@@ -356,18 +345,7 @@ async function getMessageSingle(params: GetMessageSingleType & GetMessageSingleF
             _id: channelId,
             company: company._id,
             deleted: false,
-            $or: [
-                {users: userInfo._id},
-                {
-                    isGroup: true,
-                    leftUsers: {
-                        $elemMatch: {
-                            user: userInfo._id,
-                            showChannel: true
-                        }
-                    }
-                }
-            ]
+            ...channelMessageReadFilter(userInfo._id)
         },
         {logger, languageCode},
         [

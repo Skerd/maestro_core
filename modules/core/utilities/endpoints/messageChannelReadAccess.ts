@@ -18,8 +18,45 @@ const channelPopulate = [
 ];
 
 /**
- * Loads a message and verifies the user may read it in the current company (same rules as
- * `POST /api/user/chats/messages/single`).
+ * Channel visibility for reading messages: current members, left-but-visible groups,
+ * or a waiting public chat (`requested_human`, unassigned) so agents can peek before joining.
+ * Mutating a message still requires membership (pin, react, send).
+ */
+export function channelMessageReadFilter(userId: ObjectId) {
+    return {
+        $or: [
+            {users: userId},
+            {
+                isGroup: true,
+                leftUsers: {
+                    $elemMatch: {
+                        user: userId,
+                        showChannel: true
+                    }
+                }
+            },
+            {
+                isPublicChat: true,
+                "publicChat.status": "requested_human",
+                "publicChat.assignedTo": null
+            }
+        ]
+    };
+}
+
+export function isChannelMember(channel: IChannel, userId: ObjectId): boolean {
+    const id = userId.toString();
+    return (channel.users || []).some((u) => {
+        const uid = u && typeof u === "object" && "_id" in u
+            ? (u as {_id: ObjectId})._id.toString()
+            : String(u);
+        return uid === id;
+    });
+}
+
+/**
+ * Loads a message and verifies the user is a **member** of its channel (same company).
+ * Waiting-chat peek is not enough — pin/react still require membership.
  */
 export async function loadMessageAndChannelForReadAccess(messageId: string, userInfo: IUser, company: ICompany, languageCode: string, logger: AuthenticatedMWType["logger"]): Promise<{message: IMessage; channel: IChannel}> {
     const messageProbe = await messageService.findOneOrThrow(
