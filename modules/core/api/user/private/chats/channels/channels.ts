@@ -62,8 +62,44 @@ import {
 } from "armonia/src/modules/core/api/user/private/chats/channels/updateChannelDescription.form.response.type";
 import {getRegisteredActions} from "@coreModule/api/actionDecorator";
 import {ChannelActions} from "@coreModule/database/schemas/channel/channel.actions";
+import {computeInboxBadges} from "@coreModule/domain/chat/inboxBadges";
+import {InboxBadgesFormResponseType} from "armonia/src/modules/core/api/user/private/chats/channels/inboxBadges.form.response.type";
 
 const router = Router();
+
+/**
+ * GET /api/user/chats/channels/inbox-badges
+ *
+ * Panel-load snapshot for sidebar badges: waiting website-chat queue size,
+ * plus unread counts for staff conversations and assigned ("mine") website chats.
+ *
+ * @route GET /api/user/chats/channels/inbox-badges
+ * @access Private
+ */
+router.get(
+    "/inbox-badges",
+    authMW("private"),
+    rateLimiter({
+        windowMs: 60000,
+        max: 60,
+    }),
+    asyncHandler(getInboxBadges),
+);
+
+async function getInboxBadges(params: AuthenticatedMWType): Promise<InboxBadgesFormResponseType> {
+    const {logger, userInfo, actionUserInfo, company} = params;
+    logger.start(`Computing inbox badges for user ${userInfo._id.toString()} in company ${company._id.toString()}...`);
+    const badges = await computeInboxBadges({
+        companyId: company._id,
+        memberUserId: userInfo._id,
+        assignedUserId: actionUserInfo._id,
+    });
+    logger.finish(
+        `Inbox badges: waiting=${badges.waitingCount}, unreadChannels=${badges.unread.length}`,
+    );
+    return badges;
+}
+
 
 /**
  * POST /api/user/chats/channels

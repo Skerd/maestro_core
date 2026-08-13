@@ -32,6 +32,23 @@ export const DEFAULT_RESULTS = 10;
 /** Milliseconds in a day, for overdue/ageing arithmetic. */
 const MS_PER_DAY = 86_400_000;
 
+/**
+ * Turn a status union into the runtime array a JSON Schema `enum` needs.
+ *
+ * Some modules declare their statuses as a TypeScript union rather than a
+ * runtime array, so a tool has to restate the values — and a restated list
+ * silently rots when the union changes. Passing a `Record<Union, true>` makes
+ * the compiler enforce both directions: a value added to the union leaves the
+ * record missing a key, and a value removed leaves an excess one. Either way the
+ * build fails instead of the assistant offering the model a stale enum.
+ *
+ * @example
+ * const STATUS = enumValues<ProductStatus>({draft: true, active: true, archived: true});
+ */
+export function enumValues<T extends string>(map: Record<T, true>): T[] {
+    return Object.keys(map) as T[];
+}
+
 /** Escape a user/model-supplied string for safe use inside a RegExp. */
 export function escapeRegex(text: string): string {
     return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
