@@ -44,6 +44,7 @@ import {recordAssistantResult} from "@coreModule/domain/ai/assistantHealth";
 import {AiChannelMessageEvent} from "@coreModule/kafka/types";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import {ObjectId} from "mongodb";
+import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage";
 
 /**
  * How many prior messages to load as conversation context. One exchange is two
@@ -267,6 +268,14 @@ async function composeAndDeliverAiReply(
         userIds: [event.userId]
     };
     pushWebsocketMessage(websocketMessage);
+
+    // Same as PUT /messages updating last-read for the sender: the human just
+    // triggered this turn and receives the reply on the open channel.
+    await LastChannelReadMessage.findOneAndUpdate(
+        {user: new ObjectId(event.userId), channel: channel._id },
+        { $set: { time: new Date(reply.createdAt.getTime() + 1) } },
+        { upsert: true }
+    );
 
     // Mark the human's triggering message as read by the bot. Nobody else does
     // this for the AI channel (the bot has no client), so without it the user's

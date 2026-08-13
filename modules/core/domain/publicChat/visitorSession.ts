@@ -9,8 +9,9 @@
  * A visitor token is long-lived (30d) and backed by no Session document, so the
  * whole chain is re-verified on every use rather than trusted from the token:
  * the token is genuinely a visitor token, the visitor user still exists and is
- * still a visitor, the channel is still an open public chat, and the channel
- * belongs to the company the token names.
+ * still a visitor, the channel is still a public chat, and the channel belongs
+ * to the company the token names. Closed chats stay readable so the widget can
+ * show the closing notice; write endpoints call {@link assertPublicChatOpen}.
  *
  * @module visitorSession
  */
@@ -77,16 +78,22 @@ export async function resolveVisitorSession(params: {
         throw apiValidationException("visitor_session_not_found", "token", null, languageCode);
     }
 
-    if (visitorChannel.publicChat?.status === "closed") {
-        throw apiValidationException("public_chat_is_closed", "token", null, languageCode);
-    }
-
     const visitorCompany = await companyService.findOne({_id: companyId, isActive: true});
     if (!visitorCompany) {
         throw apiValidationException("company_is_inactive", "company", null, languageCode);
     }
 
     return {visitorUser, visitorChannel, visitorCompany};
+}
+
+/**
+ * Closed conversations are read-only. Call this from any endpoint that would
+ * persist a visitor action (send, handoff, identify).
+ */
+export function assertPublicChatOpen(channel: IChannel, languageCode: string): void {
+    if (channel.publicChat?.status === "closed") {
+        throw apiValidationException("public_chat_is_closed", "token", null, languageCode);
+    }
 }
 
 /**

@@ -7,7 +7,9 @@
  *
  *     bot ──escalate──► requested_human ──agent joins──► human
  *      ▲                                                  │
- *      └──────────────── agent releases ──────────────────┘
+ *      └──────────────── agent releases ──────────────────┤
+ *                                                         ▼
+ *                                                       closed
  *
  * Only `bot` is bot-served. The moment a conversation escalates, the assistant
  * stops answering — see `isBotServing` in the send endpoint.
@@ -289,4 +291,63 @@ export async function releasePublicChatToBot(params: {
     });
 
     logger?.debug(`Public chat ${channel._id.toString()} released back to the bot`);
+}
+
+/**
+ * End the conversation from the panel. The visitor is told, then the thread
+ * becomes read-only; they start a new session rather than continue this one.
+ *
+ * Idempotent: closing an already-closed chat is a no-op.
+ */
+export async function closePublicChatByAgent(params: {
+    channel: IChannel;
+    agentId: ObjectId;
+    agentDisplayName?: string;
+    visitorId: ObjectId;
+    languageCode?: string;
+    logger?: serverLogger;
+}): Promise<void> {
+    const {channel, agentId, agentDisplayName, visitorId, languageCode, logger} = params;
+
+    const status = channel.publicChat?.status ?? "bot";
+    if (status === "closed") {
+        logger?.debug(`Public chat ${channel._id.toString()} is already closed`);
+        return;
+    }
+
+    // Notice first so the same poll/socket wake that learns the chat is closed
+    // also carries the closing line. Closing before the notice would stop the
+    // widget from fetching it.
+    await postBotNotice({
+        channel,
+        text: agentDisplayName
+            ? `${agentDisplayName} has closed this conversation. You can start a new chat whenever you're ready.`
+            : "This conversation has been closed. You can start a new chat whenever you're ready.",
+        visitorId,
+        languageCode,
+        logger,
+    });
+
+    await setPublicChatStatus({
+        channelId: channel._id,
+        status: "closed",
+        languageCode,
+        logger,
+        auditUserId: agentId.toString(),
+    });
+
+    await channelService.updateById(
+        channel._id,
+        {$pull: {users: agentId}} as unknown as UpdateQuery<IChannel>,
+        {logger, languageCode, auditUserId: agentId.toString()},
+    );
+
+    const websocketMessage: WebSocketMessage<{channelId: string}> = {
+        code: WebSocketMessageCodes.CHANNEL_DELETED,
+        payload: {channelId: channel._id.toString()},
+        userIds: [agentId.toString()],
+    };
+    pushWebsocketMessage(websocketMessage);
+
+    logger?.debug(`Public chat ${channel._id.toString()} closed by agent ${agentId.toString()}`);
 }

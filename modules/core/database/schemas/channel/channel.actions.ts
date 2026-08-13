@@ -4,9 +4,9 @@ import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import Channel, {IChannel} from "@coreModule/database/schemas/channel/channel";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
-import {setPublicChatStatus} from "@coreModule/database/schemas/channel/channel.helper";
 import {
     assignAgentToPublicChat,
+    closePublicChatByAgent,
     releasePublicChatToBot,
 } from "@coreModule/domain/publicChat/handoff";
 import {agentDisplayName} from "@coreModule/utilities/mappers/channel/publicChatMapper.dto";
@@ -122,14 +122,15 @@ export class ChannelActions {
         logger.start(`Closing public chat ${_id}...`);
 
         SchemaGuard.sanitizeFields(Channel, {users: {}}, "write", actionUserCtx, languageCode);
-        await requirePublicChat(_id, company._id, logger, languageCode);
+        const channel = await requirePublicChat(_id, company._id, logger, languageCode);
 
-        await setPublicChatStatus({
-            channelId: new ObjectId(_id),
-            status: "closed",
+        await closePublicChatByAgent({
+            channel,
+            agentId: actionUserInfo._id,
+            agentDisplayName: agentDisplayName(actionUserInfo),
+            visitorId: visitorIdOf(channel),
             languageCode,
             logger,
-            auditUserId: actionUserInfo._id.toString(),
         });
 
         logger.finish(`Public chat ${_id} closed`);

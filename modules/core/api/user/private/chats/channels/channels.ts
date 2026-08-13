@@ -195,7 +195,10 @@ async function userChannels(params: UserChannelsType & AllChannelsFormType): Pro
  * POST /api/user/chats/channels/single
  *
  * Returns one channel by id for the authenticated user in the current company.
- * User must be an active member or a former member with showChannel=true on the left entry.
+ * Visible when the user is an active member, a former member with showChannel=true,
+ * or the channel is a waiting public chat (`requested_human`, unassigned) — the
+ * same peek the waiting inbox uses so a newly escalated visitor can be inserted
+ * into the list over the websocket without a full reload.
  *
  * @route POST /api/user/chats/channels/single
  * @access Private
@@ -247,12 +250,17 @@ async function getChannelSingle(params: GetChannelSingleType & GetChannelSingleF
                             showChannel: true
                         }
                     }
-                }
+                },
+                {
+                    isPublicChat: true,
+                    "publicChat.status": "requested_human",
+                    "publicChat.assignedTo": null,
+                },
             ]
         },
         { logger, languageCode },
         populate.populate,
-        (populate.select || "") + " isGroup isPublicChat"
+        (populate.select || "") + " isGroup isPublicChat publicChat"
     );
 
     if (!channel) {

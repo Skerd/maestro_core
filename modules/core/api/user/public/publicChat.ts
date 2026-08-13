@@ -81,6 +81,7 @@ import {
     RequestPublicChatHandoffFormResponseType,
 } from "armonia/src/modules/core/api/user/public/publicChat/requestPublicChatHandoff/requestPublicChatHandoff.form.response.type";
 import {requestHumanHandoff} from "@coreModule/domain/publicChat/handoff";
+import {assertPublicChatOpen} from "@coreModule/domain/publicChat/visitorSession";
 import {consumeVisitorMessageQuota} from "@coreModule/domain/publicChat/publicChatQuota";
 import type {ActionMessage} from "armonia/src/modules/core/types/shared.types";
 import type {PublicChatStatusType} from "armonia/src/modules/core/api/user/public/publicChat/publicChat.types";
@@ -294,6 +295,7 @@ async function sendPublicChatMessage(
     const {languageCode, logger, visitorUser, visitorChannel, visitorCompany, text} = params;
     logger.start(`Visitor message in public chat ${visitorChannel._id.toString()}...`);
 
+    assertPublicChatOpen(visitorChannel, languageCode);
     assertPublicChatEnabled(visitorCompany, languageCode);
 
     // Per-visitor and per-tenant budgets, charged before anything is persisted
@@ -401,6 +403,8 @@ async function requestPublicChatHandoff(
 ): Promise<RequestPublicChatHandoffFormResponseType> {
     const {languageCode, logger, visitorUser, visitorChannel, visitorCompany, note} = params;
     logger.start(`Handoff requested for public chat ${visitorChannel._id.toString()}...`);
+
+    assertPublicChatOpen(visitorChannel, languageCode);
 
     if (visitorCompany.publicAiChat?.humanHandoffEnabled === false) {
         throw apiValidationException("public_chat_handoff_not_enabled", "company", null, languageCode);

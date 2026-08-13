@@ -10,7 +10,8 @@
  *
  *   1. the token is genuinely a visitor token (see {@link validateVisitorToken});
  *   2. the visitor user still exists, is still `isVisitor`, and is not deleted;
- *   3. the channel still exists, is still a public chat, and is not closed;
+ *   3. the channel still exists and is still a public chat (closed chats stay
+ *      readable so the visitor can see the closing notice and start a new one);
  *   4. the channel belongs to the company the token names AND to the company the
  *      request origin resolves to — a token minted on one tenant's site cannot
  *      be replayed against another tenant.
