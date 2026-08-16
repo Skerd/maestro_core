@@ -20,12 +20,12 @@ export const userSessionSheetView: ViewConfig = {
                     props: {columns: 2},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "user",
                             permissions: {read: "user"},
                             field: {
                                 name: "user",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "user",
                                 widgetProps: {
                                     icon: "#User",
@@ -36,19 +36,19 @@ export const userSessionSheetView: ViewConfig = {
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "deviceId"},
-                            field: {name: "deviceId", widget: "#SmallInfoCard", label: "deviceId"},
+                            field: {name: "deviceId", widget: "#DisplayCard", label: "deviceId"},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "isActive"},
-                            field: {name: "isActive", widget: "#SmallInfoCard", label: "isActive"},
+                            field: {name: "isActive", widget: "#DisplayCard", label: "isActive"},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "lastActiveAt"},
-                            field: {name: "lastActiveAt", widget: "#SmallInfoCard", label: "lastActiveAt"},
+                            field: {name: "lastActiveAt", widget: "#DisplayCard", label: "lastActiveAt"},
                         },
                     ],
                 },
@@ -63,14 +63,14 @@ export const userSessionSheetView: ViewConfig = {
                     props: {columns: 1},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "ipAddress"},
-                            field: {name: "ipAddress", widget: "#SmallInfoCard", label: "ipAddress"},
+                            field: {name: "ipAddress", widget: "#DisplayCard", label: "ipAddress"},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "userAgent"},
-                            field: {name: "userAgent", widget: "#SmallInfoCard", label: "userAgent"},
+                            field: {name: "userAgent", widget: "#DisplayCard", label: "userAgent"},
                         },
                     ],
                 },

@@ -21,46 +21,46 @@ export const companySheetView: ViewConfig = {
                     props: {columns: 3},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "email"},
-                            field: {name: "email", widget: "#SmallInfoCard", label: "email", widgetProps: {icon: "#Mail"}},
+                            field: {name: "email", widget: "#DisplayCard", label: "email", widgetProps: {icon: "#Mail"}},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "phoneNumber"},
-                            field: {name: "phoneNumber", widget: "#SmallInfoCard", label: "phone", widgetProps: {icon: "#Phone"}},
+                            field: {name: "phoneNumber", widget: "#DisplayCard", label: "phone", widgetProps: {icon: "#Phone"}},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "website"},
-                            field: {name: "website", widget: "#SmallInfoCard", label: "website", widgetProps: {icon: "#World", externalLink: true}},
+                            field: {name: "website", widget: "#DisplayCard", label: "website", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "linkedin"},
-                            field: {name: "linkedin", widget: "#SmallInfoCard", label: "linkedin", widgetProps: {icon: "#World", externalLink: true}},
+                            field: {name: "linkedin", widget: "#DisplayCard", label: "linkedin", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "instagram"},
-                            field: {name: "instagram", widget: "#SmallInfoCard", label: "instagram", widgetProps: {icon: "#World", externalLink: true}},
+                            field: {name: "instagram", widget: "#DisplayCard", label: "instagram", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "facebook"},
-                            field: {name: "facebook", widget: "#SmallInfoCard", label: "facebook", widgetProps: {icon: "#World", externalLink: true}},
+                            field: {name: "facebook", widget: "#DisplayCard", label: "facebook", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "vat"},
-                            field: {name: "vat", widget: "#SmallInfoCard", label: "vat", widgetProps: {icon: "#Hash"}},
+                            field: {name: "vat", widget: "#DisplayCard", label: "vat", widgetProps: {icon: "#Hash"}},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "parentCompany"},
                             field: {
                                 name: "parentCompany",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "parentCompany",
                                 widgetProps: {icon: "#Building", parent: "parentCompany", valuePath: ["name", "vat"], joinSeparator: " - "},
                             },
@@ -79,11 +79,11 @@ export const companySheetView: ViewConfig = {
                     props: {columns: 1},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "allowedDomains"},
                             field: {
                                 name: "allowedDomains",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "allowedDomains",
                                 widgetProps: {icon: "#WorldCheck", valueType: "stringBadgeList"},
                             },
@@ -165,31 +165,31 @@ export const companySheetView: ViewConfig = {
                     props: {columns: 3},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "publicAiChat"},
                             field: {
                                 name: "publicAiChat.enabled",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "enabled",
                                 widgetProps: {icon: "#IconToggleRight", valueType: "boolean"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "publicAiChat"},
                             field: {
                                 name: "publicAiChat.requireIdentification",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "requireIdentification",
                                 widgetProps: {icon: "#IconId", valueType: "boolean"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "publicAiChat"},
                             field: {
                                 name: "publicAiChat.humanHandoffEnabled",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "humanHandoffEnabled",
                                 widgetProps: {icon: "#IconUsers", valueType: "boolean"},
                             },

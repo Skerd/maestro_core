@@ -29,6 +29,8 @@
     "seed:edifice-demo": "ts-node --transpile-only -r tsconfig-paths/register scripts/seed-edifice-demo.ts",
     "migrate:floor-level-numbers": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/updateFloorLevelNumberToNumber.ts",
     "migrate:cleanup-orphan-media": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/cleanupOrphanMediaAndGridFs.ts",
+    "migrate:check-duplicate-unit-gallery-media": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/checkDuplicateUnitGalleryMedia.ts",
+    "migrate:dedupe-unit-plan-gallery": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/dedupeUnitPlanGalleryMedia.ts",
     "api:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/apiServer.ts",
     "kafka:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/kafkaServer.ts",
     "websocket:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/webSocketServer.ts",

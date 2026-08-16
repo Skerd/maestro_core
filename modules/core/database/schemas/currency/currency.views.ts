@@ -21,36 +21,36 @@ export const currencySheetView: ViewConfig = {
                     props: {columns: 3},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "symbol",
                             permissions: {read: "symbol"},
                             field: {
                                 name: "symbol",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "symbol",
                                 widgetProps: {icon: "#CashBanknote"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "abbreviation",
                             permissions: {read: "abbreviation"},
                             field: {
                                 name: "abbreviation",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "abbreviation",
                                 widgetProps: {icon: "#Tag"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "decimalPlaces",
                             permissions: {read: "decimalPlaces"},
                             field: {
                                 name: "decimalPlaces",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "decimalPlaces",
-                                widgetProps: {icon: "#ListOrdered"},
+                                widgetProps: {icon: "#ListOrdered", type: "number"},
                             },
                         },
                     ],

@@ -21,22 +21,22 @@ export const stateSheetView: ViewConfig = {
                     props: {columns: 2},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "code",
                             permissions: {read: "code"},
                             field: {
                                 name: "code",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "code",
                                 widgetProps: {icon: "#Tag"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "country"},
                             field: {
                                 name: "country.name",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "country",
                                 widgetProps: {
                                     icon: "#Globe",

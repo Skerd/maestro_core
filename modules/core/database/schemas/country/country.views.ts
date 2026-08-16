@@ -21,36 +21,36 @@ export const countrySheetView: ViewConfig = {
                     props: {columns: 2},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "name",
                                 widgetProps: {icon: "#Tag"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "code",
                             permissions: {read: "code"},
                             field: {
                                 name: "code",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "code",
                                 widgetProps: {icon: "#Tag"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "phoneCode",
                             permissions: {read: "phoneCode"},
                             field: {
                                 name: "phoneCode",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "phoneCode",
-                                widgetProps: {icon: "#Phone", prefix: "+"},
+                                widgetProps: {icon: "#Phone", type: "phoneCode"},
                             },
                         },
                     ],

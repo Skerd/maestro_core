@@ -13,31 +13,31 @@ export const lifecycleSheetGroup: ViewNode = {
             props: {columns: 3},
             children: [
                 {
-                    render: "#SmallInfoCard",
+                    render: "#DisplayCard",
                     permissions: {read: "createdAt"},
                     field: {
                         name: "createdAt",
-                        widget: "#SmallInfoCard",
+                        widget: "#DisplayCard",
                         label: "createdAt",
                         widgetProps: {icon: "#Calendar", format: "dateTime"},
                     },
                 },
                 {
-                    render: "#SmallInfoCard",
+                    render: "#DisplayCard",
                     permissions: {read: "updatedAt"},
                     field: {
                         name: "updatedAt",
-                        widget: "#SmallInfoCard",
+                        widget: "#DisplayCard",
                         label: "updatedAt",
                         widgetProps: {icon: "#Calendar", format: "dateTime"},
                     },
                 },
                 {
-                    render: "#SmallInfoCard",
+                    render: "#DisplayCard",
                     permissions: {read: "createdBy"},
                     field: {
                         name: "createdBy",
-                        widget: "#SmallInfoCard",
+                        widget: "#DisplayCard",
                         label: "createdBy",
                         widgetProps: {
                             icon: "#User",
@@ -48,23 +48,23 @@ export const lifecycleSheetGroup: ViewNode = {
                     },
                 },
                 {
-                    render: "#SmallInfoCard",
+                    render: "#DisplayCard",
                     dependent: "deletedAt",
                     permissions: {read: "deletedAt"},
                     field: {
                         name: "deletedAt",
-                        widget: "#SmallInfoCard",
+                        widget: "#DisplayCard",
                         label: "deletedAt",
                         widgetProps: {icon: "#Calendar", format: "dateTime"},
                     },
                 },
                 {
-                    render: "#SmallInfoCard",
+                    render: "#DisplayCard",
                     dependent: "deletedBy",
                     permissions: {read: "deletedBy"},
                     field: {
                         name: "deletedBy",
-                        widget: "#SmallInfoCard",
+                        widget: "#DisplayCard",
                         label: "deletedBy",
                         widgetProps: {
                             icon: "#User",

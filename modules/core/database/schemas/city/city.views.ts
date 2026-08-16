@@ -21,22 +21,22 @@ export const citySheetView: ViewConfig = {
                     props: {columns: 3},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "name",
                                 widgetProps: {icon: "#Tag"},
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "state"},
                             field: {
                                 name: "state.name",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "state",
                                 widgetProps: {
                                     icon: "#Layers",
@@ -48,11 +48,11 @@ export const citySheetView: ViewConfig = {
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "country"},
                             field: {
                                 name: "country.name",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "country",
                                 widgetProps: {
                                     icon: "#Globe",

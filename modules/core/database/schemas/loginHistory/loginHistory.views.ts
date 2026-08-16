@@ -20,12 +20,12 @@ export const loginHistorySheetView: ViewConfig = {
                     props: {columns: 2},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             dependent: "user",
                             permissions: {read: "user"},
                             field: {
                                 name: "user",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "user",
                                 widgetProps: {
                                     icon: "#User",
@@ -36,11 +36,11 @@ export const loginHistorySheetView: ViewConfig = {
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "time"},
                             field: {
                                 name: "time",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "time",
                                 widgetProps: {
                                     icon: "#Clock",
@@ -48,20 +48,20 @@ export const loginHistorySheetView: ViewConfig = {
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "status"},
                             field: {
                                 name: "status",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "status",
                             },
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "mfa"},
                             field: {
                                 name: "mfa",
-                                widget: "#SmallInfoCard",
+                                widget: "#DisplayCard",
                                 label: "mfa",
                             },
                         },
@@ -78,24 +78,24 @@ export const loginHistorySheetView: ViewConfig = {
                     props: {columns: 2},
                     children: [
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "device"},
-                            field: {name: "device", widget: "#SmallInfoCard", label: "device"},
+                            field: {name: "device", widget: "#DisplayCard", label: "device"},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "os"},
-                            field: {name: "os", widget: "#SmallInfoCard", label: "os"},
+                            field: {name: "os", widget: "#DisplayCard", label: "os"},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "browser"},
-                            field: {name: "browser", widget: "#SmallInfoCard", label: "browser"},
+                            field: {name: "browser", widget: "#DisplayCard", label: "browser"},
                         },
                         {
-                            render: "#SmallInfoCard",
+                            render: "#DisplayCard",
                             permissions: {read: "userAgent"},
-                            field: {name: "userAgent", widget: "#SmallInfoCard", label: "userAgent"},
+                            field: {name: "userAgent", widget: "#DisplayCard", label: "userAgent"},
                         },
                     ],
                 },
