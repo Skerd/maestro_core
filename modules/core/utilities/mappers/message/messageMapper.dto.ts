@@ -1,6 +1,6 @@
 import {IMessage} from "@coreModule/database/schemas/message/message";
 import {MessageType} from "armonia/src/modules/core/api/user/private/chats/messages/messages.form.response.type";
-import {DecryptString} from "@coreModule/utilities/security/encryption";
+import {DecryptStringSafe} from "@coreModule/utilities/security/encryption";
 import {ObjectId} from "mongodb";
 import {mapMedia, mapPopulatedUserWithPhoto} from "@coreModule/utilities/mappers/common.mapper";
 
@@ -43,8 +43,8 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
         _id: toIdString(message._id),
         sender: mapPopulatedUserWithPhoto(message.sender),
         receiver: mapPopulatedUserWithPhoto(message.receiver),
-        message: isDeleted ? "" : DecryptString(message.text),
-        forwardedMessage: (isDeleted || !message.forwardedText) ? "" : DecryptString(message.forwardedText),
+        message: isDeleted ? "" : DecryptStringSafe(message.text),
+        forwardedMessage: (isDeleted || !message.forwardedText) ? "" : DecryptStringSafe(message.forwardedText),
         media: !!message.mediaIds ? message.mediaIds?.map((media) => {
             return mapMedia(media);
         }) : undefined,
@@ -52,7 +52,7 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
         type: message.type,
         replyTo: message.replyTo ? {
             _id: message.replyTo._id.toString(),
-            message: (message.replyTo.status === "deleted" || !message.replyTo.status) ? "" : DecryptString(message.replyTo.text),
+            message: (message.replyTo.status === "deleted" || !message.replyTo.status) ? "" : DecryptStringSafe(message.replyTo.text),
             sender: mapPopulatedUserWithPhoto(message.replyTo.sender),
             date: message.replyTo.createdAt,
             status: message.replyTo.status,
@@ -64,7 +64,7 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
             return (
                 {
                     _id: reaction._id.toString(),
-                    emoji: reaction.emoji ? DecryptString(reaction.emoji) : undefined,
+                    emoji: reaction.emoji ? DecryptStringSafe(reaction.emoji) : undefined,
                     date: reaction.date,
                     user: mapPopulatedUserWithPhoto(reaction.user)
                 }

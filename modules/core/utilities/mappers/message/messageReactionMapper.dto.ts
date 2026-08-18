@@ -1,5 +1,5 @@
 import {IMessage} from "@coreModule/database/schemas/message/message";
-import {DecryptString} from "@coreModule/utilities/security/encryption";
+import {DecryptStringSafe} from "@coreModule/utilities/security/encryption";
 import {
     AddReactionFormResponseType
 } from "armonia/src/modules/core/api/user/private/chats/messages/actions/addReaction.form.response.type";
@@ -13,7 +13,7 @@ export function messageReactionToDTO(r: MessageReactionSubdocument): AddReaction
     }
     return {
         _id: r._id.toString(),
-        emoji: r.emoji ? DecryptString(r.emoji) : undefined,
+        emoji: r.emoji ? DecryptStringSafe(r.emoji) : undefined,
         date: r.date,
         user: mapPopulatedUserWithPhoto(r.user)
     };

@@ -12,7 +12,7 @@ import {ObjectId} from "mongodb";
 import {IMessage} from "@coreModule/database/schemas/message/message";
 import {IChannel} from "@coreModule/database/schemas/channel/channel";
 import {IUser} from "@coreModule/database/schemas/user/user";
-import {DecryptString} from "@coreModule/utilities/security/encryption";
+import {DecryptStringSafe} from "@coreModule/utilities/security/encryption";
 import type {
     PublicChatAuthorType,
     PublicChatMessageType,
@@ -58,7 +58,7 @@ export function publicChatMessageToDTO(params: {
 
     return {
         _id: message._id.toString(),
-        text: message.text ? DecryptString(message.text) : "",
+        text: DecryptStringSafe(message.text),
         author,
         // Only agents get a name; the bot speaks as the company and the visitor
         // already knows who they are.
