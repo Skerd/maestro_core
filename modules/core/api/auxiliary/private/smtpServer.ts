@@ -24,10 +24,10 @@ export const {router} = createCrudRouter({
     defaultSort: {sequence: 1, name: 1},
     entityName: "SmtpServer",
     actions: SmtpServerActions,
-    buildCreateData: async ({name, sequence, active, host, port, encryption, authType, username, password, fromEmail, fromName, replyTo,}) => ({
+    buildCreateData: async ({name, sequence, host, port, encryption, authType, username, password, fromEmail, fromName, replyTo,}) => ({
         name: name.trim(),
         sequence: sequence ?? 10,
-        active: active ?? true,
+        active: false,
         host: host.trim(),
         port,
         encryption: encryption as SmtpEncryptionType,
@@ -38,11 +38,10 @@ export const {router} = createCrudRouter({
         fromName: fromName?.trim() || "",
         replyTo: replyTo ? replyTo.trim() : undefined
     }),
-    buildUpdateData: async ({name, sequence, active, host, port, encryption, authType, username, password, fromEmail, fromName, replyTo}, w) => {
+    buildUpdateData: async ({name, sequence, host, port, encryption, authType, username, password, fromEmail, fromName, replyTo}, w) => {
         const update: Record<string, unknown> = {};
         if (name !== undefined && w.name) update.name = name.trim();
         if (sequence !== undefined && w.sequence) update.sequence = sequence;
-        if (active !== undefined && w.active) update.active = active;
         if (host !== undefined && w.host) update.host = host.trim();
         if (port !== undefined && w.port) update.port = port;
         if (encryption !== undefined && w.encryption) update.encryption = encryption;

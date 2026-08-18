@@ -249,14 +249,6 @@ const smtpFormFields: ViewConfig["nodes"] = [
             {
                 render: "#Field",
                 field: {
-                    name: "active",
-                    widget: "#Switch",
-                    label: "form.activeLabel",
-                },
-            },
-            {
-                render: "#Field",
-                field: {
                     name: "host",
                     widget: "#Input",
                     label: "form.hostLabel",

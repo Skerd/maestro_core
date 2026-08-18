@@ -52,7 +52,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
         active: {
             type: SchemaTypes.Boolean,
             required: true,
-            default: true,
+            default: false,
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         host: {
@@ -159,4 +159,4 @@ normalizeSchemaPermissions(SmtpServer);
 export default SmtpServer;
 
 addModelData(SmtpServer, smtpServerViews);
-validateSchemaDefAgainstMongoose(SmtpServerSchema, SmtpServerSchemaDef, "SmtpServer", ["passwordEncrypted", "lastTestedAt", "lastTestStatus", "lastTestMessage",]);
+validateSchemaDefAgainstMongoose(SmtpServerSchema, SmtpServerSchemaDef, "SmtpServer", ["passwordEncrypted", "active", "lastTestedAt", "lastTestStatus", "lastTestMessage",]);
