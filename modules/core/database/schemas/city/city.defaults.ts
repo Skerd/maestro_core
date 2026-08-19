@@ -8,6 +8,16 @@ import {Types} from "mongoose";
 
 const INSERT_BATCH_SIZE = 10000;
 
+/**
+ * Cities the `country-state-city` dataset does not carry but that seeded data depends
+ * on. Keep this list short and justified — it exists so that hand-entered locations
+ * survive a re-init rather than silently dropping an address.
+ */
+export const defaultExtraCities: readonly {name: string; countryCode: string; stateCode: string}[] = [
+    // Coastal village in Vlorë County; the Aria Residence edifices are addressed here.
+    {name: "Dhërmi", countryCode: "AL", stateCode: "12"},
+];
+
 export async function createCities(parentLogger: serverLogger, company: ICompany) {
     const logger = getLogger("mongoDbInitialization-createCities", parentLogger);
     logger.start("Creating cities...");
@@ -54,6 +64,40 @@ export async function createCities(parentLogger: serverLogger, company: ICompany
                     });
                 }
             }
+        }
+
+        const statesById = new Map(allStates.map((state) => [state._id.toString(), state]));
+        const countriesByCode = new Map(allCountries.map((country) => [country.code, country]));
+
+        for (const extra of defaultExtraCities) {
+            const country = countriesByCode.get(extra.countryCode);
+            const state = country
+                ? allStates.find(
+                      (candidate) =>
+                          candidate.code === extra.stateCode &&
+                          ((candidate.country as any).toString?.() ?? candidate.country) ===
+                              country._id.toString(),
+                  )
+                : undefined;
+
+            if (!country || !state || !statesById.has(state._id.toString())) {
+                logger.warn(
+                    `Extra city "${extra.name}" skipped: ${extra.countryCode}/${extra.stateCode} not found.`,
+                );
+                continue;
+            }
+
+            const key = `${state._id}|${extra.name}`;
+            if (existingKeySet.has(key)) continue;
+
+            existingKeySet.add(key);
+            docs.push({
+                name: extra.name,
+                state: state._id,
+                country: country._id,
+                company: companyId,
+                createdBy,
+            });
         }
 
         if (docs.length > 0) {

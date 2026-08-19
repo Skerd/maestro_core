@@ -36,7 +36,7 @@ import Company from "@coreModule/database/schemas/company/company";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
-import {EncryptString, DecryptString} from "@coreModule/utilities/security/encryption";
+import {EncryptString, DecryptStringSafe} from "@coreModule/utilities/security/encryption";
 import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
 import {applyMessageReceipts} from "@coreModule/domain/messages/applyMessageReceipts";
 import {generateAssistantReply, AssistantConversationTurn} from "@coreModule/domain/ai/assistantBrain";
@@ -101,7 +101,7 @@ async function loadConversationHistory(
         // ones dropped when the budget runs out, then reverse to oldest-first.
         for (const msg of recent as any[]) {
             if (msg.deletedAt) continue;
-            const raw = msg.text ? DecryptString(msg.text).trim() : "";
+            const raw = DecryptStringSafe(msg.text).trim();
             if (!raw) continue;
             if (raw.length > budget) break;
             budget -= raw.length;

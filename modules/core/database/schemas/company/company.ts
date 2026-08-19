@@ -34,6 +34,7 @@ import {companyViews} from "./company.views";
 import {defaultRoles} from "@coreModule/database/schemas/role/role.defaults";
 import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
+import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
@@ -457,6 +458,15 @@ CompanySchema.methods.addCompanyDemoData = async function (parentLogger?: server
     }catch (e){
         console.log(e);
         logger.fail("Failed to add company demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
+    }
+
+    try{
+        logger.debug(`Adding core demo data...`);
+        await seedCoreDemoData(logger, this);
+        logger.debug(`Added core demo data!`);
+    }catch (e){
+        console.log(e);
+        logger.fail("Failed to add core demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
     }
 
     try{
