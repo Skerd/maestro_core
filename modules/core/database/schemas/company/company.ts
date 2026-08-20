@@ -31,7 +31,14 @@ import {StateSimpleSnippet} from "@coreModule/database/schemas/state/state.snipp
 import {CountrySimpleSnippet} from "@coreModule/database/schemas/country/country.snippets";
 import {CompanyBlankSnippet} from "./company.snippets";
 import {companyViews} from "./company.views";
-import {defaultRoles} from "@coreModule/database/schemas/role/role.defaults";
+import {
+    defaultRoleSlug,
+    getDefaultRoles,
+    resolveDefaultRolePermissionIds,
+    roleHasPermissionPack,
+    type DefaultRoleDefinition,
+} from "@coreModule/database/schemas/role/role.defaults";
+import {ensureModuleDefaultRolesRegistered} from "@coreModule/utilities/modules/ensureModuleDefaultRoles";
 import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
 import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
@@ -46,6 +53,13 @@ function documentObjectId(ref: unknown): ObjectId | null {
         return (ref as {_id: ObjectId})._id;
     }
     return null;
+}
+
+function rolePermissionId(permission: unknown): ObjectId | null {
+    if (permission instanceof ObjectId) {
+        return permission;
+    }
+    return documentObjectId(permission);
 }
 
 export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
@@ -295,48 +309,90 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
     logger.start(`Creating/updating company roles for company named '${this.name}' with VAT '${this.vat}'...`);
 
     try{
-        if( defaultRoles.length === 0 ){
+        await ensureModuleDefaultRolesRegistered(logger);
+        const seededRoles = getDefaultRoles();
+
+        if( seededRoles.length === 0 ){
             logger.debug(`No default roles found`);
         }
         else {
-            // let mainUser = await User.findOne({username: defaultSysUsers.find((user) => user.isMainUser)?.username });
+            const seededSlugs = seededRoles.map((role) => defaultRoleSlug(this.name, role));
+            const definitionBySlug = new Map<string, DefaultRoleDefinition>(
+                seededRoles.map((role) => [defaultRoleSlug(this.name, role), role])
+            );
 
-            let savedRoles = await Role.find({company: this._id, slug: {$in: defaultRoles.map(role => this.name.toLowerCase() + ( role.isAdmin ? ":reserved:" : ":default:" ) + role.slug )} }).session(session);
+            let savedRoles = await Role.find({company: this._id, slug: {$in: seededSlugs}}).session(session ?? null);
             let savedRolesSlugs = savedRoles.map((role) => role.slug);
 
-            let rolesToCreate = defaultRoles.filter((role) => !savedRolesSlugs.includes(this.name.toLowerCase() + ( role.isAdmin ? ":reserved:" : ":default:" ) + role.slug));
+            let rolesToCreate = seededRoles.filter((role) => !savedRolesSlugs.includes(defaultRoleSlug(this.name, role)));
             let createdRoles: IRole[] = [];
 
-            for( let adminRole of savedRoles ){
-                let allMissingPermissions = await RolePermission.find(
-                    {
-                        _id: {
-                            $nin: adminRole.permissions.map((permission) => {
-                                return permission._id;
-                            })
-                        }
+            for (const savedRole of savedRoles) {
+                const definition = definitionBySlug.get(savedRole.slug);
+                if (!definition) {
+                    continue;
+                }
+                let dirty = false;
+                if (definition.description && !(savedRole.description || "").trim()) {
+                    savedRole.description = definition.description;
+                    dirty = true;
+                }
+                if (definition.isAdmin) {
+                    const existingIds = savedRole.permissions
+                        .map((permission) => rolePermissionId(permission))
+                        .filter((id): id is ObjectId => id != null);
+                    const missingPermissions = await RolePermission.find(
+                        {_id: {$nin: existingIds}}
+                    ).select("_id").session(session ?? null);
+                    if (missingPermissions.length > 0) {
+                        savedRole.permissions = [...savedRole.permissions, ...missingPermissions];
+                        dirty = true;
                     }
-                ).select("_id").session(session);
-                adminRole.permissions = [
-                    ...adminRole.permissions,
-                    ...(allMissingPermissions || [])
-                ]
-                await adminRole.save({session});
-                logger.debug(`The company admin role named '${adminRole.name}' with slug '${adminRole.slug}' already exists. Updated [permissions]`);
+                    if (dirty) {
+                        await savedRole.save({session});
+                    }
+                    logger.debug(`The company admin role named '${savedRole.name}' with slug '${savedRole.slug}' already exists. Updated [permissions]`);
+                    continue;
+                }
+                if (!roleHasPermissionPack(definition)) {
+                    if (dirty) {
+                        await savedRole.save({session});
+                    }
+                    continue;
+                }
+                const packIds = await resolveDefaultRolePermissionIds(definition, session);
+                const existing = new Set(
+                    savedRole.permissions
+                        .map((permission) => rolePermissionId(permission)?.toString())
+                        .filter((id): id is string => !!id)
+                );
+                const missing = packIds.filter((id) => !existing.has(id.toString()));
+                if (missing.length > 0) {
+                    savedRole.permissions = [...savedRole.permissions, ...missing] as IRole["permissions"];
+                    dirty = true;
+                    logger.debug(`Updated workflow role named '${savedRole.name}' with ${missing.length} permission(s)`);
+                }
+                if (dirty) {
+                    await savedRole.save({session});
+                }
             }
+
             for( let role of rolesToCreate ){
-                let permissions = await RolePermission.find().select("_id").session(session);
+                const permissions = role.isAdmin
+                    ? await RolePermission.find().select("_id").session(session ?? null)
+                    : await resolveDefaultRolePermissionIds(role, session);
                 let newRole = await new Role({
                     _id: new ObjectId(),
                     company: this._id,
                     createdBy: this.createdBy,
                     name: role.name,
-                    slug: this.name.toLowerCase() + ( role.isAdmin ? ":reserved:" : ":default:" ) + role.slug,
+                    description: role.description || "",
+                    slug: defaultRoleSlug(this.name, role),
                     isAdmin: role.isAdmin,
                     isSignupDefault: role.isSignupDefault,
                     canEdit: role.canEdit,
                     canDelete: role.canDelete,
-                    permissions: role.isAdmin ? permissions : []
+                    permissions: permissions as IRole["permissions"],
                 }).save({session});
                 createdRoles.push(newRole);
                 logger.debug(`Created role named '${role.name}' with slug '${role.slug}'`);
@@ -346,7 +402,7 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
             const allCompanyRoles = [...savedRoles, ...createdRoles];
             const allRoleIds = allCompanyRoles.map((role) => role._id);
 
-            let defaultUserIds = await User.find({username: {$in: defaultSysUsers.map((user) => user.username)}}).select("_id").session(session);
+            let defaultUserIds = await User.find({username: {$in: defaultSysUsers.map((user) => user.username)}}).select("_id").session(session ?? null);
             const creatorId = documentObjectId(this.createdBy);
             const defaultIdList = defaultUserIds?.map((user) => user._id) || [];
             const idsForFullRoles = creatorId
@@ -356,26 +412,49 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
             if (idsForFullRoles.length > 0 && allRoleIds.length > 0) {
                 await User.updateMany(
                     {
-                        _id: {
-                            $in: idsForFullRoles
-                        }
+                        _id: {$in: idsForFullRoles},
+                        "roles.company": this._id,
                     },
                     {
-                        $push: {
-                            companies: this._id,
-                            roles: {
-                                active: "active",
-                                unsuccessfulLogins: 0,
-                                lockedOutUntil: null,
-                                lastLogin: null,
-                                rolesCount: allRoleIds.length,
-                                roles: allRoleIds,
-                                company: this._id
-                            }
-                        }
+                        $addToSet: {
+                            "roles.$[slot].roles": {$each: allRoleIds},
+                        },
                     },
-                    {session}
+                    {
+                        session,
+                        arrayFilters: [{"slot.company": this._id}],
+                    }
                 );
+
+                const usersNeedingMembership = await User.find({
+                    _id: {$in: idsForFullRoles},
+                    roles: {$not: {$elemMatch: {company: this._id}}},
+                }).select("_id").session(session ?? null);
+
+                if (usersNeedingMembership.length > 0) {
+                    await User.updateMany(
+                        {
+                            _id: {$in: usersNeedingMembership.map((user) => user._id)},
+                        },
+                        {
+                            $addToSet: {
+                                companies: this._id,
+                            },
+                            $push: {
+                                roles: {
+                                    active: "active",
+                                    unsuccessfulLogins: 0,
+                                    lockedOutUntil: null,
+                                    lastLogin: null,
+                                    rolesCount: allRoleIds.length,
+                                    roles: allRoleIds,
+                                    company: this._id,
+                                },
+                            },
+                        },
+                        {session}
+                    );
+                }
             }
 
         }

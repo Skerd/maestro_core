@@ -134,7 +134,7 @@ router.put(
 type CreateCompanyRoleType = TransactionRequiredParams & AuthenticatedMWType & SchemaSanitizerMWType;
 
 async function createCompanyRole(params: CreateCompanyRoleType & CreateRolesFormType): Promise<ActionMessage> {
-    const { languageCode, company, logger, permissions, name, session, actionUserCtx } = params;
+    const { languageCode, company, logger, permissions, name, description, session, actionUserCtx } = params;
 
     logger.start(`Trying to create company role...`);
     SchemaGuard.checkModelPermission(Role, "create", actionUserCtx);
@@ -154,6 +154,7 @@ async function createCompanyRole(params: CreateCompanyRoleType & CreateRolesForm
             isAdmin: false,
             slug: company.name.toLowerCase().replace(/ /g, "_") + ":" + name.toLowerCase().replace(/ /g, "_"),
             name,
+            ...(description ? {description} : {}),
             permissions: dbIds as any
         },
         { session, logger, languageCode, auditUserId: actionUserCtx.userId }
@@ -193,6 +194,9 @@ async function updateCompanyRole(params: UpdateCompanyRoleType & EditRoleFormTyp
     );
 
     if( sanitizedWriteFields.name ){ companyRole.name = params.name; }
+    if (sanitizedWriteFields.description && typeof params.description === "string") {
+        companyRole.description = params.description;
+    }
     if( sanitizedWriteFields.permissions ){
         const alreadySavedPermissions = companyRole.permissions.map((permission) => permission._id.toString());
         const permissionChanges = Object.entries(permissions).reduce(
@@ -356,22 +360,23 @@ router.post(
 type GetPermissionsType = AuthenticatedMWType & SchemaSanitizerMWType;
 
 async function getPermissions(params: GetPermissionsType & PermissionsFormType): Promise<PermissionDto> {
-    const { logger, languageCode, offset, limit } = params;
+    const { logger, languageCode } = params;
 
     logger.start("Serving permissions...");
 
     const opts = { logger, languageCode };
 
+    // Catalog endpoint: grouping by model is wrong if docs are paginated mid-group.
     const [permissions, total] = await Promise.all([
-        rolePermissionService.find({}, opts, undefined, "_id group tag", undefined, limit, offset),
+        rolePermissionService.find({}, opts, undefined, "_id group tag"),
         rolePermissionService.count({}, opts)
     ]);
 
     const grouped = permissions.reduce((acc, perm) => {
         if (!acc[perm.group]) acc[perm.group] = { self: [], others: [] };
-        if (perm.tag.includes(":self:")) acc[perm.group].self.push(perm);
-        if (perm.tag.includes(":others:")) acc[perm.group].others.push(perm);
-        acc[perm.group].self.push(perm)
+        const entry = { _id: perm._id, group: perm.group, tag: perm.tag };
+        if (perm.tag.includes(":others:")) acc[perm.group].others.push(entry);
+        else acc[perm.group].self.push(entry);
         return acc;
     }, {} as Record<string, { self: any[]; others: any[] }>);
     const data = Object.fromEntries(

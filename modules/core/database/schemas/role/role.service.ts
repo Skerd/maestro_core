@@ -106,6 +106,7 @@ export class RoleService extends BaseCrudService<IRole, typeof Role> {
                     $project: {
                         _id: 1,
                         name: 1,
+                        description: 1,
                         slug: 1,
                         canDelete: 1,
                         canEdit: 1,

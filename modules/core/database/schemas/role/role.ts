@@ -6,12 +6,18 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields
+} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {invalidateRoleAccess} from "@coreModule/utilities/security/roleAccessCache";
 
-export interface IRole extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface IRole extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string,
+    description?: string,
     clearanceLevel: number,
     permissions: IRolePermission[],
     company: ICompany,
@@ -32,6 +38,13 @@ export const RoleSchema: Schema = new Schema<IRole>(
             type: SchemaTypes.String,
             required: true,
             dynamicTableConfiguration: {}
+        },
+        description: {
+            type: SchemaTypes.String,
+            required: false,
+            default: "",
+            trim: true,
+            dynamicTableConfiguration: {},
         },
         permissions: {
             type: [SchemaTypes.ObjectId],
@@ -193,6 +206,7 @@ RoleSchema.post(ROLE_WRITE_QUERIES, async function (this: any) {
 ownershipPlugin(RoleSchema);
 auditPlugin(RoleSchema);
 softDeletePlugin(RoleSchema);
+lifeCyclePlugin(RoleSchema);
 applyRoleIndexes(RoleSchema);
 const Role = mongoose.model<IRole>("Role", RoleSchema);
 normalizeSchemaPermissions(Role);

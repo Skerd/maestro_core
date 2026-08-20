@@ -3,6 +3,7 @@ import {ObjectId} from "mongodb";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import User from "@coreModule/database/schemas/user/user";
+import {ensureModuleDefaultRolesRegistered} from "@coreModule/utilities/modules/ensureModuleDefaultRoles";
 
 export const defaultCompaniesValues: any = {
     address: {
@@ -85,4 +86,15 @@ export async function createCompanies(parentLogger?: serverLogger, demoData: boo
         logger.err(`Error creating companies: ${e.message}`);
         logger.fail("Failed to create companies!");
     }
+}
+
+export async function syncAllCompanyDefaultRoles(parentLogger?: serverLogger): Promise<void> {
+    const logger = getLogger("sync_company_default_roles", parentLogger);
+    logger.start("Syncing default roles for all companies...");
+    await ensureModuleDefaultRolesRegistered(logger);
+    const companies = await Company.find({});
+    for (const company of companies) {
+        await company.createDefaultRoles(logger);
+    }
+    logger.finish(`Finished syncing default roles for ${companies.length} company(ies)!`);
 }

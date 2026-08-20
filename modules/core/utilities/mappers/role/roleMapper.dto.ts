@@ -9,7 +9,11 @@
 import type {IRole} from "@coreModule/database/schemas/role/role";
 import type {IRolePermission} from "@coreModule/database/schemas/rolePermission/rolePermission";
 import type {ObjectId} from "mongodb";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {
+    mapLifeCycleToDTO,
+    mapOwnershipToDTO,
+    mapSoftDeleteToDTO,
+} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 import {
     CompanyRole,
     CompanyRolePermission,
@@ -94,12 +98,14 @@ export function roleToDTO(role: IRole, allPermissions: PermissionProjection[]): 
     return {
         _id: role._id.toString(),
         name: role.name,
+        ...(role.description ? {description: role.description} : {}),
         slug: role.slug,
         canDelete: role.canDelete,
         canEdit: role.canEdit,
         ...(sortedPermissions && {permissions: sortedPermissions}),
         ...mapSoftDeleteToDTO(role),
-        ...mapOwnershipToDTO(role)
+        ...mapOwnershipToDTO(role),
+        ...mapLifeCycleToDTO(role),
     };
 }
 

@@ -57,6 +57,7 @@ import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {createRolePermissions} from "@coreModule/database/schemas/rolePermission/rolePermission.default";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {startApiHeartbeat, stopApiHeartbeat} from "@coreModule/api/health/apiServerHealth";
+import {syncAllCompanyDefaultRoles} from "@coreModule/database/schemas/company/company.defaults";
 
 /** Express application instance */
 const application: Application = express();
@@ -537,6 +538,10 @@ application.listen(SERVER.PORT, async () => {
     logger.debug("Syncing schema-derived role permissions for all registered models...");
     await createRolePermissions(logger);
     logger.debug("Finished syncing schema-derived role permissions!");
+
+    logger.debug("Syncing company default roles...");
+    await syncAllCompanyDefaultRoles(logger);
+    logger.debug("Finished syncing company default roles!");
 
     logger.debug('Setting up server endpoint error handling...');
     setupEndpointsErrorHandling(application, logger);

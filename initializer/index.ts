@@ -30,6 +30,10 @@ import MessagingProvider from "@coreModule/database/schemas/messagingProvider/me
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {createUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {createCompanies} from "@coreModule/database/schemas/company/company.defaults";
+import {
+    registerDefaultRoles,
+    type DefaultRoleDefinition,
+} from "@coreModule/database/schemas/role/role.defaults";
 
 export {defaultCompaniesValues} from "@coreModule/database/schemas/company/company.defaults";
 export {defaultRoles} from "@coreModule/database/schemas/role/role.defaults";
@@ -38,6 +42,7 @@ export {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 type ModuleBootstrap = {
     models?: Model<any>[];
     dropModuleCollections?: () => Promise<void>;
+    defaultRoles?: DefaultRoleDefinition[];
 };
 
 const coreModels: Model<any>[] = [
@@ -97,6 +102,9 @@ async function loadOptionalModuleBootstraps(parentLogger?: serverLogger): Promis
                 continue;
             }
             bootstraps.push(bootstrap);
+            if (Array.isArray(bootstrap.defaultRoles) && bootstrap.defaultRoles.length > 0) {
+                registerDefaultRoles(bootstrap.defaultRoles);
+            }
             logger.debug(`Loaded moduleBootstrap for [${moduleEntry.name}]`);
         } catch (error: any) {
             logger.err(`Failed to load moduleBootstrap for ${moduleEntry.name}`, error);
