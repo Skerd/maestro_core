@@ -490,29 +490,29 @@ application.listen(SERVER.PORT, async () => {
     await connectToMongoDb(logger, true);
     logger.debug(`Connected to mongoDB instance!`);
 
-    // logger.debug(`Starting redis connection supervisor...`);
-    // await connectToRedis(logger);
-    // logger.debug(`Redis connection supervisor started!`);
-    //
-    // logger.debug(`Hydrating service counters from Redis...`);
-    // await hydrateAllServiceCounters();
-    // startServiceCountersFlush();
-    // logger.debug(`Service counters hydrated and flush loop started.`);
-    //
-    // logger.debug("Hydrating UptimeKeeper + starting API heartbeat...");
-    // await uptimeKeeper.hydrate();
-    // await uptimeKeeper.markStart("api", SERVER.API_VERSION || "1.0.0");
-    // uptimeKeeper.start();
-    // startApiHeartbeat();
-    // logger.debug("API server heartbeat started!");
+    logger.debug(`Starting redis connection supervisor...`);
+    await connectToRedis(logger);
+    logger.debug(`Redis connection supervisor started!`);
 
-    // logger.debug(`Starting Kafka connection supervisor...`);
-    // await connectToKafka(logger);
-    // logger.debug(`Kafka connection supervisor started!`);
-    //
-    // logger.debug(`Starting websocket connection supervisor...`);
-    // await connectToWebSocketServer(logger);
-    // logger.debug(`Websocket connection supervisor started!`);
+    logger.debug(`Hydrating service counters from Redis...`);
+    await hydrateAllServiceCounters();
+    startServiceCountersFlush();
+    logger.debug(`Service counters hydrated and flush loop started.`);
+
+    logger.debug("Hydrating UptimeKeeper + starting API heartbeat...");
+    await uptimeKeeper.hydrate();
+    await uptimeKeeper.markStart("api", SERVER.API_VERSION || "1.0.0");
+    uptimeKeeper.start();
+    startApiHeartbeat();
+    logger.debug("API server heartbeat started!");
+
+    logger.debug(`Starting Kafka connection supervisor...`);
+    await connectToKafka(logger);
+    logger.debug(`Kafka connection supervisor started!`);
+
+    logger.debug(`Starting websocket connection supervisor...`);
+    await connectToWebSocketServer(logger);
+    logger.debug(`Websocket connection supervisor started!`);
 
     logger.debug("Registering all notification handlers...");
     await registerAllNotificationHandlers(logger);
