@@ -32,6 +32,8 @@ export interface UnifiedMediaUploadOptions {
      * Example: { mainImage: 1, imageGallery: 10, videoGallery: 10 }
      */
     fields?: Record<string, number>;
+    /** Per-field MIME allowlist. Files on a listed field must match one of the types (in addition to the global allowlist). */
+    fieldMimeTypes?: Record<string, string[]>;
     /** Maximum number of files (default: 10) - used when fieldName is provided */
     maxFiles?: number;
     /** Maximum file size in bytes (default: 50MB) */
@@ -450,6 +452,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
     const {
         fieldName = 'files',
         fields,
+        fieldMimeTypes,
         maxFiles = FILE_UPLOAD.MAX_FILES_UPLOADED,
         maxFileSize = FILE_UPLOAD.MAX_FILE_SIZE,
         enableSecurityScan = true,
@@ -472,6 +475,15 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         try {
             // Never trust client MIME type - validate it
             validateFileType(file.mimetype, file.originalname, languageCode);
+            const allowedForField = fieldMimeTypes?.[file.fieldname];
+            if (allowedForField?.length && !allowedForField.includes(file.mimetype)) {
+                throw apiValidationException(
+                    "file_type_not_allowed",
+                    null,
+                    null,
+                    languageCode
+                );
+            }
             cb(null, true);
         } catch (error: any) {
             // Log file rejection for debugging
