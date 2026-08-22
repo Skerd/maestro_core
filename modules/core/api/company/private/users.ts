@@ -340,6 +340,7 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
             filter["roles.roles"] = {
                 $in: findCorrectRoles
             };
+            filter.isBot = { $ne: true };
         }
         else {
             const rolesOr = [
