@@ -235,11 +235,12 @@ async function GetUserUsername(params: AuthenticatedMWType): Promise<EmailPrefer
  * @body {UpdateEmailPreferenceFormType} - New email address
  * @returns {Promise<UpdateEmailPreferenceFormResponseType>} Success message
  * 
- * @throws {apiValidationException} If email is already in use by another user
+ * @throws {apiValidationException} If new email is the same as the current email, or already in use by another user
  * 
  * @remarks
  * - Does not immediately change the username; sends activation email instead
  * - User must verify the new email before the change takes effect
+ * - Rejects when new email matches the current username (case-insensitive)
  * - Validates email uniqueness before sending activation email
  * - Note: This endpoint doesn't directly update the user document, so no audit log is created here
  */
@@ -263,6 +264,10 @@ async function UpdateUserUsername(params: TransactionRequiredParams & UpdateEmai
     logger.start(`Trying to update user username...`);
 
     SchemaGuard.sanitizeFields(User, {username: {}}, "write", actionUserCtx, languageCode);
+
+    if (newEmail.toLowerCase() === userInfo.username.toLowerCase()) {
+        throw apiValidationException("email_same_as_current", null, null, languageCode);
+    }
 
     const foundUser = await userService.findOne(
         {
