@@ -2,11 +2,9 @@ import * as fs from "fs";
 import * as path from "path";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {CLIENT_SIDE, CONSTANTS, EMAIL} from "@coreModule/environment";
-import {applyPlaceholders, loadEmailStrings} from "./emailLocale";
+import {applyPlaceholders, loadEmailStrings, type EmailStrings} from "./emailLocale";
 import {sendMail} from "./mailDeliveryService";
 
-const forgotPasswordImagePath = path.join(__dirname, "./static/images/image-1.png");
-const imageCID = "imageCID@example.com";
 const fallbackLanguageCode = "en-US";
 
 function canSendEmails(): boolean {
@@ -15,6 +13,42 @@ function canSendEmails(): boolean {
 
 function readTemplateHtml(templateDir: string, filename: string): string {
     return fs.readFileSync(path.join(templateDir, filename), "utf8");
+}
+
+/**
+ * Slots shared by every core auth template (`templates/*` all use the same layout).
+ * `note` is the highlighted security strip; templates that vary it (e.g. forgot
+ * password) pass an override.
+ */
+function layoutStrings(strings: EmailStrings, noteOverride?: string): Record<string, string> {
+    return {
+        htmlLang: strings.htmlLang ?? "en",
+        preheader: strings.preheader ?? "",
+        heading: strings.heading ?? "",
+        greeting: strings.greeting ?? "",
+        body: strings.body ?? "",
+        ctaLabel: strings.ctaLabel ?? "",
+        fallbackLabel: strings.fallbackLabel ?? "",
+        note: noteOverride ?? strings.note ?? "",
+        ignore: strings.ignore ?? "",
+        footerNote: strings.footerNote ?? "",
+        copyright: strings.copyright ?? "",
+    };
+}
+
+/** Removes an optional `<!-- name:start -->…<!-- name:end -->` section from a template. */
+function removeOptionalBlock(html: string, name: string): string {
+    const pattern = new RegExp(`\\s*<!--\\s*${name}:start\\s*-->[\\s\\S]*?<!--\\s*${name}:end\\s*-->`, "g");
+    return html.replace(pattern, "");
+}
+
+/** Strips the marker comments while keeping the section they wrap. */
+function keepOptionalBlock(html: string, name: string): string {
+    return html.replace(new RegExp(`<!--\\s*${name}:(start|end)\\s*-->`, "g"), "");
+}
+
+function currentYear(): string {
+    return new Date().getFullYear().toString();
 }
 
 async function deliverOrThrow(
@@ -49,27 +83,30 @@ export async function sendInvitationMail(
     const strings = loadEmailStrings(["invitation"], languageCode);
     let emailTemplate = readTemplateHtml(templateDir, "invitation.html");
 
+    const trimmedWelcomeMessage = welcomeMessage?.trim() ?? "";
+    emailTemplate = trimmedWelcomeMessage
+        ? keepOptionalBlock(emailTemplate, "welcomeMessage")
+        : removeOptionalBlock(emailTemplate, "welcomeMessage");
+
     emailTemplate = applyPlaceholders(emailTemplate, {
-        heading: strings.heading ?? "",
-        body: strings.body ?? "",
-        ctaBefore: strings.ctaBefore ?? "",
-        ctaLink: strings.ctaLink ?? "",
-        ctaAfter: strings.ctaAfter ?? "",
-        imageAlt: strings.imageAlt ?? "",
-        copyright: strings.copyright ?? "",
+        ...layoutStrings(strings),
+        welcomeMessageLabel: strings.welcomeMessageLabel ?? "",
     });
 
     const activationUrl = CLIENT_SIDE.HOST + "/authenticate/acceptInvitation/" + invitationCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, activationUrl);
-    emailTemplate = applyPlaceholders(emailTemplate, {
+
+    const values = {
         username: fullName,
-        welcomeMessage: welcomeMessage || "",
+        welcomeMessage: trimmedWelcomeMessage,
         inviterName,
         companyName,
         pageName,
-    });
+        year: currentYear(),
+    };
+    emailTemplate = applyPlaceholders(emailTemplate, values);
 
-    const subject = applyPlaceholders(strings.subject ?? "", {pageName});
+    const subject = applyPlaceholders(strings.subject ?? "", values);
 
     await deliverOrThrow(
         companyId,
@@ -77,13 +114,6 @@ export async function sendInvitationMail(
             to: email,
             subject,
             html: emailTemplate,
-            attachments: [
-                {
-                    filename: "companyTick.png",
-                    path: forgotPasswordImagePath,
-                    cid: imageCID,
-                },
-            ],
         },
         languageCode,
         "invitation_email",
@@ -106,23 +136,19 @@ export async function sendSignUpMail(
     const strings = loadEmailStrings(["activateAccount"], languageCode);
     let emailTemplate = readTemplateHtml(templateDir, "activateAccount.html");
 
-    emailTemplate = applyPlaceholders(emailTemplate, {
-        heading: strings.heading ?? "",
-        bodyBefore: strings.bodyBefore ?? "",
-        bodyLink: strings.bodyLink ?? "",
-        bodyAfter: strings.bodyAfter ?? "",
-        imageAlt: strings.imageAlt ?? "",
-        copyright: strings.copyright ?? "",
-    });
+    emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings));
 
     const activationUrl = CLIENT_SIDE.HOST + "/authenticate/activateAccount/" + activationCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, activationUrl);
-    emailTemplate = applyPlaceholders(emailTemplate, {
+
+    const values = {
         username,
         pageName,
-    });
+        year: currentYear(),
+    };
+    emailTemplate = applyPlaceholders(emailTemplate, values);
 
-    const subject = applyPlaceholders(strings.subject ?? "", {pageName});
+    const subject = applyPlaceholders(strings.subject ?? "", values);
 
     await deliverOrThrow(
         companyId,
@@ -130,13 +156,6 @@ export async function sendSignUpMail(
             to: email,
             subject,
             html: emailTemplate,
-            attachments: [
-                {
-                    filename: "companyTick.png",
-                    path: forgotPasswordImagePath,
-                    cid: imageCID,
-                },
-            ],
         },
         languageCode,
         "activation_email",
@@ -164,24 +183,19 @@ export async function sendForgetPasswordMail(
         ? (strings.securityOnceOpen ?? "")
         : (strings.security24h ?? "");
 
-    emailTemplate = applyPlaceholders(emailTemplate, {
-        heading: strings.heading ?? "",
-        introBefore: strings.introBefore ?? "",
-        introLink: strings.introLink ?? "",
-        introAfter: strings.introAfter ?? "",
-        imageAlt: strings.imageAlt ?? "",
-        copyright: strings.copyright ?? "",
-        securityReasons,
-    });
+    emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings, securityReasons));
 
     const resetUrl = CLIENT_SIDE.HOST + "/authenticate/resetPassword/" + resetPasswordCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, resetUrl);
-    emailTemplate = applyPlaceholders(emailTemplate, {
+
+    const values = {
         username,
         pageName,
-    });
+        year: currentYear(),
+    };
+    emailTemplate = applyPlaceholders(emailTemplate, values);
 
-    const subject = strings.subject ?? "";
+    const subject = applyPlaceholders(strings.subject ?? "", values);
 
     await deliverOrThrow(
         companyId,
@@ -189,13 +203,6 @@ export async function sendForgetPasswordMail(
             to: email,
             subject,
             html: emailTemplate,
-            attachments: [
-                {
-                    filename: "companyTick.png",
-                    path: forgotPasswordImagePath,
-                    cid: imageCID,
-                },
-            ],
         },
         languageCode,
         "forgetPassword_email",
@@ -218,23 +225,19 @@ export async function sendMfaDeactivationMail(
     const strings = loadEmailStrings(["deactivateOtp"], languageCode);
     let emailTemplate = readTemplateHtml(templateDir, "deactivateOtp.html");
 
-    emailTemplate = applyPlaceholders(emailTemplate, {
-        heading: strings.heading ?? "",
-        bodyBefore: strings.bodyBefore ?? "",
-        bodyLink: strings.bodyLink ?? "",
-        bodyAfter: strings.bodyAfter ?? "",
-        imageAlt: strings.imageAlt ?? "",
-        copyright: strings.copyright ?? "",
-    });
+    emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings));
 
     const deactivateUrl = CLIENT_SIDE.HOST + "/authenticate/deactivateOTP/" + mfaDeactivationCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, deactivateUrl);
-    emailTemplate = applyPlaceholders(emailTemplate, {
+
+    const values = {
         username,
         pageName,
-    });
+        year: currentYear(),
+    };
+    emailTemplate = applyPlaceholders(emailTemplate, values);
 
-    const subject = strings.subject ?? "";
+    const subject = applyPlaceholders(strings.subject ?? "", values);
 
     await deliverOrThrow(
         companyId,
@@ -242,13 +245,6 @@ export async function sendMfaDeactivationMail(
             to: email,
             subject,
             html: emailTemplate,
-            attachments: [
-                {
-                    filename: "companyTick.png",
-                    path: forgotPasswordImagePath,
-                    cid: imageCID,
-                },
-            ],
         },
         languageCode,
         "mfa_disable_email",

@@ -1,10 +1,15 @@
 {
-  "subject": "Ju jeni ftuar në {pageName}!",
+  "htmlLang": "sq",
+  "subject": "{inviterName} ju ftoi në {companyName}",
+  "preheader": "Pranoni ftesën dhe vendosni fjalëkalimin tuaj.",
   "heading": "Ju jeni ftuar në {companyName}",
-  "body": "{inviterName} ju ka ftuar të bashkoheni me {companyName} në {pageName}.",
-  "ctaBefore": "Ju lutem klikoni ",
-  "ctaLink": "këtu",
-  "ctaAfter": " për të pranuar ftesën dhe për të vendosur fjalëkalimin tuaj.",
-  "imageAlt": "Sukses",
-  "copyright": "© 2024 Të gjitha të drejtat e rezervuara"
+  "greeting": "Përshëndetje {username},",
+  "body": "{inviterName} ju ka ftuar të bashkoheni me {companyName} në {pageName}. Pranoni ftesën për të vendosur fjalëkalimin tuaj dhe për të marrë akses.",
+  "welcomeMessageLabel": "Një mesazh nga {inviterName}",
+  "ctaLabel": "Prano ftesën",
+  "fallbackLabel": "Nuk funksionon butoni? Kopjoni dhe ngjisni këtë link në shfletuesin tuaj:",
+  "note": "Ky link ftese është unik për ju — ju lutemi mos e ndani dhe mos e përcillni këtë email.",
+  "ignore": "Nëse nuk e prisnit këtë ftesë, mund ta shpërfillni këtë email.",
+  "footerNote": "E keni marrë këtë email sepse {inviterName} ju ftoi në {companyName} në {pageName}.",
+  "copyright": "© {year} {pageName}. Të gjitha të drejtat e rezervuara."
 }

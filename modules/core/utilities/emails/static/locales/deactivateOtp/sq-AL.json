@@ -1,9 +1,14 @@
 {
-  "subject": "Kërkesa për çaktivizimin e MFA",
-  "heading": "Kërkesa për çaktivizimin e MFA!",
-  "bodyBefore": "Kërkesa për çaktivizimin e MFA është aprovuar. Ju lutem klikoni ",
-  "bodyLink": "këtu",
-  "bodyAfter": " për të çaktivizuar MFA-n.",
-  "imageAlt": "Sukses",
-  "copyright": "© 2024 Të gjitha të drejtat e rezervuara"
+  "htmlLang": "sq",
+  "subject": "Konfirmoni çaktivizimin e MFA-së",
+  "preheader": "Konfirmoni kërkesën për të çaktivizuar vërtetimin me shumë faktorë.",
+  "heading": "Çaktivizoni MFA-në",
+  "greeting": "Përshëndetje {username},",
+  "body": "Morëm një kërkesë për të çaktivizuar vërtetimin me shumë faktorë (MFA) në llogarinë tuaj në {pageName}. Konfirmoni më poshtë për ta përfunduar.",
+  "ctaLabel": "Konfirmo çaktivizimin",
+  "fallbackLabel": "Nuk funksionon butoni? Kopjoni dhe ngjisni këtë link në shfletuesin tuaj:",
+  "note": "Ky link është unik për ju — ju lutemi mos e ndani dhe mos e përcillni këtë email.",
+  "ignore": "Nëse nuk e keni kërkuar ju çaktivizimin e MFA-së, shpërfilleni këtë email dhe konsideroni ndryshimin e fjalëkalimit tuaj.",
+  "footerNote": "E keni marrë këtë email sepse u bë një kërkesë për çaktivizimin e MFA-së në llogarinë tuaj në {pageName}.",
+  "copyright": "© {year} {pageName}. Të gjitha të drejtat e rezervuara."
 }

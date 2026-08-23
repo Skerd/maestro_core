@@ -1,11 +1,15 @@
 {
-  "subject": "Password reset request",
-  "heading": "Reset password request!",
-  "introBefore": "Your request to reset your password has been approved. Please click ",
-  "introLink": "here",
-  "introAfter": " to change your password.",
-  "securityOnceOpen": "For security reasons, the reset password link can only be opened 1 (one) time.",
-  "security24h": "For security reasons, the reset password link will be available for the next 24 hours.",
-  "imageAlt": "Success",
-  "copyright": "© 2024 All Rights Reserved"
+  "htmlLang": "en",
+  "subject": "Reset your {pageName} password",
+  "preheader": "Choose a new password for your account.",
+  "heading": "Reset your password",
+  "greeting": "Hi {username},",
+  "body": "We received a request to reset the password for your {pageName} account. Click the button below to choose a new one.",
+  "ctaLabel": "Reset my password",
+  "fallbackLabel": "Button not working? Copy and paste this link into your browser:",
+  "securityOnceOpen": "For security reasons, this reset link can only be opened 1 (one) time.",
+  "security24h": "For security reasons, this reset link will be available for the next 24 hours.",
+  "ignore": "If you did not request a password reset, you can safely ignore this email — your password stays unchanged.",
+  "footerNote": "You received this email because a password reset was requested for your {pageName} account.",
+  "copyright": "© {year} {pageName}. All rights reserved."
 }

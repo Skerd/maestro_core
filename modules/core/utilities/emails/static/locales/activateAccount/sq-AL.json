@@ -1,9 +1,14 @@
 {
-  "subject": "Mirë se vini në {pageName}!",
-  "heading": "Mirë se vini në {pageName}",
-  "bodyBefore": "Ju lutem klikoni ",
-  "bodyLink": "këtu",
-  "bodyAfter": " për të aktivizuar llogarinë tuaj.",
-  "imageAlt": "Sukses",
-  "copyright": "© 2024 Të gjitha të drejtat e rezervuara"
+  "htmlLang": "sq",
+  "subject": "Aktivizoni llogarinë tuaj në {pageName}",
+  "preheader": "Konfirmoni adresën tuaj të email-it për të aktivizuar llogarinë.",
+  "heading": "Konfirmoni email-in tuaj",
+  "greeting": "Përshëndetje {username},",
+  "body": "Mirë se vini në {pageName}. Ju ndan vetëm një hap — konfirmoni adresën tuaj të email-it për të aktivizuar llogarinë dhe për të filluar.",
+  "ctaLabel": "Aktivizo llogarinë",
+  "fallbackLabel": "Nuk funksionon butoni? Kopjoni dhe ngjisni këtë link në shfletuesin tuaj:",
+  "note": "Ky link aktivizimi është unik për ju — ju lutemi mos e ndani dhe mos e përcillni këtë email.",
+  "ignore": "Nëse nuk keni krijuar një llogari në {pageName}, mund ta shpërfillni këtë email.",
+  "footerNote": "E keni marrë këtë email sepse me këtë adresë u krijua një llogari në {pageName}.",
+  "copyright": "© {year} {pageName}. Të gjitha të drejtat e rezervuara."
 }

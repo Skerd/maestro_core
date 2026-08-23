@@ -1,11 +1,15 @@
 {
-  "subject": "Kërkesa për ndryshim fjalëkalimi",
-  "heading": "Kërkesa juaj për ndryshim fjalëkalimi!",
-  "introBefore": "Kërkesa juaj për ndryshim fjalëkalimi është aprovuar. Ju lutem klikoni ",
-  "introLink": "këtu",
-  "introAfter": " për të ndryshuar fjalëkalimin tuaj.",
-  "securityOnceOpen": "Për arsye sigurie, linku për ndryshim fjalëkalimit mund të hapet vetëm 1 (një) herë.",
-  "security24h": "Për arsye sigurie, linku për ndryshim fjalëkalimit do të jetë i vlefshëm për vetëm 24 orë.",
-  "imageAlt": "Sukses",
-  "copyright": "© 2024 Të gjitha të drejtat e rezervuara"
+  "htmlLang": "sq",
+  "subject": "Rivendosni fjalëkalimin tuaj në {pageName}",
+  "preheader": "Zgjidhni një fjalëkalim të ri për llogarinë tuaj.",
+  "heading": "Rivendosni fjalëkalimin",
+  "greeting": "Përshëndetje {username},",
+  "body": "Morëm një kërkesë për të rivendosur fjalëkalimin e llogarisë suaj në {pageName}. Klikoni butonin më poshtë për të zgjedhur një fjalëkalim të ri.",
+  "ctaLabel": "Rivendos fjalëkalimin",
+  "fallbackLabel": "Nuk funksionon butoni? Kopjoni dhe ngjisni këtë link në shfletuesin tuaj:",
+  "securityOnceOpen": "Për arsye sigurie, ky link rivendosjeje mund të hapet vetëm 1 (një) herë.",
+  "security24h": "Për arsye sigurie, ky link rivendosjeje do të jetë i vlefshëm për 24 orët e ardhshme.",
+  "ignore": "Nëse nuk e keni kërkuar ju rivendosjen e fjalëkalimit, mund ta shpërfillni këtë email — fjalëkalimi juaj mbetet i pandryshuar.",
+  "footerNote": "E keni marrë këtë email sepse u kërkua rivendosja e fjalëkalimit për llogarinë tuaj në {pageName}.",
+  "copyright": "© {year} {pageName}. Të gjitha të drejtat e rezervuara."
 }
