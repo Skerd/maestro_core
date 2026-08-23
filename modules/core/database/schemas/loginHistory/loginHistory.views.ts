@@ -54,6 +54,10 @@ export const loginHistorySheetView: ViewConfig = {
                                 name: "status",
                                 widget: "#DisplayCard",
                                 label: "status",
+                                widgetProps: {
+                                    languageKeyCategory: "statusValues",
+                                    type: "enum",
+                                },
                             },
                         },
                         {
@@ -63,6 +67,7 @@ export const loginHistorySheetView: ViewConfig = {
                                 name: "mfa",
                                 widget: "#DisplayCard",
                                 label: "mfa",
+                                widgetProps: {type: "boolean"},
                             },
                         },
                     ],
@@ -92,10 +97,21 @@ export const loginHistorySheetView: ViewConfig = {
                             permissions: {read: "browser"},
                             field: {name: "browser", widget: "#DisplayCard", label: "browser"},
                         },
+                    ],
+                },
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 1},
+                    children: [
                         {
                             render: "#DisplayCard",
                             permissions: {read: "userAgent"},
-                            field: {name: "userAgent", widget: "#DisplayCard", label: "userAgent"},
+                            field: {
+                                name: "userAgent",
+                                widget: "#DisplayCard",
+                                label: "userAgent",
+                                widgetProps: {type: "longText"},
+                            },
                         },
                     ],
                 },
