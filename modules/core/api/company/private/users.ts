@@ -771,7 +771,8 @@ async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<
                 "requests.invitation": {
                     invitedBy: userInfo._id,
                     invitedAt: Date.now(),
-                    company: company._id
+                    company: company._id,
+                    welcomeMessage: welcomeMessage || "",
                 }
             },
             opts

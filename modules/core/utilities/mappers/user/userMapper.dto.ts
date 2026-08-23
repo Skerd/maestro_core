@@ -53,6 +53,7 @@ function mapRequests(req: IUser["requests"]): CompanyUserRequestsType | undefine
             invitationExpiresAt: toDate(req.invitation.invitationExpiresAt),
             accepted: req.invitation.accepted,
             acceptedAt: toDate(req.invitation.acceptedAt),
+            welcomeMessage: req.invitation.welcomeMessage || undefined,
         };
     }
     return Object.keys(out).length ? out : undefined;

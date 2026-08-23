@@ -1471,9 +1471,10 @@ UserSchema.methods.sendInvitationEmail = async function (welcomeMessage: string,
     const invitationExpiresAt = new Date();
     invitationExpiresAt.setDate(invitationExpiresAt.getDate() + 7); // Expires in 7 days
 
-    let updateInvitationRequest = {
+    let updateInvitationRequest: Record<string, unknown> = {
         "requests.invitation.code": invitationCode,
         "requests.invitation.invitationExpiresAt": invitationExpiresAt,
+        "requests.invitation.welcomeMessage": welcomeMessage || "",
     }
 
     let unsetLockedOut = false;
