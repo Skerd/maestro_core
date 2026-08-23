@@ -854,7 +854,9 @@ async function unlockActivation(body: any): Promise<UnlockActivationFormResponse
         );
         targetUser.$locals = targetUser.$locals || {};
         targetUser.$locals.auditUserId = actionUserCtx.userId;
-        await targetUser.sendActivationEmail(targetUser.username, languageCode, session, logger);
+        // Prefer pending activation email (email-change flow); fall back to current username
+        const activationEmail = targetUser.requests?.activation?.email || targetUser.username;
+        await targetUser.sendActivationEmail(activationEmail, languageCode, session, logger);
         logger.info(`Activation email resent to user ${userInfo._id}`);
     }
 
@@ -1104,7 +1106,9 @@ async function resendActivationEmail(body: AuthenticatedMWType & TransactionRequ
 
     userInfo.$locals = userInfo.$locals || {};
     userInfo.$locals.auditUserId = actionUserCtx.userId;
-    await userInfo.sendActivationEmail(userInfo.username, languageCode, session, logger);
+    // Prefer pending activation email (email-change flow); fall back to current username
+    const activationEmail = userInfo.requests?.activation?.email || userInfo.username;
+    await userInfo.sendActivationEmail(activationEmail, languageCode, session, logger);
 
     const receiverUser = await userService.findByIdOrThrow(
         userInfo._id,
