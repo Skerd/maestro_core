@@ -56,6 +56,11 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
                 self:   {write: "no-permission", publicRead: false},
                 others: {write: "no-permission", publicRead: false},
             },
+            dynamicTableConfiguration: {
+                filterable: false,
+                sortable: false,
+                hideColumn: true
+            }
         },
         fromPhone: {
             type: SchemaTypes.String,
