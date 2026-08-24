@@ -21,7 +21,7 @@ export function smtpServerToDTO(doc: ISmtpServer): SmtpServer {
         fromEmail: doc.fromEmail,
         fromName: doc.fromName?.trim() ? doc.fromName : undefined,
         replyTo: doc.replyTo?.trim() ? doc.replyTo : undefined,
-        lastTestedAt: doc.lastTestedAt?.toISOString(),
+        lastTestedAt: doc.lastTestedAt,
         lastTestStatus: doc.lastTestStatus,
         lastTestMessage: doc.lastTestMessage?.trim() ? doc.lastTestMessage : undefined,
         ...mapSoftDeleteToDTO(doc),

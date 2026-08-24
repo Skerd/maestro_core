@@ -22,80 +22,52 @@ export class SmtpServerActions {
     async testConnection(params: Record<string, any>): Promise<TestSmtpConnectionResponse> {
         const {logger, languageCode, company, actionUserCtx, session, _id} = params;
 
-        let testEmail = params.testEmail?.trim();
-        if (!testEmail) {
-            const actionUser = await userService.findById(actionUserCtx.userId, {logger, languageCode}, undefined, "username");
-            testEmail = actionUser?.username?.trim();
-        }
-        if (!testEmail) {
+        const smtpServer = await smtpServerService.findOneOrThrow(
+            {
+                _id: new ObjectId(_id),
+                company: company._id
+            },
+            {logger, languageCode, session},
+        );
+        const config = smtpServerToConnectionConfig(smtpServer);
+
+        const actionUser = await userService.findById(actionUserCtx.userId, {logger, languageCode}, undefined, "username");
+        if (!actionUser.username) {
             throw apiValidationException("test_email_required", "testEmail", null, languageCode);
         }
 
-        let config: ReturnType<typeof smtpServerToConnectionConfig>;
-        let serverId: ObjectId | undefined;
-        let serverName: string | undefined;
-
-        if (_id) {
-            const doc = await smtpServerService.findOneOrThrow(
-                {_id: new ObjectId(_id), company: company._id},
-                {logger, languageCode, session},
-            );
-            serverId = doc._id;
-            serverName = doc.name;
-            const passwordOverride = params.password?.trim() ? params.password : undefined;
-            config = smtpServerToConnectionConfig(doc, passwordOverride);
-        } else {
-            const host = params.host?.trim();
-            const port = Number(params.port);
-            const encryption = params.encryption as SmtpEncryptionType;
-            const authType = params.authType as SmtpAuthType;
-            if (!host || !port || !encryption || !authType) {
-                throw apiValidationException("smtp_test_fields_required", "", null, languageCode);
-            }
-            config = {
-                host,
-                port,
-                encryption,
-                authType,
-                username: params.username?.trim() || undefined,
-                password: params.password?.trim() || undefined,
-                fromEmail: params.fromEmail?.trim() || testEmail,
-                fromName: params.fromName?.trim() || undefined,
-            };
-            serverName = params.name?.trim();
-        }
-
         try {
-            const result = await testSmtpConnection(config, testEmail, serverName, languageCode);
+            const result = await testSmtpConnection(
+                config,
+                actionUser?.username?.trim(),
+                smtpServer.name,
+                languageCode
+            );
+            const lastTest: TestSmtpConnectionResponse = {
+                lastTestedAt: new Date(),
+                lastTestStatus: "ok",
+                lastTestMessage: result.message
+            };
+            await smtpServerService.updateById(
+                smtpServer._id,
+                lastTest,
+                {session, logger, languageCode, auditUserId: actionUserCtx.userId},
+            );
+            invalidateCompanyMailCache(company._id);
+            return lastTest;
 
-            if (serverId) {
-                await smtpServerService.updateById(
-                    serverId,
-                    {
-                        lastTestedAt: new Date(),
-                        lastTestStatus: "ok",
-                        lastTestMessage: result.message,
-                    },
-                    {session, logger, languageCode, auditUserId: actionUserCtx.userId},
-                );
-                invalidateCompanyMailCache(company._id);
-            }
-
-            return result;
         } catch (err) {
-            if (serverId) {
-                const failMessage = err instanceof ServerError ? err.message : "SMTP connection test failed";
-                await smtpServerService.updateById(
-                    serverId,
-                    {
-                        lastTestedAt: new Date(),
-                        lastTestStatus: "failed",
-                        lastTestMessage: failMessage.slice(0, 500),
-                    },
-                    {session, logger, languageCode, auditUserId: actionUserCtx.userId},
-                );
-                invalidateCompanyMailCache(company._id);
-            }
+            const failMessage = err instanceof ServerError ? err.message : "SMTP connection test failed";
+            await smtpServerService.updateById(
+                smtpServer._id,
+                {
+                    lastTestedAt: new Date(),
+                    lastTestStatus: "failed",
+                    lastTestMessage: failMessage.slice(0, 500),
+                },
+                {session, logger, languageCode, auditUserId: actionUserCtx.userId},
+            );
+            invalidateCompanyMailCache(company._id);
             throw err;
         }
     }
