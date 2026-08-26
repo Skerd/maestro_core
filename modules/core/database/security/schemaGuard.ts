@@ -227,7 +227,7 @@ export class SchemaGuard {
     }
 
     /* ---------------------------------------------
-       🔥 FIXED: DEEP POPULATE BUILDER
+       DEEP POPULATE BUILDER
     ---------------------------------------------- */
 
     private static buildPopulate(
@@ -245,33 +245,10 @@ export class SchemaGuard {
             const nestedKeys = config?.keys;
 
             // ---- LEAF ----
+            // Keep as a selected path only. Populate happens in the REF branch when
+            // collected/sanitized fields include nested `keys` (from refAllowlist).
             if (!nestedKeys || !Object.keys(nestedKeys).length) {
                 select.push(field);
-                const casterOpts = (schemaType as any)?.caster?.options;
-                const opts = schemaType.options || {};
-                const isLeafRef = Boolean(opts.ref) || Boolean(casterOpts?.ref);
-                const allowlist = opts.refAllowlist || casterOpts?.refAllowlist;
-                const allowKeys =
-                    allowlist?.keys && typeof allowlist.keys === "object"
-                        ? allowlist.keys
-                        : undefined;
-                if (isLeafRef && allowKeys && Object.keys(allowKeys).length) {
-                    const refSchema = SchemaGuard.resolveSchemaForType(schemaType);
-                    if (refSchema) {
-                        const child = SchemaGuard.buildPopulate(allowKeys, refSchema);
-                        const pop: Record<string, unknown> = { path: field };
-                        if (child.select.length) {
-                            pop.select = child.select.join(" ");
-                        }
-                        if (child.populate.length) {
-                            pop.populate =
-                                child.populate.length === 1
-                                    ? child.populate[0]
-                                    : child.populate;
-                        }
-                        populate.push(pop);
-                    }
-                }
                 continue;
             }
 
