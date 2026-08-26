@@ -1,0 +1,14 @@
+{
+  "htmlLang": "it",
+  "subject": "Confermi la disattivazione dell'autenticazione a più fattori",
+  "preheader": "Confermi la richiesta di disattivazione dell'autenticazione a più fattori.",
+  "heading": "Disattivare l'autenticazione a più fattori",
+  "greeting": "Buongiorno {username},",
+  "body": "Abbiamo ricevuto una richiesta di disattivazione dell'autenticazione a più fattori (MFA) sul suo account {pageName}. Confermi qui sotto per completare l'operazione.",
+  "ctaLabel": "Conferma disattivazione",
+  "fallbackLabel": "Il pulsante non funziona? Copi e incolli questo link nel suo browser:",
+  "note": "Questo link è personale — non condivida né inoltri questa e-mail.",
+  "ignore": "Se non ha richiesto la disattivazione dell'autenticazione a più fattori, ignori questa e-mail e valuti di cambiare la password.",
+  "footerNote": "Riceve questa e-mail perché è stata effettuata una richiesta di disattivazione dell'autenticazione a più fattori sul suo account {pageName}.",
+  "copyright": "© {year} {pageName}. Tutti i diritti riservati."
+}

@@ -1,0 +1,15 @@
+{
+  "htmlLang": "it",
+  "subject": "{inviterName} la ha invitata in {companyName}",
+  "preheader": "Accetti l'invito e imposti la sua password.",
+  "heading": "È stato invitato in {companyName}",
+  "greeting": "Buongiorno {username},",
+  "body": "{inviterName} la ha invitata a unirsi a {companyName} su {pageName}. Accetti l'invito per impostare la sua password e ottenere l'accesso.",
+  "welcomeMessageLabel": "Un messaggio da {inviterName}",
+  "ctaLabel": "Accetta invito",
+  "fallbackLabel": "Il pulsante non funziona? Copi e incolli questo link nel suo browser:",
+  "note": "Questo link di invito è personale — non condivida né inoltri questa e-mail.",
+  "ignore": "Se non si aspettava questo invito, può ignorare questa e-mail.",
+  "footerNote": "Riceve questa e-mail perché {inviterName} la ha invitata in {companyName} su {pageName}.",
+  "copyright": "© {year} {pageName}. Tutti i diritti riservati."
+}

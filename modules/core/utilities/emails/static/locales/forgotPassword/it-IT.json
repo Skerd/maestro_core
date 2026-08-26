@@ -1,0 +1,15 @@
+{
+  "htmlLang": "it",
+  "subject": "Reimposti la password di {pageName}",
+  "preheader": "Scelga una nuova password per il suo account.",
+  "heading": "Reimpostare la password",
+  "greeting": "Buongiorno {username},",
+  "body": "Abbiamo ricevuto una richiesta di reimpostazione della password del suo account {pageName}. Clicchi sul pulsante qui sotto per sceglierne una nuova.",
+  "ctaLabel": "Reimposta password",
+  "fallbackLabel": "Il pulsante non funziona? Copi e incolli questo link nel suo browser:",
+  "securityOnceOpen": "Per motivi di sicurezza, questo link può essere aperto una sola volta.",
+  "security24h": "Per motivi di sicurezza, questo link sarà valido per le prossime 24 ore.",
+  "ignore": "Se non ha richiesto la reimpostazione della password, può ignorare questa e-mail — la sua password resta invariata.",
+  "footerNote": "Riceve questa e-mail perché è stata richiesta la reimpostazione della password del suo account {pageName}.",
+  "copyright": "© {year} {pageName}. Tutti i diritti riservati."
+}

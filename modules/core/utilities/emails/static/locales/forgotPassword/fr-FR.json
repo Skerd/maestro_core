@@ -1,0 +1,15 @@
+{
+  "htmlLang": "fr",
+  "subject": "Réinitialisez votre mot de passe {pageName}",
+  "preheader": "Choisissez un nouveau mot de passe pour votre compte.",
+  "heading": "Réinitialiser votre mot de passe",
+  "greeting": "Bonjour {username},",
+  "body": "Nous avons reçu une demande de réinitialisation du mot de passe de votre compte {pageName}. Cliquez sur le bouton ci-dessous pour en choisir un nouveau.",
+  "ctaLabel": "Réinitialiser mon mot de passe",
+  "fallbackLabel": "Le bouton ne fonctionne pas ? Copiez et collez ce lien dans votre navigateur :",
+  "securityOnceOpen": "Pour des raisons de sécurité, ce lien ne peut être ouvert qu'une seule fois.",
+  "security24h": "Pour des raisons de sécurité, ce lien restera valable pendant les 24 prochaines heures.",
+  "ignore": "Si vous n'avez pas demandé la réinitialisation de votre mot de passe, vous pouvez ignorer cet e-mail — votre mot de passe reste inchangé.",
+  "footerNote": "Vous recevez cet e-mail car une réinitialisation de mot de passe a été demandée pour votre compte {pageName}.",
+  "copyright": "© {year} {pageName}. Tous droits réservés."
+}

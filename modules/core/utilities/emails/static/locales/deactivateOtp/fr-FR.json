@@ -1,0 +1,14 @@
+{
+  "htmlLang": "fr",
+  "subject": "Confirmez la désactivation de l'authentification multifacteur",
+  "preheader": "Confirmez la demande de désactivation de l'authentification multifacteur.",
+  "heading": "Désactiver l'authentification multifacteur",
+  "greeting": "Bonjour {username},",
+  "body": "Nous avons reçu une demande de désactivation de l'authentification multifacteur (MFA) sur votre compte {pageName}. Confirmez ci-dessous pour finaliser l'opération.",
+  "ctaLabel": "Confirmer la désactivation",
+  "fallbackLabel": "Le bouton ne fonctionne pas ? Copiez et collez ce lien dans votre navigateur :",
+  "note": "Ce lien vous est personnel — merci de ne pas partager ni transférer cet e-mail.",
+  "ignore": "Si vous n'avez pas demandé la désactivation de l'authentification multifacteur, ignorez cet e-mail et envisagez de changer votre mot de passe.",
+  "footerNote": "Vous recevez cet e-mail car une demande de désactivation de l'authentification multifacteur a été faite sur votre compte {pageName}.",
+  "copyright": "© {year} {pageName}. Tous droits réservés."
+}

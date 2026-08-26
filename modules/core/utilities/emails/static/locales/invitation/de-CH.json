@@ -1,0 +1,15 @@
+{
+  "htmlLang": "de",
+  "subject": "{inviterName} hat Sie zu {companyName} eingeladen",
+  "preheader": "Nehmen Sie die Einladung an und legen Sie Ihr Passwort fest.",
+  "heading": "Sie wurden zu {companyName} eingeladen",
+  "greeting": "Hallo {username},",
+  "body": "{inviterName} hat Sie eingeladen, {companyName} auf {pageName} beizutreten. Nehmen Sie die Einladung an, um Ihr Passwort festzulegen und Zugang zu erhalten.",
+  "welcomeMessageLabel": "Eine Nachricht von {inviterName}",
+  "ctaLabel": "Einladung annehmen",
+  "fallbackLabel": "Funktioniert der Button nicht? Kopieren Sie diesen Link in Ihren Browser:",
+  "note": "Dieser Einladungslink gilt nur für Sie — bitte teilen oder leiten Sie diese E-Mail nicht weiter.",
+  "ignore": "Falls Sie diese Einladung nicht erwartet haben, können Sie diese E-Mail ignorieren.",
+  "footerNote": "Sie erhalten diese E-Mail, weil {inviterName} Sie zu {companyName} auf {pageName} eingeladen hat.",
+  "copyright": "© {year} {pageName}. Alle Rechte vorbehalten."
+}

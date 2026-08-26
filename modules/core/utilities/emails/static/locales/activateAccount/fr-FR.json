@@ -1,0 +1,14 @@
+{
+  "htmlLang": "fr",
+  "subject": "Activez votre compte {pageName}",
+  "preheader": "Confirmez votre adresse e-mail pour activer votre compte.",
+  "heading": "Confirmez votre adresse e-mail",
+  "greeting": "Bonjour {username},",
+  "body": "Bienvenue sur {pageName}. Il ne reste qu'une étape : confirmez votre adresse e-mail pour activer votre compte et commencer.",
+  "ctaLabel": "Activer mon compte",
+  "fallbackLabel": "Le bouton ne fonctionne pas ? Copiez et collez ce lien dans votre navigateur :",
+  "note": "Ce lien d'activation vous est personnel — merci de ne pas partager ni transférer cet e-mail.",
+  "ignore": "Si vous n'avez pas créé de compte sur {pageName}, vous pouvez ignorer cet e-mail.",
+  "footerNote": "Vous recevez cet e-mail car un compte a été créé avec cette adresse sur {pageName}.",
+  "copyright": "© {year} {pageName}. Tous droits réservés."
+}

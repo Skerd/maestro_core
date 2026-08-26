@@ -1,0 +1,14 @@
+{
+  "htmlLang": "it",
+  "subject": "Attivi il suo account {pageName}",
+  "preheader": "Confermi il suo indirizzo e-mail per attivare l'account.",
+  "heading": "Confermi il suo indirizzo e-mail",
+  "greeting": "Buongiorno {username},",
+  "body": "Benvenuto su {pageName}. Manca solo un passaggio: confermi il suo indirizzo e-mail per attivare l'account e iniziare.",
+  "ctaLabel": "Attiva account",
+  "fallbackLabel": "Il pulsante non funziona? Copi e incolli questo link nel suo browser:",
+  "note": "Questo link di attivazione è personale — non condivida né inoltri questa e-mail.",
+  "ignore": "Se non ha creato un account su {pageName}, può ignorare questa e-mail.",
+  "footerNote": "Riceve questa e-mail perché con questo indirizzo è stato creato un account su {pageName}.",
+  "copyright": "© {year} {pageName}. Tutti i diritti riservati."
+}

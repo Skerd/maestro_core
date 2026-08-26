@@ -1,0 +1,14 @@
+{
+  "htmlLang": "de",
+  "subject": "Deaktivierung der Zwei-Faktor-Authentifizierung bestätigen",
+  "preheader": "Bestätigen Sie die Anfrage zur Deaktivierung der Zwei-Faktor-Authentifizierung.",
+  "heading": "Zwei-Faktor-Authentifizierung deaktivieren",
+  "greeting": "Hallo {username},",
+  "body": "Wir haben eine Anfrage erhalten, die Zwei-Faktor-Authentifizierung (MFA) für Ihr {pageName}-Konto zu deaktivieren. Bestätigen Sie unten, um den Vorgang abzuschliessen.",
+  "ctaLabel": "Deaktivierung bestätigen",
+  "fallbackLabel": "Funktioniert der Button nicht? Kopieren Sie diesen Link in Ihren Browser:",
+  "note": "Dieser Link gilt nur für Sie — bitte teilen oder leiten Sie diese E-Mail nicht weiter.",
+  "ignore": "Falls Sie die Deaktivierung der Zwei-Faktor-Authentifizierung nicht angefordert haben, ignorieren Sie diese E-Mail und ändern Sie vorsichtshalber Ihr Passwort.",
+  "footerNote": "Sie erhalten diese E-Mail, weil für Ihr {pageName}-Konto die Deaktivierung der Zwei-Faktor-Authentifizierung angefordert wurde.",
+  "copyright": "© {year} {pageName}. Alle Rechte vorbehalten."
+}

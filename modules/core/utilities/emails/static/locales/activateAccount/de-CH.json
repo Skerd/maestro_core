@@ -1,0 +1,14 @@
+{
+  "htmlLang": "de",
+  "subject": "Aktivieren Sie Ihr {pageName}-Konto",
+  "preheader": "Bestätigen Sie Ihre E-Mail-Adresse, um Ihr Konto zu aktivieren.",
+  "heading": "Bestätigen Sie Ihre E-Mail-Adresse",
+  "greeting": "Hallo {username},",
+  "body": "Willkommen bei {pageName}. Es fehlt nur noch ein Schritt — bestätigen Sie Ihre E-Mail-Adresse, um Ihr Konto zu aktivieren und loszulegen.",
+  "ctaLabel": "Konto aktivieren",
+  "fallbackLabel": "Funktioniert der Button nicht? Kopieren Sie diesen Link in Ihren Browser:",
+  "note": "Dieser Aktivierungslink gilt nur für Sie — bitte teilen oder leiten Sie diese E-Mail nicht weiter.",
+  "ignore": "Falls Sie kein Konto bei {pageName} erstellt haben, können Sie diese E-Mail ignorieren.",
+  "footerNote": "Sie erhalten diese E-Mail, weil mit dieser Adresse ein Konto bei {pageName} erstellt wurde.",
+  "copyright": "© {year} {pageName}. Alle Rechte vorbehalten."
+}

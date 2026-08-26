@@ -1,0 +1,15 @@
+{
+  "htmlLang": "fr",
+  "subject": "{inviterName} vous a invité à rejoindre {companyName}",
+  "preheader": "Acceptez l'invitation et définissez votre mot de passe.",
+  "heading": "Vous êtes invité à rejoindre {companyName}",
+  "greeting": "Bonjour {username},",
+  "body": "{inviterName} vous a invité à rejoindre {companyName} sur {pageName}. Acceptez l'invitation pour définir votre mot de passe et obtenir votre accès.",
+  "welcomeMessageLabel": "Un message de {inviterName}",
+  "ctaLabel": "Accepter l'invitation",
+  "fallbackLabel": "Le bouton ne fonctionne pas ? Copiez et collez ce lien dans votre navigateur :",
+  "note": "Ce lien d'invitation vous est personnel — merci de ne pas partager ni transférer cet e-mail.",
+  "ignore": "Si vous ne vous attendiez pas à cette invitation, vous pouvez ignorer cet e-mail.",
+  "footerNote": "Vous recevez cet e-mail car {inviterName} vous a invité à rejoindre {companyName} sur {pageName}.",
+  "copyright": "© {year} {pageName}. Tous droits réservés."
+}

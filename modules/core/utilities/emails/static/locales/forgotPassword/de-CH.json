@@ -1,0 +1,15 @@
+{
+  "htmlLang": "de",
+  "subject": "Setzen Sie Ihr {pageName}-Passwort zurück",
+  "preheader": "Wählen Sie ein neues Passwort für Ihr Konto.",
+  "heading": "Passwort zurücksetzen",
+  "greeting": "Hallo {username},",
+  "body": "Wir haben eine Anfrage erhalten, das Passwort für Ihr {pageName}-Konto zurückzusetzen. Klicken Sie auf den Button unten, um ein neues zu wählen.",
+  "ctaLabel": "Passwort zurücksetzen",
+  "fallbackLabel": "Funktioniert der Button nicht? Kopieren Sie diesen Link in Ihren Browser:",
+  "securityOnceOpen": "Aus Sicherheitsgründen kann dieser Link nur 1 (ein) Mal geöffnet werden.",
+  "security24h": "Aus Sicherheitsgründen ist dieser Link die nächsten 24 Stunden gültig.",
+  "ignore": "Falls Sie kein Zurücksetzen des Passworts angefordert haben, können Sie diese E-Mail ignorieren — Ihr Passwort bleibt unverändert.",
+  "footerNote": "Sie erhalten diese E-Mail, weil für Ihr {pageName}-Konto ein Zurücksetzen des Passworts angefordert wurde.",
+  "copyright": "© {year} {pageName}. Alle Rechte vorbehalten."
+}
