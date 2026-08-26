@@ -54,4 +54,5 @@ export function applyMediaIndexes(MediaSchema: Schema): void {
     // File identification compound indexes
     MediaSchema.index({ fileName: 1, createdBy: 1 });                        // File name with creator
     MediaSchema.index({ originalName: 1, createdBy: 1 });                    // Original name with creator
+    MediaSchema.index({ company: 1, isPublic: 1 });
 }

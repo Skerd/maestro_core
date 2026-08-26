@@ -13,6 +13,7 @@ import {ICountry} from "@coreModule/database/schemas/country/country";
 import {applyCompanyIndexes} from "./company.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
+import publicMediaPlugin from "@coreModule/database/plugins/publicMediaPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import {
@@ -667,6 +668,7 @@ CompanySchema.methods.getAllRoles = async function (fetchAdminRoles: boolean = f
 }
 
 ownershipPlugin(CompanySchema);
+publicMediaPlugin(CompanySchema, {schemaDef: CompanySchemaDef, companyFromDocumentId: true});
 auditPlugin(CompanySchema);
 softDeletePlugin(CompanySchema);
 lifeCyclePlugin(CompanySchema);

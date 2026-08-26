@@ -53,7 +53,12 @@ function mediaCsp(): string {
  * Sets security headers for file serving.
  * Framing is always denied — previews use authenticated fetches, not iframes of this URL.
  */
-export function setSecurityHeaders(res: Response, mimeType: string, fileName: string): void {
+export function setSecurityHeaders(
+    res: Response,
+    mimeType: string,
+    fileName: string,
+    cacheControl: 'private' | 'public' = 'public',
+): void {
     const isDocument = mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('office');
     res.setHeader('Content-Security-Policy', isDocument ? documentCsp() : mediaCsp());
 
@@ -85,7 +90,12 @@ export function setSecurityHeaders(res: Response, mimeType: string, fileName: st
     }
 
     // Cache control
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader(
+        'Cache-Control',
+        cacheControl === 'private'
+            ? 'private, max-age=3600'
+            : 'public, max-age=31536000, immutable',
+    );
 
     // Additional security for documents
     if (mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('office')) {
@@ -116,7 +126,43 @@ export type ServeMediaOptions = {
     /** When provided, validates user has access before serving. Context is passed to the callback. */
     accessCheck?: ServeMediaAccessCheck;
     context?: ServeMediaContext;
+    cacheControl?: 'private' | 'public';
+    /** When access is denied, throw media_not_found instead of access_denied (public route). */
+    deniedAsNotFound?: boolean;
 };
+
+async function loadMediaForServe(options: {
+    mediaId: string;
+    logger: serverLogger;
+    languageCode: string;
+    accessCheck?: ServeMediaAccessCheck;
+    context?: ServeMediaContext;
+    deniedAsNotFound?: boolean;
+}): Promise<IMedia> {
+    const {mediaId: mediaIdParam, logger, languageCode, accessCheck, context = {}, deniedAsNotFound} = options;
+
+    if (!ObjectId.isValid(mediaIdParam)) {
+        throw apiValidationException("invalid_media_id", null, null, languageCode);
+    }
+
+    const mediaId = new ObjectId(mediaIdParam);
+    const media = await mediaService.findByIdOrThrow(mediaId, {logger, languageCode, withDeleted: false});
+
+    if (accessCheck) {
+        const hasAccess = await accessCheck(mediaId, media, context);
+        if (!hasAccess) {
+            logger.err(`Access denied for media ${mediaIdParam}`);
+            throw apiValidationException(
+                deniedAsNotFound ? "media_not_found" : "access_denied",
+                null,
+                null,
+                languageCode,
+            );
+        }
+    }
+
+    return media;
+}
 
 /**
  * Serves a media file by ID. Validates existence, optionally checks access, streams from GridFS.
@@ -128,36 +174,26 @@ export type ServeMediaOptions = {
 export async function serveMedia(options: ServeMediaOptions): Promise<void> {
     const {
         mediaId: mediaIdParam,
-        req,
         res,
         logger = getLogger('serve_media'),
         languageCode,
         accessCheck,
-        context = {}
+        context = {},
+        cacheControl = 'public',
+        deniedAsNotFound,
     } = options;
 
     logger.start(`Serving media file: ${mediaIdParam}`);
 
-    // Validate mediaId format
-    if (!ObjectId.isValid(mediaIdParam)) {
-        throw apiValidationException("invalid_media_id", null, null, languageCode);
-    }
+    const media = await loadMediaForServe({
+        mediaId: mediaIdParam,
+        logger,
+        languageCode,
+        accessCheck,
+        context,
+        deniedAsNotFound,
+    });
 
-    const mediaId = new ObjectId(mediaIdParam);
-
-    // Get media from database
-    const media = await mediaService.findByIdOrThrow(mediaId, {logger, languageCode, withDeleted: true});
-
-    // Access check - when provided, verify user has access to this resource
-    if (accessCheck) {
-        const hasAccess = await accessCheck(mediaId, media, context);
-        if (!hasAccess) {
-            logger.err(`Access denied for media ${mediaIdParam}`);
-            throw apiValidationException("access_denied", null, null, languageCode);
-        }
-    }
-
-    // Use GridFS if fileId exists
     if (!media.fileId) {
         throw apiValidationException("file_not_found", null, null, languageCode);
     }
@@ -168,7 +204,7 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
 
     const mimeType = media.mimeType || media.metadata?.mime || 'application/octet-stream';
     const displayName = media.originalName || media.fileName || 'file';
-    setSecurityHeaders(res, mimeType, displayName);
+    setSecurityHeaders(res, mimeType, displayName, cacheControl);
 
     fileStream.on('error', (error) => {
         logger.err(`Error streaming file: ${error}`);
@@ -210,21 +246,26 @@ export async function getMediaInfo(options: {
     mediaId: string;
     logger?: serverLogger;
     languageCode: string;
+    accessCheck?: ServeMediaAccessCheck;
+    context?: ServeMediaContext;
+    deniedAsNotFound?: boolean;
 }): Promise<MediaInfoDto> {
     const {
         mediaId: mediaIdParam,
         logger = getLogger('serve_media'),
         languageCode,
+        accessCheck,
+        context,
+        deniedAsNotFound,
     } = options;
 
-    if (!ObjectId.isValid(mediaIdParam)) {
-        throw apiValidationException("invalid_media_id", null, null, languageCode);
-    }
-
-    const media = await mediaService.findByIdOrThrow(new ObjectId(mediaIdParam), {
+    const media = await loadMediaForServe({
+        mediaId: mediaIdParam,
         logger,
         languageCode,
-        withDeleted: true,
+        accessCheck,
+        context,
+        deniedAsNotFound,
     });
 
     const mimeType = media.mimeType || media.metadata?.mime || 'application/octet-stream';

@@ -38,6 +38,7 @@ export interface IMedia extends Document, IOwnershipPluginFields, ISoftDeletePlu
         height: number;
     };
     durationInSeconds?: number;
+    isPublic: boolean;
     createdAt: Date;
     uploadedAt: Date;
 }
@@ -276,6 +277,18 @@ const MediaSchema = new Schema<IMedia>(
             permissions: {
                 self: {
                     publicRead: true,
+                    write: "no-permission"
+                }
+            }
+        },
+        isPublic: {
+            type: Boolean,
+            default: false,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
                     write: "no-permission"
                 }
             }

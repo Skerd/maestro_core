@@ -27,6 +27,8 @@ import {
 } from "armonia/src/modules/core/api/user/private/login/reloginDifferentCompany.form.response.type";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
+import {setMediaAuthCookie} from "@coreModule/utilities/media/mediaAuthCookie";
+import type {Request, Response} from "express";
 
 const router = Router();
 
@@ -66,7 +68,10 @@ router.post(
  * @returns token and refreshToken for the target company.
  */
 async function ReLoginDifferentCompany(
-    params: ReloginDifferentCompanyFormType & AuthenticatedMWType
+    params: ReloginDifferentCompanyFormType & AuthenticatedMWType,
+    _queryParams: unknown,
+    _req: Request,
+    response: Response,
 ): Promise<ReloginDifferentCompanyFormResponseType> {
     const { logger, userInfo, companyId, languageCode, requestSource, deviceId, userAgent, requestIp } = params;
 
@@ -102,6 +107,7 @@ async function ReLoginDifferentCompany(
         userSessionRow._id.toString(),
         languageCode
     );
+    setMediaAuthCookie(response, token);
 
     logger.finish(`Successfully re-authenticated!`);
 

@@ -15,6 +15,7 @@
  */
 
 import {Response, Router} from "express";
+import {setMediaAuthCookie} from "@coreModule/utilities/media/mediaAuthCookie";
 import {LoginFormType} from "armonia/src/modules/core/api/user/public/login/login.form.type";
 import authMW, {NotAuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
@@ -192,6 +193,7 @@ async function Login(
 
         // Generate JWT token and refresh token
         const { token, refreshToken } = await user.generateJWTToken(company._id, requestSource, userSessionRow._id.toString(), languageCode);
+        setMediaAuthCookie(response, token);
 
         emitNotificationEvent(NotificationEventCodes.USER_LOGGED_IN, {
             receiverIds: [user._id.toString()],
@@ -403,6 +405,7 @@ async function LoginThirdParty(
 
         // Generate JWT token and refresh token
         const { token, refreshToken } = await user.generateJWTToken(company._id, requestSource, userSessionRow._id.toString(), languageCode);
+        setMediaAuthCookie(response, token);
 
         emitNotificationEvent(NotificationEventCodes.USER_LOGGED_IN, {
             receiverIds: [user._id.toString()],
