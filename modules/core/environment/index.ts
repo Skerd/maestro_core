@@ -203,9 +203,41 @@ export const EMAIL = {
     REPLY_TO_EMAIL: process.env.REPLY_TO_EMAIL
 };
 
+function parseSinfoniaClientUrls(raw: string | undefined): Record<string, string> {
+    const urls: Record<string, string> = {};
+    if (!raw) {
+        return urls;
+    }
+    for (const entry of raw.split(",")) {
+        const trimmed = entry.trim();
+        if (!trimmed) {
+            continue;
+        }
+        const eq = trimmed.indexOf("=");
+        if (eq <= 0) {
+            continue;
+        }
+        const id = trimmed.slice(0, eq).trim();
+        const origin = trimmed.slice(eq + 1).trim().replace(/\/+$/, "");
+        if (id && origin) {
+            urls[id] = origin;
+        }
+    }
+    return urls;
+}
+
 export const CLIENT_SIDE = {
     HOST: process.env.CLIENT_HOST,
-    NAME: process.env.CLIENT_NAME
+    NAME: process.env.CLIENT_NAME,
+    /** Per-app public origins from deploy (`core=https://panel.example,public=https://www.example`). */
+    URLS: parseSinfoniaClientUrls(process.env.SINFONIA_CLIENT_URLS),
+};
+
+/** Browser origin for a deployed Sinfonia app. Falls back to CLIENT_HOST (core/panel). */
+export function clientHostFor(appId: string = "core"): string {
+    const mapped = CLIENT_SIDE.URLS[appId];
+    const host = mapped || CLIENT_SIDE.HOST || "";
+    return host.replace(/\/+$/, "");
 }
 
 /**

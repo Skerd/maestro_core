@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
-import {CLIENT_SIDE, CONSTANTS, EMAIL} from "@coreModule/environment";
+import {CLIENT_SIDE, CONSTANTS, EMAIL, clientHostFor} from "@coreModule/environment";
 import {applyPlaceholders, loadEmailStrings, type EmailStrings} from "./emailLocale";
 import {sendMail} from "./mailDeliveryService";
 
@@ -93,7 +93,7 @@ export async function sendInvitationMail(
         welcomeMessageLabel: strings.welcomeMessageLabel ?? "",
     });
 
-    const activationUrl = CLIENT_SIDE.HOST + "/authenticate/acceptInvitation/" + invitationCode;
+    const activationUrl = clientHostFor("core") + "/authenticate/acceptInvitation/" + invitationCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, activationUrl);
 
     const values = {
@@ -138,7 +138,7 @@ export async function sendSignUpMail(
 
     emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings));
 
-    const activationUrl = CLIENT_SIDE.HOST + "/authenticate/activateAccount/" + activationCode;
+    const activationUrl = clientHostFor("core") + "/authenticate/activateAccount/" + activationCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, activationUrl);
 
     const values = {
@@ -185,7 +185,7 @@ export async function sendForgetPasswordMail(
 
     emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings, securityReasons));
 
-    const resetUrl = CLIENT_SIDE.HOST + "/authenticate/resetPassword/" + resetPasswordCode;
+    const resetUrl = clientHostFor("core") + "/authenticate/resetPassword/" + resetPasswordCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, resetUrl);
 
     const values = {
@@ -227,7 +227,7 @@ export async function sendMfaDeactivationMail(
 
     emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings));
 
-    const deactivateUrl = CLIENT_SIDE.HOST + "/authenticate/deactivateOTP/" + mfaDeactivationCode;
+    const deactivateUrl = clientHostFor("core") + "/authenticate/deactivateOTP/" + mfaDeactivationCode;
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, deactivateUrl);
 
     const values = {

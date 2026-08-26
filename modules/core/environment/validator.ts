@@ -301,6 +301,7 @@ export function validateConfiguration(): void {
     errors.push(...[
         validateString('CLIENT_HOST', process.env.CLIENT_HOST, true),
         validateString('CLIENT_NAME', process.env.CLIENT_NAME, true),
+        validateString('SINFONIA_CLIENT_URLS', process.env.SINFONIA_CLIENT_URLS, false),
     ].filter((e): e is ValidationError => e !== null));
 
     // ENCRYPTION
