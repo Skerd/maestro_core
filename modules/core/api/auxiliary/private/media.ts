@@ -1,12 +1,21 @@
 import {Request, Response, Router} from 'express';
 import {asyncHandler} from '@coreModule/utilities/middlewares/asyncHandler';
 import {getLogger} from '@coreModule/loggers/serverLog';
-import {serveMedia} from "@coreModule/utilities/media/serveMedia";
+import {getMediaInfo, serveMedia} from "@coreModule/utilities/media/serveMedia";
 import authMW from "@coreModule/utilities/middlewares/authMW";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {mediaUploadMW} from "@coreModule/utilities/middlewares/mediaUploadMW";
 
 const router = Router();
+
+/**
+ * @route   GET /api/auxiliary/media/:mediaId/info
+ * @desc    MIME / name / size for preview classification (no binary)
+ */
+router.get(
+    "/:mediaId/info",
+    asyncHandler(serveMediaInfo)
+);
 
 /**
  * @route   GET /api/auxiliary/public/media/:mediaId
@@ -25,6 +34,12 @@ router.post(
     mediaUploadMW({fieldName: "files", maxFiles: 50, maxFileSize: 100 * 1024 * 1024}),
     asyncHandler(uploadBatch),
 );
+
+async function serveMediaInfo(_params: any, queryParams: any, req: Request) {
+    const logger = getLogger("serve_media_info");
+    const languageCode = req.header("language") || "en-US";
+    return getMediaInfo({mediaId: queryParams.mediaId, logger, languageCode});
+}
 
 async function serveMediaFile(params: any, queryParams: any, req: Request, res: Response) {
     const logger = getLogger("serve_media_file");

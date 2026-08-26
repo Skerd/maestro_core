@@ -12,22 +12,55 @@ import {getGridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
 import {IMedia} from '@coreModule/database/schemas/media/media';
 
 /**
- * Sets security headers for file serving
+ * Media binaries are never framed by us (PDF.js / in-app viewers fetch as bytes).
+ * `frame-ancestors 'none'` is the CSP source of truth; `X-Frame-Options: DENY` is the legacy twin.
+ */
+const FRAME_POLICY = "none" as const;
+
+function documentCsp(): string {
+    return [
+        "default-src 'none'",
+        "script-src 'none'",
+        "style-src 'none'",
+        "img-src 'none'",
+        "font-src 'none'",
+        "connect-src 'none'",
+        "frame-src 'none'",
+        "object-src 'none'",
+        "media-src 'none'",
+        "worker-src 'none'",
+        "child-src 'none'",
+        `frame-ancestors '${FRAME_POLICY}'`,
+    ].join('; ');
+}
+
+function mediaCsp(): string {
+    return [
+        "default-src 'none'",
+        "script-src 'none'",
+        "style-src 'none'",
+        "img-src 'self' data:",
+        "font-src 'none'",
+        "connect-src 'none'",
+        "frame-src 'none'",
+        "object-src 'none'",
+        "media-src 'self'",
+        `frame-ancestors '${FRAME_POLICY}'`,
+    ].join('; ');
+}
+
+/**
+ * Sets security headers for file serving.
+ * Framing is always denied — previews use authenticated fetches, not iframes of this URL.
  */
 export function setSecurityHeaders(res: Response, mimeType: string, fileName: string): void {
-    // Content Security Policy - prevents script execution
-    // More restrictive for documents
-    if (mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('office')) {
-        // Very strict CSP for documents - no scripts, no objects, no embeds
-        res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; worker-src 'none'; child-src 'none';");
-    } else {
-        res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'none'; style-src 'none'; img-src 'self' data:; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; media-src 'self';");
-    }
+    const isDocument = mimeType === 'application/pdf' || mimeType.includes('document') || mimeType.includes('office');
+    res.setHeader('Content-Security-Policy', isDocument ? documentCsp() : mediaCsp());
 
     // Prevent MIME type sniffing
     res.setHeader('X-Content-Type-Options', 'nosniff');
 
-    // Prevent clickjacking
+    // Legacy clickjacking twin of frame-ancestors 'none'
     res.setHeader('X-Frame-Options', 'DENY');
 
     // XSS Protection (legacy but still useful)
@@ -160,4 +193,50 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
             resolve();
         });
     });
+}
+
+export type MediaInfoDto = {
+    mimeType: string;
+    originalName: string;
+    fileSize: number;
+    type: string;
+    extension: string;
+};
+
+/**
+ * Metadata only — no GridFS open. Used by form previews to classify existing ObjectId media.
+ */
+export async function getMediaInfo(options: {
+    mediaId: string;
+    logger?: serverLogger;
+    languageCode: string;
+}): Promise<MediaInfoDto> {
+    const {
+        mediaId: mediaIdParam,
+        logger = getLogger('serve_media'),
+        languageCode,
+    } = options;
+
+    if (!ObjectId.isValid(mediaIdParam)) {
+        throw apiValidationException("invalid_media_id", null, null, languageCode);
+    }
+
+    const media = await mediaService.findByIdOrThrow(new ObjectId(mediaIdParam), {
+        logger,
+        languageCode,
+        withDeleted: true,
+    });
+
+    const mimeType = media.mimeType || media.metadata?.mime || 'application/octet-stream';
+    const originalName = media.originalName || media.fileName || 'file';
+    const fileSize = media.fileSize || media.sizeInBytes || media.metadata?.size || 0;
+    const extension = media.extension || media.metadata?.extension || '';
+
+    return {
+        mimeType,
+        originalName,
+        fileSize,
+        type: media.type,
+        extension,
+    };
 }
