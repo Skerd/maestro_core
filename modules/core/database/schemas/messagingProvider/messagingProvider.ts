@@ -11,7 +11,12 @@ import {
 } from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
-import {MessagingProviderSchemaDef} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.schema-def";
+import {
+    MessagingProviderSchemaDef,
+    MESSAGING_PROVIDER_ACCOUNT_SID_MAX,
+    MESSAGING_PROVIDER_NAME_MAX,
+    MESSAGING_PROVIDER_PHONE_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.schema-def";
 import {messagingProviderViews} from "@coreModule/database/schemas/messagingProvider/messagingProvider.views";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 
@@ -35,6 +40,8 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
             type: SchemaTypes.String,
             required: true,
             trim: true,
+            minlength: 1,
+            maxlength: MESSAGING_PROVIDER_NAME_MAX,
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         providerType: {
@@ -47,6 +54,8 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
             type: SchemaTypes.String,
             required: true,
             trim: true,
+            minlength: 1,
+            maxlength: MESSAGING_PROVIDER_ACCOUNT_SID_MAX,
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         authTokenEncrypted: {
@@ -66,12 +75,14 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
             type: SchemaTypes.String,
             required: false,
             trim: true,
+            maxlength: MESSAGING_PROVIDER_PHONE_MAX,
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         fromWhatsapp: {
             type: SchemaTypes.String,
             required: false,
             trim: true,
+            maxlength: MESSAGING_PROVIDER_PHONE_MAX,
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         active: {

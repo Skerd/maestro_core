@@ -13,7 +13,13 @@ import {addModelData} from "@coreModule/database/collections";
 import {smtpServerViews} from "@coreModule/database/schemas/smtpServer/smtpServer.views";
 import {applySmtpServerIndexes} from "@coreModule/database/schemas/smtpServer/smtpServer.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
-import {SmtpServerSchemaDef} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.schema-def";
+import {
+    SmtpServerSchemaDef,
+    SMTP_EMAIL_MAX,
+    SMTP_HOST_MAX,
+    SMTP_NAME_MAX,
+    SMTP_SHORT_TEXT_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.schema-def";
 import type {SmtpAuthType, SmtpEncryptionType, SmtpTestStatus} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.constants";
 
 export interface ISmtpServer extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
@@ -40,6 +46,8 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             type: SchemaTypes.String,
             required: true,
             trim: true,
+            minlength: 1,
+            maxlength: SMTP_NAME_MAX,
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         sequence: {
@@ -47,6 +55,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             required: true,
             default: 10,
             min: 0,
+            max: 10000,
             dynamicTableConfiguration: {filterable: false, sortable: true},
         },
         active: {
@@ -59,6 +68,8 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             type: SchemaTypes.String,
             required: true,
             trim: true,
+            minlength: 1,
+            maxlength: SMTP_HOST_MAX,
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         port: {
@@ -85,6 +96,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             type: SchemaTypes.String,
             required: false,
             trim: true,
+            maxlength: SMTP_SHORT_TEXT_MAX,
             dynamicTableConfiguration: {filterable: false, sortable: false, hideColumn: true},
         },
         passwordEncrypted: {
@@ -100,6 +112,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             required: true,
             trim: true,
             lowercase: true,
+            maxlength: SMTP_EMAIL_MAX,
             dynamicTableConfiguration: {filterable: false, sortable: true},
         },
         fromName: {
@@ -107,6 +120,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             required: false,
             trim: true,
             default: "",
+            maxlength: SMTP_SHORT_TEXT_MAX,
             dynamicTableConfiguration: {filterable: false, sortable: false, hideColumn: true},
         },
         replyTo: {
@@ -114,6 +128,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             required: false,
             trim: true,
             lowercase: true,
+            maxlength: SMTP_EMAIL_MAX,
             dynamicTableConfiguration: {filterable: false, sortable: false, hideColumn: true},
         },
         lastTestedAt: {

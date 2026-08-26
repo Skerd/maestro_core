@@ -1,4 +1,9 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {
+    MESSAGING_PROVIDER_ACCOUNT_SID_MAX,
+    MESSAGING_PROVIDER_NAME_MAX,
+    MESSAGING_PROVIDER_PHONE_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 
 export const messagingProviderSheetView: ViewConfig = {
@@ -18,8 +23,19 @@ export const messagingProviderSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
+                        {
+                            render: "#DisplayCard",
+                            dependent: "name",
+                            permissions: {read: "name"},
+                            field: {
+                                name: "name",
+                                widget: "#DisplayCard",
+                                label: "name",
+                                widgetProps: {icon: "#Tag"},
+                            },
+                        },
                         {
                             render: "#DisplayCard",
                             dependent: "providerType",
@@ -120,7 +136,7 @@ export const messagingProviderSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
                         {
                             render: "#DisplayCard",
@@ -144,17 +160,28 @@ export const messagingProviderSheetView: ViewConfig = {
                                 name: "lastTestedAt",
                                 widget: "#DisplayCard",
                                 label: "lastTestedAt",
-                                widgetProps: {icon: "#Clock", type: "dateTime"},
+                                widgetProps: {icon: "#Calendar", type: "dateTime"},
                             },
                         },
+                    ],
+                },
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 1},
+                    children: [
                         {
                             render: "#DisplayCard",
                             permissions: {read: "lastTestMessage"},
+                            dependent: "lastTestMessage",
                             field: {
                                 name: "lastTestMessage",
                                 widget: "#DisplayCard",
                                 label: "lastTestMessage",
-                                widgetProps: {icon: "#MessageSquare"},
+                                widgetProps: {
+                                    icon: "#IconAlignLeft",
+                                    expandable: true,
+                                    maxLength: 250,
+                                },
                             },
                         },
                     ],
@@ -178,6 +205,7 @@ const messagingProviderFormFields: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: MESSAGING_PROVIDER_NAME_MAX},
                 },
             },
             {
@@ -201,6 +229,7 @@ const messagingProviderFormFields: ViewConfig["nodes"] = [
                     label: "form.accountSidLabel",
                     placeholder: "form.accountSidPlaceholder",
                     required: true,
+                    widgetProps: {maxLength: MESSAGING_PROVIDER_ACCOUNT_SID_MAX},
                 },
             },
             {
@@ -222,7 +251,7 @@ const messagingProviderFormFields: ViewConfig["nodes"] = [
                     widget: "#Input",
                     label: "form.fromPhoneLabel",
                     placeholder: "form.fromPhonePlaceholder",
-                    widgetProps: {type: "tel"},
+                    widgetProps: {type: "tel", maxLength: MESSAGING_PROVIDER_PHONE_MAX},
                 },
             },
             {
@@ -232,7 +261,7 @@ const messagingProviderFormFields: ViewConfig["nodes"] = [
                     widget: "#Input",
                     label: "form.fromWhatsappLabel",
                     placeholder: "form.fromWhatsappPlaceholder",
-                    widgetProps: {type: "tel"},
+                    widgetProps: {type: "tel", maxLength: MESSAGING_PROVIDER_PHONE_MAX},
                 },
             },
         ],

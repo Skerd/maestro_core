@@ -13,7 +13,13 @@ import {addModelData} from "@coreModule/database/collections";
 import {currencyViews} from "@coreModule/database/schemas/currency/currency.views";
 import {applyCurrencyIndexes} from "@coreModule/database/schemas/currency/currency.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
-import {CurrencySchemaDef} from "armonia/src/modules/core/api/finance/private/currency/currency.schema-def";
+import {
+    CurrencySchemaDef,
+    CURRENCY_ABBREVIATION_MAX,
+    CURRENCY_ABBREVIATION_MIN,
+    CURRENCY_NAME_MAX,
+    CURRENCY_SYMBOL_MAX,
+} from "armonia/src/modules/core/api/finance/private/currency/currency.schema-def";
 
 export interface ICurrency extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
@@ -27,6 +33,9 @@ const CurrencySchema = new Schema<ICurrency>(
         name: {
             type: SchemaTypes.String,
             required: true,
+            trim: true,
+            minlength: 1,
+            maxlength: CURRENCY_NAME_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
@@ -37,6 +46,9 @@ const CurrencySchema = new Schema<ICurrency>(
         symbol: {
             type: SchemaTypes.String,
             required: true,
+            trim: true,
+            minlength: 1,
+            maxlength: CURRENCY_SYMBOL_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
@@ -61,6 +73,9 @@ const CurrencySchema = new Schema<ICurrency>(
             type: SchemaTypes.String,
             required: true,
             uppercase: true,
+            trim: true,
+            minlength: CURRENCY_ABBREVIATION_MIN,
+            maxlength: CURRENCY_ABBREVIATION_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {

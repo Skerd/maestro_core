@@ -1,4 +1,9 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {
+    COUNTRY_CODE_MAX,
+    COUNTRY_NAME_MAX,
+    COUNTRY_PHONE_CODE_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/country/country.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 
 export const countrySheetView: ViewConfig = {
@@ -18,7 +23,7 @@ export const countrySheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
                         {
                             render: "#DisplayCard",
@@ -74,6 +79,7 @@ const countryCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: COUNTRY_NAME_MAX},
                 },
             },
             {
@@ -84,6 +90,7 @@ const countryCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.codeLabel",
                     placeholder: "form.codePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: COUNTRY_CODE_MAX},
                 },
             },
             {
@@ -93,6 +100,7 @@ const countryCreateFormNodes: ViewConfig["nodes"] = [
                     widget: "#Input",
                     label: "form.phoneCodeLabel",
                     placeholder: "form.phoneCodePlaceholder",
+                    widgetProps: {maxLength: COUNTRY_PHONE_CODE_MAX},
                 },
             },
         ],
@@ -128,6 +136,7 @@ const countryEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: COUNTRY_NAME_MAX},
                 },
             },
             {
@@ -138,6 +147,7 @@ const countryEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.codeLabel",
                     placeholder: "form.codePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: COUNTRY_CODE_MAX},
                 },
             },
             {
@@ -147,6 +157,7 @@ const countryEditFormNodes: ViewConfig["nodes"] = [
                     widget: "#Input",
                     label: "form.phoneCodeLabel",
                     placeholder: "form.phoneCodePlaceholder",
+                    widgetProps: {maxLength: COUNTRY_PHONE_CODE_MAX},
                 },
             },
             {

@@ -1,4 +1,5 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {CITY_NAME_MAX} from "armonia/src/modules/core/api/auxiliary/private/city/city.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 
 export const citySheetView: ViewConfig = {
@@ -84,6 +85,7 @@ const cityCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CITY_NAME_MAX},
                 },
             },
             {
@@ -149,6 +151,7 @@ const cityEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CITY_NAME_MAX},
                 },
             },
             {

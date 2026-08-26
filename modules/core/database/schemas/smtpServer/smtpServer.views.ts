@@ -1,4 +1,10 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {
+    SMTP_EMAIL_MAX,
+    SMTP_HOST_MAX,
+    SMTP_NAME_MAX,
+    SMTP_SHORT_TEXT_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 
 export const smtpServerSheetView: ViewConfig = {
@@ -18,8 +24,19 @@ export const smtpServerSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
+                        {
+                            render: "#DisplayCard",
+                            dependent: "name",
+                            permissions: {read: "name"},
+                            field: {
+                                name: "name",
+                                widget: "#DisplayCard",
+                                label: "name",
+                                widgetProps: {icon: "#Tag"},
+                            },
+                        },
                         {
                             render: "#DisplayCard",
                             dependent: "sequence",
@@ -52,7 +69,7 @@ export const smtpServerSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
                         {
                             render: "#DisplayCard",
@@ -130,7 +147,7 @@ export const smtpServerSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
                         {
                             render: "#DisplayCard",
@@ -175,7 +192,7 @@ export const smtpServerSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
                         {
                             render: "#DisplayCard",
@@ -199,17 +216,28 @@ export const smtpServerSheetView: ViewConfig = {
                                 name: "lastTestedAt",
                                 widget: "#DisplayCard",
                                 label: "lastTestedAt",
-                                widgetProps: {icon: "#Clock", type: "dateTime"},
+                                widgetProps: {icon: "#Calendar", type: "dateTime"},
                             },
                         },
+                    ],
+                },
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 1},
+                    children: [
                         {
                             render: "#DisplayCard",
                             permissions: {read: "lastTestMessage"},
+                            dependent: "lastTestMessage",
                             field: {
                                 name: "lastTestMessage",
                                 widget: "#DisplayCard",
                                 label: "lastTestMessage",
-                                widgetProps: {icon: "#MessageSquare"},
+                                widgetProps: {
+                                    icon: "#IconAlignLeft",
+                                    expandable: true,
+                                    maxLength: 250,
+                                },
                             },
                         },
                     ],
@@ -233,6 +261,7 @@ const smtpFormFields: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: SMTP_NAME_MAX},
                 },
             },
             {
@@ -243,7 +272,7 @@ const smtpFormFields: ViewConfig["nodes"] = [
                     label: "form.sequenceLabel",
                     placeholder: "form.sequencePlaceholder",
                     required: true,
-                    widgetProps: {type: "number", min: 0, step: 1},
+                    widgetProps: {type: "number", min: 0, max: 10000, step: 1},
                 },
             },
             {
@@ -254,6 +283,7 @@ const smtpFormFields: ViewConfig["nodes"] = [
                     label: "form.hostLabel",
                     placeholder: "form.hostPlaceholder",
                     required: true,
+                    widgetProps: {maxLength: SMTP_HOST_MAX},
                 },
             },
             {
@@ -311,6 +341,7 @@ const smtpFormFields: ViewConfig["nodes"] = [
                             widget: "#Input",
                             label: "form.usernameLabel",
                             placeholder: "form.usernamePlaceholder",
+                            widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
                         },
                     },
                     {
@@ -340,7 +371,7 @@ const smtpFormFields: ViewConfig["nodes"] = [
                     label: "form.fromEmailLabel",
                     placeholder: "form.fromEmailPlaceholder",
                     required: true,
-                    widgetProps: {type: "email"},
+                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
                 },
             },
             {
@@ -350,6 +381,7 @@ const smtpFormFields: ViewConfig["nodes"] = [
                     widget: "#Input",
                     label: "form.fromNameLabel",
                     placeholder: "form.fromNamePlaceholder",
+                    widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
                 },
             },
             {
@@ -359,7 +391,7 @@ const smtpFormFields: ViewConfig["nodes"] = [
                     widget: "#Input",
                     label: "form.replyToLabel",
                     placeholder: "form.replyToPlaceholder",
-                    widgetProps: {type: "email"},
+                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
                 },
             },
         ],

@@ -1,4 +1,8 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {
+    STATE_CODE_MAX,
+    STATE_NAME_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/state/state.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 
 export const stateSheetView: ViewConfig = {
@@ -18,8 +22,19 @@ export const stateSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
+                        {
+                            render: "#DisplayCard",
+                            dependent: "name",
+                            permissions: {read: "name"},
+                            field: {
+                                name: "name",
+                                widget: "#DisplayCard",
+                                label: "name",
+                                widgetProps: {icon: "#Tag"},
+                            },
+                        },
                         {
                             render: "#DisplayCard",
                             dependent: "code",
@@ -68,6 +83,7 @@ const stateCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: STATE_NAME_MAX},
                 },
             },
             {
@@ -78,6 +94,7 @@ const stateCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.codeLabel",
                     placeholder: "form.codePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: STATE_CODE_MAX},
                 },
             },
             {
@@ -124,6 +141,7 @@ const stateEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: STATE_NAME_MAX},
                 },
             },
             {
@@ -134,6 +152,7 @@ const stateEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.codeLabel",
                     placeholder: "form.codePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: STATE_CODE_MAX},
                 },
             },
             {

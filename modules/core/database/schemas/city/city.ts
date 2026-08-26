@@ -17,7 +17,10 @@ import {addModelData} from "@coreModule/database/collections";
 import {cityViews} from "@coreModule/database/schemas/city/city.views";
 import {applyCityIndexes} from "@coreModule/database/schemas/city/city.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
-import {CitySchemaDef} from "armonia/src/modules/core/api/auxiliary/private/city/city.schema-def";
+import {
+    CitySchemaDef,
+    CITY_NAME_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/city/city.schema-def";
 
 export interface ICity extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
@@ -30,6 +33,9 @@ const CitySchema = new Schema<ICity>(
         name: {
             type: SchemaTypes.String,
             required: true,
+            trim: true,
+            minlength: 1,
+            maxlength: CITY_NAME_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {

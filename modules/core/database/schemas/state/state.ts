@@ -15,7 +15,11 @@ import {addModelData} from "@coreModule/database/collections";
 import {stateViews} from "@coreModule/database/schemas/state/state.views";
 import {applyStateIndexes} from "@coreModule/database/schemas/state/state.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
-import {StateSchemaDef} from "armonia/src/modules/core/api/auxiliary/private/state/state.schema-def";
+import {
+    StateSchemaDef,
+    STATE_CODE_MAX,
+    STATE_NAME_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/state/state.schema-def";
 
 export interface IState extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
@@ -28,6 +32,9 @@ const StateSchema = new Schema<IState>(
         name: {
             type: SchemaTypes.String,
             required: true,
+            trim: true,
+            minlength: 1,
+            maxlength: STATE_NAME_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
@@ -37,6 +44,8 @@ const StateSchema = new Schema<IState>(
         },
         code: {
             type: SchemaTypes.String,
+            trim: true,
+            maxlength: STATE_CODE_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {

@@ -1,4 +1,9 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {
+    CURRENCY_ABBREVIATION_MAX,
+    CURRENCY_NAME_MAX,
+    CURRENCY_SYMBOL_MAX,
+} from "armonia/src/modules/core/api/finance/private/currency/currency.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 
 export const currencySheetView: ViewConfig = {
@@ -20,6 +25,17 @@ export const currencySheetView: ViewConfig = {
                     render: "#SheetGrid",
                     props: {columns: 3},
                     children: [
+                        {
+                            render: "#DisplayCard",
+                            dependent: "name",
+                            permissions: {read: "name"},
+                            field: {
+                                name: "name",
+                                widget: "#DisplayCard",
+                                label: "name",
+                                widgetProps: {icon: "#Tag"},
+                            },
+                        },
                         {
                             render: "#DisplayCard",
                             dependent: "symbol",
@@ -74,6 +90,7 @@ const currencyCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CURRENCY_NAME_MAX},
                 },
             },
             {
@@ -84,6 +101,7 @@ const currencyCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.symbolLabel",
                     placeholder: "form.symbolPlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CURRENCY_SYMBOL_MAX},
                 },
             },
             {
@@ -94,6 +112,7 @@ const currencyCreateFormNodes: ViewConfig["nodes"] = [
                     label: "form.abbreviationLabel",
                     placeholder: "form.abbreviationPlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CURRENCY_ABBREVIATION_MAX},
                 },
             },
             {
@@ -140,6 +159,7 @@ const currencyEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.nameLabel",
                     placeholder: "form.namePlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CURRENCY_NAME_MAX},
                 },
             },
             {
@@ -150,6 +170,7 @@ const currencyEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.symbolLabel",
                     placeholder: "form.symbolPlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CURRENCY_SYMBOL_MAX},
                 },
             },
             {
@@ -160,6 +181,7 @@ const currencyEditFormNodes: ViewConfig["nodes"] = [
                     label: "form.abbreviationLabel",
                     placeholder: "form.abbreviationPlaceholder",
                     required: true,
+                    widgetProps: {maxLength: CURRENCY_ABBREVIATION_MAX},
                 },
             },
             {

@@ -12,7 +12,13 @@ import {addModelData} from "@coreModule/database/collections";
 import {countryViews} from "@coreModule/database/schemas/country/country.views";
 import {applyCountryIndexes} from "@coreModule/database/schemas/country/country.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
-import {CountrySchemaDef} from "armonia/src/modules/core/api/auxiliary/private/country/country.schema-def";
+import {
+    CountrySchemaDef,
+    COUNTRY_CODE_MAX,
+    COUNTRY_CODE_MIN,
+    COUNTRY_NAME_MAX,
+    COUNTRY_PHONE_CODE_MAX,
+} from "armonia/src/modules/core/api/auxiliary/private/country/country.schema-def";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 
 export interface ICountry extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
@@ -26,6 +32,9 @@ const CountrySchema = new Schema<ICountry>(
         name: {
             type: SchemaTypes.String,
             required: true,
+            trim: true,
+            minlength: 1,
+            maxlength: COUNTRY_NAME_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
@@ -37,8 +46,9 @@ const CountrySchema = new Schema<ICountry>(
             type: SchemaTypes.String,
             required: true,
             uppercase: true,
-            minlength: 2,
-            maxlength: 3,
+            trim: true,
+            minlength: COUNTRY_CODE_MIN,
+            maxlength: COUNTRY_CODE_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
@@ -48,6 +58,8 @@ const CountrySchema = new Schema<ICountry>(
         },
         phoneCode: {
             type: SchemaTypes.String,
+            trim: true,
+            maxlength: COUNTRY_PHONE_CODE_MAX,
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
