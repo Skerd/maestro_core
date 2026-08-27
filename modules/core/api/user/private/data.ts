@@ -56,7 +56,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/data/updateUserProfileName.form.response.type";
 import {
     UpdateUserProfileSurnameFormResponse
-} from "armonia/src/modules/core/api/user/private/data/updateUserProfileSurname.form.respone.type";
+} from "armonia/src/modules/core/api/user/private/data/updateUserProfileSurname.form.response.type";
 import {
     UpdateUserProfileTimezoneFormResponseType
 } from "armonia/src/modules/core/api/user/private/data/updateUserProfileTimezone.form.response.type";
