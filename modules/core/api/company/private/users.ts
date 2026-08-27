@@ -16,7 +16,7 @@
 
 import {Router} from "express";
 import {FilterQuery} from "mongoose";
-import {Decimal128, ObjectId} from "mongodb";
+import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
@@ -38,8 +38,6 @@ import {CreateUserFormType} from "armonia/src/modules/core/api/company/private/u
 import {
     CreateUserFormResponseType
 } from "armonia/src/modules/core/api/company/private/users/createUser.form.response.type";
-import {currencyService} from "@coreModule/database/schemas/currency/currency.service";
-import {financeService} from "@coreModule/database/schemas/finance/finance.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
@@ -47,7 +45,6 @@ import {transactionHandler} from "@coreModule/utilities/middlewares/transactionH
 import {TransactionRequired, TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
-import {FinanceCurrencies} from "@coreModule/database/schemas/finance/finance";
 import {escapeRegex, generateRandomString} from "@coreModule/utilities/helpers";
 import {
     inviteCompanyUserFormSchema
@@ -160,29 +157,6 @@ async function validateCompanyRole(company: { _id?: ObjectId; getAllRoles(): Pro
 }
 
 /**
- * Creates a new finance document for a company user with zero balance for all system currencies.
- *
- * @param companyId - Company the finance record belongs to.
- * @param opts - CRUD options (session, logger, languageCode, optional auditUserId).
- * @returns The created finance document (with _id).
- */
-async function createFinanceForNewCompanyUser(companyId: ObjectId, opts: CrudOptions) {
-    const currencies = await currencyService.find({}, opts);
-    const financeCurrencies: FinanceCurrencies[] = currencies.map((currency) => ({
-        currency: currency._id,
-        amount: Decimal128.fromString("0.0")
-    }));
-    return financeService.create(
-        {
-            currencies: financeCurrencies,
-            transactions: [],
-            company: companyId
-        } as any,
-        opts
-    );
-}
-
-/**
  * Builds the embedded company-role subdocument added to a user when they join a company.
  *
  * @param userRole - Role ID (string) to assign.
@@ -202,22 +176,19 @@ function buildCompanyRoleData(userRole: string, companyId: ObjectId) {
 }
 
 /**
- * Adds an existing user to the company by appending the company, finance ID, and role to their document.
+ * Adds an existing user to the company by appending the company and role to their document.
  *
  * @param existingUser - User document to update.
  * @param companyId - Company to add.
- * @param newFinance - Newly created finance document (must have _id).
  * @param companyRoleData - Role data from buildCompanyRoleData.
  * @param opts - CRUD options for the update.
- * @throws If the finance document has no _id.
  */
-async function addExistingUserToCompany(existingUser: IUser, companyId: ObjectId, newFinance: { _id?: ObjectId }, companyRoleData: ReturnType<typeof buildCompanyRoleData>, opts: CrudOptions): Promise<void> {
+async function addExistingUserToCompany(existingUser: IUser, companyId: ObjectId, companyRoleData: ReturnType<typeof buildCompanyRoleData>, opts: CrudOptions): Promise<void> {
     await userService.updateByIdOrThrow(
         existingUser._id,
         {
             $addToSet: {
-                companies: companyId,
-                finance: newFinance._id
+                companies: companyId
             },
             $push: { roles: companyRoleData }
         },
@@ -239,7 +210,7 @@ async function addExistingUserToCompany(existingUser: IUser, companyId: ObjectId
  * Builds the payload object for userService.create when creating a new user in a company.
  * Used by both direct create and invite flows; only the password differs.
  *
- * @param params - email, password, name, surname, registeredFrom, companyId, financeId, companyRoleData.
+ * @param params - email, password, name, surname, registeredFrom, companyId, companyRoleData.
  * @returns Plain object suitable for userService.create (username, password, companies, roles, etc.).
  */
 function buildNewCompanyUserPayload(params: {
@@ -249,10 +220,9 @@ function buildNewCompanyUserPayload(params: {
     surname: string;
     registeredFrom: ObjectId;
     companyId: ObjectId;
-    financeId: ObjectId;
     companyRoleData: ReturnType<typeof buildCompanyRoleData>;
 }) {
-    const { email, password, name, surname, registeredFrom, companyId, financeId, companyRoleData } = params;
+    const { email, password, name, surname, registeredFrom, companyId, companyRoleData } = params;
     return {
         username: email,
         password,
@@ -266,7 +236,6 @@ function buildNewCompanyUserPayload(params: {
         birthday: new Date(),
         phoneNumber: "",
         companies: [companyId],
-        finance: [financeId],
         roles: [companyRoleData],
         isEmailVerified: false
     } as any;
@@ -604,13 +573,12 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
 
     const existingUser = await ensureUserCanBeAddedToCompany(email, company, opts);
     await validateCompanyRole(company, userRole, opts);
-    const newFinance = await createFinanceForNewCompanyUser(company._id, opts);
     const companyRoleData = buildCompanyRoleData(userRole, company._id);
 
     let newUser: IUser;
     if (existingUser) {
         newUser = existingUser;
-        await addExistingUserToCompany(existingUser, company._id, newFinance, companyRoleData, opts);
+        await addExistingUserToCompany(existingUser, company._id, companyRoleData, opts);
     }
     else {
         newUser = await userService.create(
@@ -622,7 +590,6 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
                     surname,
                     registeredFrom: userInfo._id,
                     companyId: company._id,
-                    financeId: newFinance._id,
                     companyRoleData
                 }),
                 "requests.activation": {
@@ -724,13 +691,12 @@ async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<
 
     const existingUser = await ensureUserCanBeAddedToCompany(email, company, opts);
     await validateCompanyRole(company, userRole, opts);
-    const newFinance = await createFinanceForNewCompanyUser(company._id, opts);
     const companyRoleData = buildCompanyRoleData(userRole, company._id);
 
     const inviterName = `${userInfo.name || ""} ${userInfo.surname || ""}`.trim() || userInfo.username;
 
     if (existingUser) {
-        await addExistingUserToCompany(existingUser, company._id, newFinance, companyRoleData, opts);
+        await addExistingUserToCompany(existingUser, company._id, companyRoleData, opts);
         const invitedRoleDoc = await roleService.findOneOrThrow(
             {
                 _id: new ObjectId(userRole),
@@ -762,7 +728,6 @@ async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<
                     surname,
                     registeredFrom: userInfo._id,
                     companyId: company._id,
-                    financeId: newFinance._id,
                     companyRoleData: {
                         ...companyRoleData,
                         active: "invited"

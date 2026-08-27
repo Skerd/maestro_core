@@ -27,12 +27,9 @@ import {
     MFAEnabledLoginFormResponseType
 } from "armonia/src/modules/core/api/user/public/login/login.form.response.type";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
-import {currencyService} from "@coreModule/database/schemas/currency/currency.service";
-import {financeService} from "@coreModule/database/schemas/finance/finance.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ICompany} from "@coreModule/database/schemas/company/company";
-import {FinanceCurrencies} from "@coreModule/database/schemas/finance/finance";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import axios from "axios";
 import generator from "generate-password";
@@ -49,7 +46,7 @@ import qs from "qs";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import path from "path";
-import {Decimal128, ObjectId} from "mongodb";
+import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
@@ -610,23 +607,6 @@ async function createThirdPartyUser(
     // Generate user ID first so we can use it for audit logging
     const newUserId = new ObjectId();
 
-    // Create finance currencies
-    const currencies = await currencyService.find({}, { session, logger, languageCode });
-    const financeCurrencies: FinanceCurrencies[] = currencies.map((currency) => ({
-        currency: currency,
-        amount: Decimal128.fromString("0"),
-    }));
-
-    // Create finance record (use new user's ID as actor for self-service account creation)
-    const newFinance = await financeService.create(
-        {
-            currencies: financeCurrencies,
-            transactions: [],
-            company: company._id
-        } as any,
-        { session, logger, languageCode, auditUserId: newUserId.toString() }
-    );
-
     // Create embedded company role object
     const companyRoleData = {
         active: "active",
@@ -657,7 +637,6 @@ async function createThirdPartyUser(
             birthday: new Date(),
             phoneNumber: "+000000000000",
             companies: [company._id],
-            finance: [newFinance._id],
             roles: [companyRoleData]
         } as any,
         { session, logger, languageCode, auditUserId: newUserId.toString() }

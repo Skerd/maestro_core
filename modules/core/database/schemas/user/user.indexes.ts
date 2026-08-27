@@ -14,7 +14,6 @@ export function applyUserIndexes(UserSchema: Schema): void {
     UserSchema.index({ birthday: 1 });              // For birthday-based queries
     UserSchema.index({ phoneNumber: 1 });           // For phone number lookups
     UserSchema.index({ companies: 1 });             // For finding users by company
-    UserSchema.index({ finance: 1 });               // For finance-related queries
     UserSchema.index({ accesses: 1 });              // For access/role-based queries
     UserSchema.index({ photo: 1 });                 // For photo reference queries
     UserSchema.index({ cover: 1 });                 // For cover reference queries

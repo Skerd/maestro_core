@@ -4,13 +4,11 @@ import mongoose, {Model} from "mongoose";
 import Currency from "@coreModule/database/schemas/currency/currency";
 import Role from "@coreModule/database/schemas/role/role";
 import User from "@coreModule/database/schemas/user/user";
-import Finance from "@coreModule/database/schemas/finance/finance";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import Channel from "@coreModule/database/schemas/channel/channel";
 import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage";
 import Message from "@coreModule/database/schemas/message/message";
 import Company from "@coreModule/database/schemas/company/company";
-import Transaction from "@coreModule/database/schemas/transaction/transaction";
 import Country from "@coreModule/database/schemas/country/country";
 import State from "@coreModule/database/schemas/state/state";
 import City from "@coreModule/database/schemas/city/city";
@@ -53,12 +51,10 @@ const coreModels: Model<any>[] = [
     User,
     UserSession,
     LoginHistory,
-    Finance,
     Channel,
     AuditLog,
     LastChannelReadMessage,
     Message,
-    Transaction,
     RolePermission,
     Media,
     ApiAccess,

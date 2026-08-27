@@ -9,7 +9,6 @@ import {IRole} from "@coreModule/database/schemas/role/role";
 import {IMedia} from "@coreModule/database/schemas/media/media";
 import {ClientSession, ObjectId} from "mongodb";
 import {serverLogger} from "@coreModule/loggers/serverLog";
-import {IFinance} from "@coreModule/database/schemas/finance/finance";
 import {ActionException} from "armonia/src/modules/core/types";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
@@ -155,7 +154,6 @@ export interface IUser extends Document, IOwnershipPluginFields {
     birthday: Date;
     phoneNumber: string;
     companies: ICompany[];
-    finance: IFinance[];
     roles: IEmbeddedCompanyRole[];
     telegramNotify?: boolean;
     telegram: {
@@ -507,24 +505,6 @@ const UserSchema = new Schema<IUser>(
             },
             default: []
         }],
-        finance: {
-            type: [SchemaTypes.ObjectId],
-            ref: "Finance",
-            default: [],
-            dynamicTableConfiguration: {
-                visible: false,
-                filterable: false,
-                sortable: false,
-            },
-            permissions: {
-                self: {
-                    write: "no-permission"
-                },
-                others: {
-                    write: "no-permission"
-                }
-            }
-        },
 
         // security
         password: {

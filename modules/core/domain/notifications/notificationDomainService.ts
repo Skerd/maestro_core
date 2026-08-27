@@ -513,45 +513,6 @@ export function registerNotificationEventHandlers(): void {
         }
     });
 
-    notificationEventBus.on(NotificationEventCodes.TRANSACTION_COMPLETED, async (event: NotificationEvent) => {
-        const { receiverIds, payload } = event;
-        const companyId = payload.companyId as string;
-        const perspective = (payload.perspective as string) ?? "receiver";
-        const amountStr = (payload.amount as string) ?? "";
-        const transactionType = (payload.transactionType as string) ?? "";
-        const opts = createNotifOpts(event);
-
-        const description =
-            perspective === "sender"
-                ? `Transaction sent: ${transactionType} ${amountStr}`
-                : `Transaction received: ${transactionType} ${amountStr}`;
-
-        for (const receiverId of receiverIds) {
-            try {
-                await createAndPushNotification(
-                    {
-                        receiver: new ObjectId(receiverId),
-                        company: new ObjectId(companyId),
-                        code: NotificationEventCodes.TRANSACTION_COMPLETED,
-                        description,
-                        content: {
-                            transactionId: payload.transactionId,
-                            amount: payload.amount,
-                            currencyId: payload.currencyId,
-                            transactionType: payload.transactionType,
-                            perspective
-                        },
-                        importance: NotificationImportance.MEDIUM,
-                        category: NotificationCategory.FINANCIAL
-                    },
-                    opts
-                );
-            } catch (e) {
-                console.error(`Failed to create TRANSACTION_COMPLETED notification for ${receiverId}:`, e);
-            }
-        }
-    });
-
     notificationEventBus.on(NotificationEventCodes.SYSTEM_MAINTENANCE, async (event: NotificationEvent) => {
         const { receiverIds, payload } = event;
         const companyId = payload.companyId as string;

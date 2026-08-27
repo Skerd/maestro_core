@@ -2,11 +2,9 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {createSmtpServers} from "@coreModule/database/schemas/smtpServer/smtpServer.defaults";
 import {createMessagingProviders} from "@coreModule/database/schemas/messagingProvider/messagingProvider.defaults";
-import {createFinances} from "@coreModule/database/schemas/finance/finance.defaults";
 import {createChannels} from "@coreModule/database/schemas/channel/channel.defaults";
 import {createMessages} from "@coreModule/database/schemas/message/message.defaults";
 import {createNotifications} from "@coreModule/database/schemas/notification/notification.defaults";
-import {createTransactions} from "@coreModule/database/schemas/transaction/transaction.defaults";
 import {createMedia} from "@coreModule/database/schemas/media/media.defaults";
 
 /**
@@ -25,11 +23,9 @@ export async function seedCoreDemoData(
 
     await createSmtpServers(logger, company);
     await createMessagingProviders(logger, company);
-    await createFinances(logger, company);
     await createChannels(logger, company);
     await createMessages(logger, company);
     await createNotifications(logger, company);
-    await createTransactions(logger, company);
     await createMedia(logger, company);
 
     logger.finish("Finished seeding core demo data!");

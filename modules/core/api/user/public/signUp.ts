@@ -3,7 +3,7 @@
  *
  * Mounted under the user public routes (e.g. `/api/user/signup`). Public (no authentication
  * required). Creates user with default company (isDefaultForSignUp) and default role (isSignupDefault),
- * finance record with zero balance, and sends activation email; user must activate before logging in.
+ * and sends activation email; user must activate before logging in.
  * All changes are audited with the new user's own ID (self-action).
  *
  * **Routes:**
@@ -18,16 +18,13 @@ import authMW, {NotAuthenticatedMWType} from "@coreModule/utilities/middlewares/
 import {signupFormSchema} from "armonia/src/modules/core/api/user/public/signUp/signup.form.validator";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {SignUpFormType} from "armonia/src/modules/core/api/user/public/signUp/signup.form.type";
-import {FinanceCurrencies} from "@coreModule/database/schemas/finance/finance";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
-import {currencyService} from "@coreModule/database/schemas/currency/currency.service";
-import {financeService} from "@coreModule/database/schemas/finance/finance.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
-import {Decimal128, ObjectId} from "mongodb";
+import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {SignupFormResponseType} from "armonia/src/modules/core/api/user/public/signUp/signup.form.response.type";
@@ -52,7 +49,7 @@ const router = Router();
  *
  * @remarks
  * - Rate limited: 10 requests per minute
- * - Creates user, finance (zero balance), and company role; sends activation email; audited with new user's ID (self-action)
+ * - Creates user and company role; sends activation email; audited with new user's ID (self-action)
  */
 router.post(
     "",
@@ -63,7 +60,7 @@ router.post(
     asyncHandler(SignUp)
 );
 /**
- * Creates new user with default company and role, finance record, and sends activation email.
+ * Creates new user with default company and role, and sends activation email.
  * Uses new user's own ID for audit (self-action).
  *
  * @param params - Transaction, form (email, password, name, surname), logger, languageCode, session.
@@ -101,25 +98,8 @@ async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType
         _id: new ObjectId()
     };
 
-    let financeCurrencies: FinanceCurrencies[] = (await currencyService.find({}, {session, logger, languageCode})).map( currency => {
-        return {
-            currency: currency._id,
-            amount: Decimal128.fromString("0.0")
-        }
-    });
-
     // Generate user ID first so we can use it for audit logging
     const newUserId = new ObjectId();
-    
-    let financeIds = [];
-    // Create finance record (use new user's ID as actor for self-service account creation)
-    // Include transactions: [] to match company user creation shape
-    let newFinance = await financeService.create({
-        currencies: financeCurrencies,
-        transactions: [],
-        company: company._id
-    } as any, {session, logger, languageCode, auditUserId: newUserId.toString()});
-    financeIds.push(newFinance._id);
 
     // Create user account (use new user's own ID as actor - self-action for account creation)
     let createdUser = await userService.create({
@@ -136,7 +116,6 @@ async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType
         birthday: new Date(),
         phoneNumber: "",
         companies: [company._id],
-        finance: financeIds,
         roles: [companyRoleData],
         isEmailVerified: false,
         "requests.activation": {

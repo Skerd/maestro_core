@@ -1,8 +1,6 @@
 import mongoose, {Document, Schema, SchemaTypes} from 'mongoose';
-import {ClientSession, Decimal128, ObjectId} from "mongodb";
+import {ClientSession, ObjectId} from "mongodb";
 import Role, {IRole} from "@coreModule/database/schemas/role/role";
-import Finance, {FinanceCurrencies} from "@coreModule/database/schemas/finance/finance";
-import Currency from "@coreModule/database/schemas/currency/currency";
 import User, {IEmbeddedCompanyRole} from "@coreModule/database/schemas/user/user";
 import {generateRandomString} from "@coreModule/utilities/helpers";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
@@ -101,7 +99,7 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     seedCronJobs: (session?: ClientSession | null) => Promise<void>;
     getRobotId: (session?: ClientSession | null) => Promise<ObjectId | null>;
     createDefaultRoles: (parentLogger?: serverLogger, session?: ClientSession) => Promise<void>;
-    assignCreatorFinanceAndRoles: (session?: ClientSession | null) => Promise<void>;
+    assignCreatorRoles: (session?: ClientSession | null) => Promise<void>;
     addCompanyDemoData: (parentLogger?: serverLogger, session?: ClientSession) => Promise<void>;
     getAllRoles: (fetchAdminRoles?: boolean) => Promise<IRole[]>;
 }
@@ -300,7 +298,7 @@ CompanySchema.post("save", async function (doc) {
     if (doc.$locals.companyWasNew) {
         const session = doc.$session();
         await doc.createDefaultRoles(undefined, session ?? undefined);
-        await doc.assignCreatorFinanceAndRoles(session);
+        await doc.assignCreatorRoles(session);
         await doc.createBot();
         await doc.ensureAiChannels(session ?? undefined);
         await doc.seedCronJobs(session ?? undefined);
@@ -402,7 +400,7 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
                 logger.debug(`Created role named '${role.name}' with slug '${role.slug}'`);
             }
 
-            /** Default system users get every default role; creator is wired in assignCreatorFinanceAndRoles (admin + finance). */
+            /** Default system users get every default role; creator is wired in assignCreatorRoles (admin). */
             const allCompanyRoles = [...savedRoles, ...createdRoles];
             const allRoleIds = allCompanyRoles.map((role) => role._id);
 
@@ -472,7 +470,7 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
     }
 }
 
-CompanySchema.methods.assignCreatorFinanceAndRoles = async function (session?: ClientSession | null) {
+CompanySchema.methods.assignCreatorRoles = async function (session?: ClientSession | null) {
     const creatorId = documentObjectId(this.createdBy);
     if (!creatorId) {
         return;
@@ -483,28 +481,16 @@ CompanySchema.methods.assignCreatorFinanceAndRoles = async function (session?: C
         : await Role.findOne({company: this._id, isAdmin: true});
 
     if (!adminRole) {
-        throw new Error(`assignCreatorFinanceAndRoles: admin role not found for company ${this._id.toString()}`);
+        throw new Error(`assignCreatorRoles: admin role not found for company ${this._id.toString()}`);
     }
 
-    const currencyQuery = Currency.find({});
-    const currencies = session ? await currencyQuery.session(session) : await currencyQuery;
-
-    const financeCurrencies: FinanceCurrencies[] = currencies.map((currency) => ({
-        currency: currency._id,
-        amount: Decimal128.fromString("999999999.99"),
-    }));
-
     const saveOpts = session ? {session} : {};
-    const newFinance = await new Finance({
-        currencies: financeCurrencies,
-        company: this._id,
-    }).save(saveOpts);
 
     const userQuery = User.findById(creatorId);
     const creatorUser = session ? await userQuery.session(session) : await userQuery;
 
     if (!creatorUser) {
-        throw new Error(`assignCreatorFinanceAndRoles: creator user not found ${creatorId.toString()}`);
+        throw new Error(`assignCreatorRoles: creator user not found ${creatorId.toString()}`);
     }
 
     const newCompanyRole: IEmbeddedCompanyRole = {
@@ -519,7 +505,6 @@ CompanySchema.methods.assignCreatorFinanceAndRoles = async function (session?: C
     };
 
     creatorUser.companies.push(this._id as never);
-    creatorUser.finance.push(newFinance._id as never);
     creatorUser.roles.push(newCompanyRole as never);
     creatorUser.$locals = creatorUser.$locals || {};
     creatorUser.$locals.auditUserId = creatorId;
@@ -572,18 +557,6 @@ CompanySchema.methods.createBot = async function (){
     if( !!possibleBot ){
         return;
     }
-    let financeCurrencies: FinanceCurrencies[] = (await Currency.find({})).map( currency => {
-        return {
-            currency: currency._id,
-            amount: Decimal128.fromString("999999999.99")
-        }
-    });
-
-    let newFinance = await new Finance({
-        currencies: financeCurrencies,
-        company: this._id
-    }).save();
-
     let createdBotUser = await new User({
         username: `${this.name.replaceAll(" ", "")} AI Bot`,
         password: generateRandomString(64),
@@ -600,7 +573,6 @@ CompanySchema.methods.createBot = async function (){
         birthday: "2000-01-01",
         phoneNumber: "+000000000000",
         companies: [this._id],
-        finance: [newFinance._id],
         roles: [
             {
                 active: "active",
