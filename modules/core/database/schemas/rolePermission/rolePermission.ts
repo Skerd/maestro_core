@@ -2,9 +2,8 @@ import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {applyRolePermissionIndexes} from "./rolePermission.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
-import {IOwnershipPluginFields} from "@coreModule/database/types/plugin-fields";
 
-export interface IRolePermission extends Document, IOwnershipPluginFields {
+export interface IRolePermission extends Document {
     name: string,
     group: string,
     tag: string,
@@ -67,6 +66,8 @@ const RolePermissionSchema = new Schema<IRolePermission>(
     }
 );
 
+// No ownershipPlugin / softDeletePlugin / lifeCyclePlugin: RolePermission is a global
+// catalog of permission tags, not a tenant document. Model create/delete/restore are no-permission.
 auditPlugin(RolePermissionSchema);
 applyRolePermissionIndexes(RolePermissionSchema);
 const RolePermission = model<IRolePermission>("RolePermission", RolePermissionSchema);

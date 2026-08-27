@@ -303,15 +303,24 @@ export const ChannelSchema = new mongoose.Schema<IChannel>(
         }
     },
     {
+        // No softDeletePlugin: leaving updates `leftUsers`; the channel document stays.
+        // Last member leaving still hard-deletes via the service. Model `delete` stays —
+        // SchemaGuard gates leave/delete. Restore has no API.
         permissions: {
-            self: {},
-            others: {}
+            self: {
+                restore: "no-permission",
+            },
+            others: {
+                restore: "no-permission",
+            }
         }
     }
 );
 
 ownershipPlugin(ChannelSchema);
 auditPlugin(ChannelSchema);
+// No softDeletePlugin / lifeCyclePlugin: membership is `users` + `leftUsers`.
+// `createdAt` is a channel field, not the lifecycle plugin. Model restore is no-permission.
 applyChannelIndexes(ChannelSchema);
 // Channel.syncIndexes(); // Uncomment to manually sync indexes
 

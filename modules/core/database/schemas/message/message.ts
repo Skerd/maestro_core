@@ -340,16 +340,24 @@ export const MessageSchema = new mongoose.Schema<IMessage>(
         }
     },
     {
+        // No softDeletePlugin: the document stays. Hide per user via `deletedFor`
+        // (own-message first hide also sets `deletedAt` / status).
+        // Model `delete` stays — SchemaGuard gates that hide API. Restore has no API.
         permissions: {
-            self: {},
-            others: {}
+            self: {
+                restore: "no-permission",
+            },
+            others: {
+                restore: "no-permission",
+            }
         }
     }
 );
 
 ownershipPlugin(MessageSchema);
 auditPlugin(MessageSchema);
-// softDeletePlugin(MessageSchema);
+// No softDeletePlugin / lifeCyclePlugin: hide via `deletedFor`, not collection delete.
+// `createdAt` is a message field, not the lifecycle plugin. Model restore is no-permission.
 applyMessageIndexes(MessageSchema);
 // Message.syncIndexes(); // Uncomment to manually sync indexes
 

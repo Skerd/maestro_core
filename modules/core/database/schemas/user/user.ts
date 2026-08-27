@@ -40,7 +40,6 @@ import {
     publishMfaDisableEmailEvent
 } from "@coreModule/kafka/kafkaProducer";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
-import {IOwnershipPluginFields} from "@coreModule/database/types/plugin-fields";
 import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
 import {addModelData} from "@coreModule/database/collections";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
@@ -92,7 +91,7 @@ export interface IEmbeddedCompanyRole {
     _id: ObjectId;
 }
 
-export interface IUser extends Document, IOwnershipPluginFields {
+export interface IUser extends Document {
 
     _id: ObjectId,
     username: string,
@@ -947,6 +946,7 @@ const UserSchema = new Schema<IUser>(
         },
     },
     {
+        // No softDeletePlugin: users are not deleted/restored. Hide/disable is company-role status.
         permissions: {
             self: {
                 delete: "no-permission",
@@ -962,10 +962,6 @@ const UserSchema = new Schema<IUser>(
 
 UserSchema.pre("save", async function (next){
     let user: any = this;
-
-    // if( !user.createdBy ){
-    //     user.createdBy = user._id;
-    // }
 
     if( user.isModified("name") || user.isModified("surname") ){
         user.fullName = user.name + " " + user.surname;
@@ -1713,7 +1709,10 @@ UserSchema.methods.isAdmin = async function (companyId: ObjectId): Promise<boole
     return isAdmin;
 }
 
-// ownershipPlugin(UserSchema, true, false );
+// Plugin exceptions (do not apply the Country stack):
+// - ownershipPlugin: a user belongs to many companies (`companies` / `roles`), not one `company`.
+// - lifeCyclePlugin: `registerDate` is the join timestamp; createdAt/updatedAt add nothing.
+// - softDeletePlugin: users are not soft-deleted (model delete/restore are no-permission).
 auditPlugin(UserSchema);
 applyUserIndexes(UserSchema);
 const User = model<IUser>("User", UserSchema);
