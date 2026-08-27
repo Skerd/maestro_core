@@ -304,7 +304,7 @@ async function startSingleUserTopicConsumer(parentLogger: serverLogger | undefin
     const consumerLogger = getLogger(`kafka_consumer_${spec.registryKey}`, parentLogger);
     consumerLogger.start(`Starting Kafka consumer: ${spec.displayName} (topic=${spec.topic})`);
 
-    const consumer = getConsumerInstance(spec.groupId, [spec.topic]);
+    const consumer = getConsumerInstance(spec.groupId);
     if (!consumer) {
         consumerLogger.err("Failed to get Kafka consumer instance");
         return;

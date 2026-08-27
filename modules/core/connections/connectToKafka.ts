@@ -144,7 +144,7 @@ export function getProducerInstance(): Producer | null {
  * Creates a dedicated KafkaJS consumer for `groupId`. The `topics` argument is
  * kept for call-site readability; subscription is the caller's responsibility.
  */
-export function getConsumerInstance(groupId: string, _topics: string[]): Consumer | null {
+export function getConsumerInstance(groupId: string): Consumer | null {
     if (!KAFKA.ENABLED) {
         return null;
     }

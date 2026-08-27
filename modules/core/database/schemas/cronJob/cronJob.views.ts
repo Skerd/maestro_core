@@ -1,4 +1,15 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
+import {
+    CRON_JOB_CRON_EXPRESSION_MAX,
+    CRON_JOB_DESCRIPTION_MAX,
+    CRON_JOB_MAX_RETRIES_MAX,
+    CRON_JOB_NAME_MAX,
+    CRON_JOB_PRIORITY_MAX,
+    CRON_JOB_RETRY_DELAY_SECONDS_MAX,
+    CRON_JOB_TIMEOUT_SECONDS_MAX,
+    CRON_JOB_TIMEOUT_SECONDS_MIN,
+} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.schema-def";
+import {lifecycleSheetGroup} from "@coreModule/database/schemas/shared/lifecycleSheetGroup";
 
 export const cronJobSheetView: ViewConfig = {
     model: "cronjobs",
@@ -17,188 +28,284 @@ export const cronJobSheetView: ViewConfig = {
             children: [
                 {
                     render: "#SheetGrid",
-                    props: {columns: 2},
+                    props: {columns: 3},
                     children: [
-                        {render: "#DisplayCard", dependent: "handler", field: {name: "handler", widget: "#DisplayCard", label: "handler"}},
                         {
                             render: "#DisplayCard",
-                            dependent: "type",
+                            permissions: {read: "handler"},
                             field: {
-                                name: "type",
+                                name: "handler",
                                 widget: "#DisplayCard",
-                                label: "type",
-                                widgetProps: {languageKeyCategory: "typeValues", type: "enum", type: "enum"},
+                                label: "handler",
+                                widgetProps: {icon: "#Code"},
                             },
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "active",
+                            permissions: {read: "active"},
                             field: {
                                 name: "active",
                                 widget: "#DisplayCard",
                                 label: "active",
-                                widgetProps: {type: "boolean"},
+                                widgetProps: {icon: "#Power", type: "boolean"},
                             },
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "nextRunAt",
+                            permissions: {read: "pausedAt"},
                             field: {
-                                name: "nextRunAt",
+                                name: "pausedAt",
                                 widget: "#DisplayCard",
-                                label: "nextRunAt",
-                                widgetProps: {type: "dateTime"},
+                                label: "pausedAt",
+                                widgetProps: {icon: "#PlayerPause", type: "dateTime"},
                             },
                         },
+                    ],
+                },
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 1},
+                    children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "lastRunAt",
+                            permissions: {read: "description"},
+                            dependent: "description",
                             field: {
-                                name: "lastRunAt",
+                                name: "description",
                                 widget: "#DisplayCard",
-                                label: "lastRunAt",
-                                widgetProps: {type: "dateTime"},
+                                label: "description",
+                                widgetProps: {
+                                    icon: "#IconAlignLeft",
+                                    expandable: true,
+                                    maxLength: 250,
+                                },
                             },
                         },
                     ],
                 },
             ],
         },
+        {
+            render: "#SheetGroup",
+            props: {title: "schedule"},
+            children: [
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 3},
+                    children: [
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "cronExpression"},
+                            field: {
+                                name: "cronExpression",
+                                widget: "#DisplayCard",
+                                label: "cronExpression",
+                                widgetProps: {icon: "#Clock"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "nextRunAt"},
+                            field: {
+                                name: "nextRunAt",
+                                widget: "#DisplayCard",
+                                label: "nextRunAt",
+                                widgetProps: {icon: "#CalendarClock", type: "dateTime"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "lastRunAt"},
+                            field: {
+                                name: "lastRunAt",
+                                widget: "#DisplayCard",
+                                label: "lastRunAt",
+                                widgetProps: {icon: "#History", type: "dateTime"},
+                            },
+                        },
+                    ],
+                },
+            ],
+        },
+        {
+            render: "#SheetGroup",
+            props: {title: "execution"},
+            children: [
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 3},
+                    children: [
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "priority"},
+                            field: {
+                                name: "priority",
+                                widget: "#DisplayCard",
+                                label: "priority",
+                                widgetProps: {icon: "#ListOrdered", type: "number"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "maxRetries"},
+                            field: {
+                                name: "maxRetries",
+                                widget: "#DisplayCard",
+                                label: "maxRetries",
+                                widgetProps: {icon: "#Repeat", type: "number"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "retryDelaySeconds"},
+                            field: {
+                                name: "retryDelaySeconds",
+                                widget: "#DisplayCard",
+                                label: "retryDelaySeconds",
+                                widgetProps: {icon: "#Hourglass", type: "number"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "timeoutSeconds"},
+                            field: {
+                                name: "timeoutSeconds",
+                                widget: "#DisplayCard",
+                                label: "timeoutSeconds",
+                                widgetProps: {icon: "#Timer", type: "number"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "missedRunPolicy"},
+                            field: {
+                                name: "missedRunPolicy",
+                                widget: "#DisplayCard",
+                                label: "missedRunPolicy",
+                                widgetProps: {
+                                    icon: "#Layers",
+                                    type: "enum",
+                                    languageKeyCategory: "missedRunPolicyValues",
+                                },
+                            },
+                        },
+                    ],
+                },
+            ],
+        },
+        lifecycleSheetGroup,
     ],
 };
 
-const cronJobFormFields: ViewConfig["nodes"] = [
+const cronJobEditFormFields: ViewConfig["nodes"] = [
     {
         render: "#FormGrid",
         props: {columns: 2},
         children: [
-            {render: "#Field", field: {name: "code", widget: "#Input", label: "form.codeLabel", required: true}},
-            {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", required: true}},
-            {render: "#Field", field: {name: "handler", widget: "#Input", label: "form.handlerLabel", required: true}},
             {
                 render: "#Field",
                 field: {
-                    name: "type",
+                    name: "name",
+                    widget: "#Input",
+                    label: "form.nameLabel",
+                    required: true,
+                    widgetProps: {maxLength: CRON_JOB_NAME_MAX},
+                },
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "cronExpression",
+                    widget: "#Input",
+                    label: "form.cronExpressionLabel",
+                    placeholder: "form.cronExpressionPlaceholder",
+                    required: true,
+                    widgetProps: {maxLength: CRON_JOB_CRON_EXPRESSION_MAX},
+                },
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "priority",
+                    widget: "#Input",
+                    label: "form.priorityLabel",
+                    required: true,
+                    widgetProps: {type: "number", min: 0, max: CRON_JOB_PRIORITY_MAX, step: 1},
+                },
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "maxRetries",
+                    widget: "#Input",
+                    label: "form.maxRetriesLabel",
+                    required: true,
+                    widgetProps: {type: "number", min: 0, max: CRON_JOB_MAX_RETRIES_MAX, step: 1},
+                },
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "retryDelaySeconds",
+                    widget: "#Input",
+                    label: "form.retryDelaySecondsLabel",
+                    required: true,
+                    widgetProps: {type: "number", min: 0, max: CRON_JOB_RETRY_DELAY_SECONDS_MAX, step: 1},
+                },
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "timeoutSeconds",
+                    widget: "#Input",
+                    label: "form.timeoutSecondsLabel",
+                    widgetProps: {
+                        type: "number",
+                        min: CRON_JOB_TIMEOUT_SECONDS_MIN,
+                        max: CRON_JOB_TIMEOUT_SECONDS_MAX,
+                        step: 1,
+                    },
+                },
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "missedRunPolicy",
                     widget: "#SimpleSelect",
-                    label: "form.typeLabel",
+                    label: "form.missedRunPolicyLabel",
                     required: true,
                     widgetProps: {
                         options: [
-                            {value: "interval", label: "form.type.interval"},
-                            {value: "cron", label: "form.type.cron"},
-                            {value: "once", label: "form.type.once"},
-                            {value: "queue", label: "form.type.queue"},
+                            {value: "skip", label: "form.missedRunPolicy.skip"},
+                            {value: "run_once", label: "form.missedRunPolicy.run_once"},
+                            {value: "catch_up", label: "form.missedRunPolicy.catch_up"},
                         ],
                         className: "grow w-full",
                     },
                 },
             },
-            {
-                render: "#FormWhenFieldValueIn",
-                props: {watchField: "type", whenValues: ["cron"], clearFields: ["cronExpression"]},
-                children: [
-                    {
-                        render: "#Field",
-                        field: {
-                            name: "cronExpression",
-                            widget: "#Input",
-                            label: "form.cronExpressionLabel",
-                            placeholder: "form.cronExpressionPlaceholder",
-                            required: true,
-                        },
-                    },
-                ],
-            },
-            {
-                render: "#FormWhenFieldValueIn",
-                props: {watchField: "type", whenValues: ["interval"], clearFields: ["interval"]},
-                children: [
-                    {
-                        render: "#FormGrid",
-                        props: {columns: 2},
-                        children: [
-                            {
-                                render: "#Field",
-                                field: {
-                                    name: "interval.value",
-                                    widget: "#Input",
-                                    label: "form.intervalValueLabel",
-                                    placeholder: "form.intervalValuePlaceholder",
-                                    required: true,
-                                    widgetProps: {type: "number", min: 1, step: 1},
-                                },
-                            },
-                            {
-                                render: "#Field",
-                                field: {
-                                    name: "interval.unit",
-                                    widget: "#SimpleSelect",
-                                    label: "form.intervalUnitLabel",
-                                    required: true,
-                                    widgetProps: {
-                                        options: [
-                                            {value: "seconds", label: "form.intervalUnit.seconds"},
-                                            {value: "minutes", label: "form.intervalUnit.minutes"},
-                                            {value: "hours", label: "form.intervalUnit.hours"},
-                                            {value: "days", label: "form.intervalUnit.days"},
-                                        ],
-                                        className: "grow w-full",
-                                    },
-                                },
-                            },
-                        ],
-                    },
-                ],
-            },
+        ],
+    },
+    {
+        render: "#FormGrid",
+        props: {columns: 1},
+        children: [
             {
                 render: "#Field",
                 field: {
-                    name: "scope",
-                    widget: "#SimpleSelect",
-                    label: "form.scopeLabel",
-                    required: true,
+                    name: "description",
+                    widget: "#Textarea",
+                    label: "form.descriptionLabel",
+                    placeholder: "form.descriptionPlaceholder",
                     widgetProps: {
-                        options: [
-                            {value: "global", label: "form.scope.global"},
-                            {value: "company", label: "form.scope.company"},
-                        ],
-                        className: "grow w-full",
+                        className: "resize-none max-h-[250px] overflow-y-auto",
+                        maxLength: CRON_JOB_DESCRIPTION_MAX,
                     },
                 },
             },
-            {
-                render: "#FormWhenFieldValueIn",
-                props: {watchField: "scope", whenValues: ["company"], clearFields: ["company"]},
-                children: [
-                    {
-                        render: "#Field",
-                        field: {
-                            name: "company",
-                            widget: "#Select",
-                            label: "form.companyLabel",
-                            placeholder: "form.companyPlaceholder",
-                            required: true,
-                        },
-                    },
-                ],
-            },
-            {render: "#Field", field: {name: "active", widget: "#Switch", label: "form.activeLabel"}},
-            {render: "#Field", field: {name: "priority", widget: "#Input", label: "form.priorityLabel", widgetProps: {type: "number"}}},
-            {render: "#Field", field: {name: "maxRetries", widget: "#Input", label: "form.maxRetriesLabel", widgetProps: {type: "number"}}},
-            {render: "#Field", field: {name: "description", widget: "#Textarea", label: "form.descriptionLabel"}},
         ],
     },
 ];
-
-export const cronJobCreateFormView: ViewConfig = {
-    model: "cronjobs",
-    viewType: "form",
-    viewMode: "create",
-    accessModel: "cronjobs",
-    apiUrl: "/api/auxiliary/cron-jobs",
-    method: "PUT",
-    nodes: cronJobFormFields,
-};
 
 export const cronJobEditFormView: ViewConfig = {
     model: "cronjobs",
@@ -207,7 +314,7 @@ export const cronJobEditFormView: ViewConfig = {
     accessModel: "cronjobs",
     apiUrl: "/api/auxiliary/cron-jobs",
     method: "PATCH",
-    nodes: cronJobFormFields,
+    nodes: cronJobEditFormFields,
 };
 
-export const cronJobViews = [cronJobSheetView, cronJobCreateFormView, cronJobEditFormView];
+export const cronJobViews = [cronJobSheetView, cronJobEditFormView];

@@ -18,3 +18,20 @@ export function computeRetryDelayMs(
 export function shouldRetry(attempt: number, maxRetries: number): boolean {
     return attempt <= maxRetries;
 }
+
+/** Next attempt number: 1 unless the previous run failed/timed out and queued a retry. */
+export function resolveRunAttempt(
+    last: {status: string; attempt: number; nextRetryAt?: Date | null} | null | undefined,
+    options: {manual?: boolean; attempt?: number} = {},
+): number {
+    if (options.attempt != null) return options.attempt;
+    if (options.manual) return 1;
+    if (
+        last
+        && (last.status === "failed" || last.status === "timeout")
+        && last.nextRetryAt
+    ) {
+        return last.attempt + 1;
+    }
+    return 1;
+}

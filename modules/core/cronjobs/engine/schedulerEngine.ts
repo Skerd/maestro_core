@@ -1,9 +1,8 @@
 import CronJobModel from "@coreModule/database/schemas/cronJob/cronJob";
 import type {ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
-import {CRON} from "@coreModule/environment";
-import {isKafkaConnected} from "@coreModule/connections/connectToKafka";
+import {CRON, KAFKA} from "@coreModule/environment";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import {computeNextRunAt} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
+import {computeNextRunAt, countDueOccurrences} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
 import {
     publishSchedulerHeartbeat,
     releaseSchedulerLeader,
@@ -12,8 +11,8 @@ import {
 } from "@coreModule/cronjobs/locking/distributedLock";
 import {renewRedisLock} from "@coreModule/cronjobs/locking/redisLock";
 import {jobRunner} from "@coreModule/cronjobs/engine/jobRunner";
+import {CATCH_UP_MAX, resolveMissedRunPolicy, selectRunCount} from "@coreModule/cronjobs/engine/missedRunPolicy";
 import {kafkaQueueAdapter} from "@coreModule/cronjobs/adapters/kafkaQueueAdapter";
-import type {CronQueueMessage} from "@coreModule/cronjobs/adapters/queueAdapter";
 import CronExecution from "@coreModule/database/schemas/cronExecution/cronExecution";
 import {pruneStaleMongoLocks} from "@coreModule/cronjobs/locking/mongoLock";
 
@@ -22,7 +21,6 @@ export class SchedulerEngine {
     private healTimer: NodeJS.Timeout | null = null;
     private leaderHandle: DistributedLockHandle | null = null;
     private running = false;
-    private readonly logger = getLogger("cron_scheduler");
 
     async start(parentLogger?: serverLogger): Promise<void> {
         if (this.running) return;
@@ -30,20 +28,21 @@ export class SchedulerEngine {
         const log = getLogger("cron_scheduler", parentLogger);
         log.debug("Scheduler engine starting");
 
-        if (isKafkaConnected()) {
-            await kafkaQueueAdapter.startConsumer(async (msg: CronQueueMessage) => {
-                await jobRunner.runById(msg.jobId, {
-                    attempt: msg.attempt,
-                    executionId: msg.executionId,
-                    parentLogger: log,
-                });
-            });
-        } else {
-            log.warn("Kafka not connected — queue execution strategy unavailable");
-        }
-
         this.tickTimer = setInterval(() => void this.tick(log), CRON.SCHEDULER_TICK_MS);
         this.healTimer = setInterval(() => void this.selfHeal(log), CRON.SELF_HEAL_INTERVAL_MS);
+        if (KAFKA.ENABLED) {
+            try {
+                await kafkaQueueAdapter.startConsumer(async (msg) => {
+                    await jobRunner.runById(msg.jobId, {
+                        manual: msg.manual,
+                        executionId: msg.executionId,
+                    });
+                });
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                log.err(`Cron execute consumer failed to start: ${msg}`);
+            }
+        }
         await this.tick(log);
     }
 
@@ -53,8 +52,8 @@ export class SchedulerEngine {
         if (this.healTimer) clearInterval(this.healTimer);
         this.tickTimer = null;
         this.healTimer = null;
-        await jobRunner.awaitActiveRuns();
         await kafkaQueueAdapter.stopConsumer();
+        await jobRunner.awaitActiveRuns();
         if (this.leaderHandle) {
             await releaseSchedulerLeader(this.leaderHandle);
             this.leaderHandle = null;
@@ -105,24 +104,26 @@ export class SchedulerEngine {
             await CronJobModel.updateOne({_id: job._id}, {$set: {nextRunAt}});
         }
 
-        if (job.executionStrategy === "queue" || job.type === "queue") {
-            if (!isKafkaConnected()) {
-                log.warn(`Job ${job.code} uses queue strategy but Kafka is disconnected`);
-                return;
-            }
-            const msg: CronQueueMessage = {
-                jobId: job._id.toString(),
-                attempt: 1,
-                company: job.company?.toString() ?? null,
-                handler: job.handler,
-                metadata: job.metadata as Record<string, unknown> | undefined,
-                enqueuedAt: new Date().toISOString(),
-            };
-            await kafkaQueueAdapter.enqueue(msg);
+        const dueCount = countDueOccurrences(job, now, CATCH_UP_MAX);
+        const policy = resolveMissedRunPolicy(job.missedRunPolicy);
+        const runs = selectRunCount(policy, dueCount);
+        if (runs === 0) {
+            log.debug(`Skipped due run(s) for ${job.code} (missedRunPolicy=${policy}, due=${dueCount})`);
             return;
         }
 
-        await jobRunner.runJob(job, {parentLogger: log});
+        const payload = {
+            jobId: job._id.toString(),
+            attempt: 1,
+            company: job.company?.toString() ?? null,
+            handler: job.handler,
+        };
+        for (let i = 0; i < runs; i++) {
+            await kafkaQueueAdapter.enqueue({
+                ...payload,
+                enqueuedAt: new Date().toISOString(),
+            });
+        }
     }
 
     private async selfHeal(log: serverLogger): Promise<void> {

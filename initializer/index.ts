@@ -26,6 +26,7 @@ import ApiAccess from "@coreModule/database/schemas/apiAccess/apiAccess";
 import "@coreModule/database/schemas/smtpServer/smtpServer";
 import "@coreModule/database/schemas/messagingProvider/messagingProvider";
 import "@coreModule/database/schemas/cronJob/cronJob";
+import "@coreModule/database/schemas/cronExecution/cronExecution";
 import MessagingProvider from "@coreModule/database/schemas/messagingProvider/messagingProvider";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {createUsers} from "@coreModule/database/schemas/user/user.defaults";

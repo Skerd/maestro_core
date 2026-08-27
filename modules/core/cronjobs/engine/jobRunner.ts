@@ -5,13 +5,14 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {getCronHandlerFn} from "@coreModule/cronjobs/registry/handlerRegistry";
 import {computeNextRunAt} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
 import {acquireJobLock, releaseJobLock} from "@coreModule/cronjobs/locking/distributedLock";
-import {computeRetryDelayMs, shouldRetry} from "@coreModule/cronjobs/engine/retryEngine";
+import {computeRetryDelayMs, resolveRunAttempt, shouldRetry} from "@coreModule/cronjobs/engine/retryEngine";
 import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
 import {cronExecutionService} from "@coreModule/database/schemas/cronExecution/cronExecution.service";
 import type {ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
 import type {ICronExecution, CronExecutionStatus} from "@coreModule/database/schemas/cronExecution/cronExecution";
 import CronExecution from "@coreModule/database/schemas/cronExecution/cronExecution";
 import {recordCronResult} from "@coreModule/cronjobs/health/cronSchedulerHealth";
+import {awaitHandlerWithTimeout} from "@coreModule/cronjobs/engine/awaitHandlerWithTimeout";
 
 const MAX_LOG_LINES = 500;
 
@@ -31,8 +32,7 @@ function canAcquireConcurrency(job: ICronJob): boolean {
     const companyCount = companyRunning.get(companyKey) ?? 0;
     if (companyCount >= CRON.MAX_CONCURRENT_PER_COMPANY) return false;
     const jobCount = jobRunning.get(job._id.toString()) ?? 0;
-    const maxJob = job.maxConcurrentRuns ?? (job.allowParallelRuns ? 10 : 1);
-    if (jobCount >= maxJob) return false;
+    if (jobCount >= 1) return false;
     return true;
 }
 
@@ -82,12 +82,17 @@ export class JobRunner {
             return null;
         }
 
-        const attempt = options.attempt ?? 1;
-        const needsLock = job.singleton || job.executionStrategy === "distributed" || !job.allowParallelRuns;
-
         let execution = options.executionId
             ? await cronExecutionService.findById(options.executionId, {logger, languageCode: "en-US"})
             : null;
+
+        const lastExecution = execution
+            ? null
+            : await CronExecution.findOne({jobId: job._id})
+                .sort({startedAt: -1})
+                .select("status attempt nextRetryAt")
+                .lean();
+        const attempt = execution?.attempt ?? resolveRunAttempt(lastExecution, options);
 
         if (!execution) {
             execution = await CronExecution.create({
@@ -104,20 +109,14 @@ export class JobRunner {
         activeExecutions.add(execution._id.toString());
         incrementConcurrency(job);
 
-        let lock = null;
-        if (needsLock) {
-            lock = await acquireJobLock(
-                job._id.toString(),
-                job.allowParallelRuns ? execution._id.toString() : undefined,
-            );
-            if (!lock) {
-                await this.finalizeExecution(execution._id, "cancelled", {
-                    message: "Could not acquire distributed lock",
-                });
-                decrementConcurrency(job);
-                activeExecutions.delete(execution._id.toString());
-                return execution;
-            }
+        const lock = await acquireJobLock(job._id.toString());
+        if (!lock) {
+            await this.finalizeExecution(execution._id, "cancelled", {
+                message: "Could not acquire distributed lock",
+            });
+            decrementConcurrency(job);
+            activeExecutions.delete(execution._id.toString());
+            return execution;
         }
 
         const logs: string[] = [];
@@ -126,30 +125,33 @@ export class JobRunner {
             if (logs.length > MAX_LOG_LINES) logs.shift();
         };
 
-        const timeoutMs = (job.timeoutSeconds ?? 300) * 1_000;
+        const timeoutSeconds = job.timeoutSeconds ?? 300;
+        const timeoutMs = timeoutSeconds * 1_000;
+        const timeoutMessage = `Job timed out after ${timeoutSeconds}s`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
         let status: CronExecutionStatus = "success";
         let error: {message: string; stack?: string} | undefined;
 
+        const handler = getCronHandlerFn(job.handler);
+        appendLog(`Starting handler ${job.handler} attempt ${attempt}`);
+        const handlerPromise = handler({
+            job,
+            execution,
+            company: job.company?._id ?? null,
+            logger,
+            signal: controller.signal,
+            appendLog,
+        });
+
         try {
-            const handler = getCronHandlerFn(job.handler);
-            appendLog(`Starting handler ${job.handler} attempt ${attempt}`);
-            await handler({
-                job,
-                execution,
-                company: job.company ?? null,
-                logger,
-                signal: controller.signal,
-                metadata: (job.metadata as Record<string, unknown>) ?? {},
-                appendLog,
-            });
+            await awaitHandlerWithTimeout(handlerPromise, controller, timeoutMs, timeoutMessage);
             appendLog("Handler completed successfully");
         } catch (e: unknown) {
             if (controller.signal.aborted) {
                 status = "timeout";
-                error = {message: `Job timed out after ${job.timeoutSeconds ?? 300}s`};
+                error = {message: timeoutMessage};
+                void handlerPromise.catch(() => undefined);
             } else {
                 status = "failed";
                 error = {
@@ -159,8 +161,7 @@ export class JobRunner {
             }
             appendLog(`Handler failed: ${error.message}`);
         } finally {
-            clearTimeout(timeout);
-            if (lock) await releaseJobLock(lock);
+            await releaseJobLock(lock);
         }
 
         const finishedAt = new Date();
@@ -184,14 +185,13 @@ export class JobRunner {
         );
 
         if (status === "success") {
-            const nextRunAt = job.type === "once" ? null : computeNextRunAt(job, finishedAt);
+            const nextRunAt = computeNextRunAt(job, finishedAt);
             await cronJobService.updateById(
                 job._id,
                 {
                     $set: {
                         lastRunAt: finishedAt,
                         ...(nextRunAt ? {nextRunAt} : {}),
-                        ...(job.type === "once" ? {active: false} : {}),
                     },
                 },
                 {logger, languageCode: "en-US"},
@@ -203,17 +203,11 @@ export class JobRunner {
                 {_id: execution._id},
                 {$set: {nextRetryAt}},
             );
-            const nextRunAt = computeNextRunAt(
-                {...job, type: "interval", interval: {value: Math.ceil(delayMs / 1_000), unit: "seconds"}},
-                new Date(),
+            await cronJobService.updateById(
+                job._id,
+                {$set: {nextRunAt: nextRetryAt}},
+                {logger, languageCode: "en-US"},
             );
-            if (nextRunAt) {
-                await cronJobService.updateById(
-                    job._id,
-                    {$set: {nextRunAt}},
-                    {logger, languageCode: "en-US"},
-                );
-            }
         } else {
             const nextRunAt = computeNextRunAt(job, finishedAt);
             if (nextRunAt) {

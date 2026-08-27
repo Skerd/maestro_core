@@ -41,6 +41,7 @@ import {
 } from "@coreModule/database/schemas/role/role.defaults";
 import {ensureModuleDefaultRolesRegistered} from "@coreModule/utilities/modules/ensureModuleDefaultRoles";
 import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
+import {seedCronJobsForCompany} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs";
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
 import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
@@ -97,6 +98,7 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     };
     createBot: () => Promise<void>;
     ensureAiChannels: (session?: ClientSession | null) => Promise<void>;
+    seedCronJobs: (session?: ClientSession | null) => Promise<void>;
     getRobotId: (session?: ClientSession | null) => Promise<ObjectId | null>;
     createDefaultRoles: (parentLogger?: serverLogger, session?: ClientSession) => Promise<void>;
     assignCreatorFinanceAndRoles: (session?: ClientSession | null) => Promise<void>;
@@ -301,6 +303,7 @@ CompanySchema.post("save", async function (doc) {
         await doc.assignCreatorFinanceAndRoles(session);
         await doc.createBot();
         await doc.ensureAiChannels(session ?? undefined);
+        await doc.seedCronJobs(session ?? undefined);
     }
 });
 
@@ -643,6 +646,10 @@ CompanySchema.methods.ensureAiChannels = async function (session?: ClientSession
             auditUserId,
         });
     }
+};
+
+CompanySchema.methods.seedCronJobs = async function (session?: ClientSession | null) {
+    await seedCronJobsForCompany(this._id, session ?? undefined);
 };
 
 CompanySchema.statics.findRobotId = async function (

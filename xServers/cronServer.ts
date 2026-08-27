@@ -1,5 +1,5 @@
 /**
- * Cron Server — dedicated scheduler + Kafka cron worker process.
+ * Cron Server — dedicated scheduler process.
  *
  * @module cronServer
  */
@@ -9,7 +9,7 @@ import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import {connectToKafka} from "@coreModule/connections/connectToKafka";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
-import {CRON} from "@coreModule/environment";
+import {CRON, KAFKA} from "@coreModule/environment";
 import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
 import {seedPlatformCronJobs} from "@coreModule/cronjobs/bootstrap/seedPlatformJobs";
 import {schedulerEngine} from "@coreModule/cronjobs/engine/schedulerEngine";
@@ -27,12 +27,17 @@ async function setCronUp(logger: serverLogger): Promise<void> {
     await connectToRedis(logger);
 
     if (CRON.ENABLED) {
-        logger.debug("Connecting to Kafka (cron queue)...");
-        try {
-            await connectToKafka(logger);
-        } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            logger.warn(`Kafka connect failed (queue strategy unavailable): ${msg}`);
+        if (KAFKA.ENABLED) {
+            logger.debug("Connecting to Kafka...");
+            try {
+                await connectToKafka(logger);
+                logger.debug("Kafka connected!");
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                logger.warn(`Kafka connect failed; cron execute consumer will start once Kafka reconnects: ${msg}`);
+            }
+        } else {
+            logger.warn("KAFKA_ENABLED is false — cron execute consumer cannot start");
         }
 
         await loadAllCronHandlers(logger);

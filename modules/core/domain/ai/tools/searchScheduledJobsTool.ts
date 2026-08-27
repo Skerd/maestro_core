@@ -11,11 +11,10 @@
  * internals, so the caller's real role is checked via
  * {@link module:assistantToolAccess.requireCompanyAdmin}.
  *
- * Global jobs (`company: null`) are included alongside this company's own,
- * because the platform-wide schedulers are precisely the ones driving a
- * company's reminders. What is deliberately NOT returned: the `handler` code
- * path and raw error stacks — an operator needs the failure message, not a
- * pointer into the source tree.
+ * Jobs are tenant-scoped: only this company's scheduled actions are returned.
+ * What is deliberately NOT returned: the `handler` code path and raw error
+ * stacks — an operator needs the failure message, not a pointer into the
+ * source tree.
  *
  * @module searchScheduledJobsTool
  */
@@ -75,15 +74,13 @@ async function execute(rawArgs: unknown, ctx: AssistantToolContext): Promise<unk
         return accessDenied("scheduled job status");
     }
 
-    // This company's own jobs plus the platform-wide schedulers that serve it.
     const query: Record<string, unknown> = {
-        $or: [{company: companyObjectId(ctx)}, {scope: "global"}]
+        company: companyObjectId(ctx),
     };
 
     if (args.search != null) {
         const rx = regexClause(args.search);
-        // `$and` keeps the scope `$or` intact alongside the search `$or`.
-        query.$and = [{$or: [{code: rx}, {name: rx}]}];
+        query.$or = [{code: rx}, {name: rx}];
     }
     if (args.activeOnly === true) query.active = true;
 
@@ -93,8 +90,8 @@ async function execute(rawArgs: unknown, ctx: AssistantToolContext): Promise<unk
         query,
         findOptions(ctx),
         undefined,
-        "code name description scope active pausedAt type cronExpression interval timezone " +
-            "nextRunAt lastRunAt maxRetries singleton",
+        "code name description active pausedAt cronExpression " +
+            "nextRunAt lastRunAt maxRetries",
         {code: 1},
         limit
     );
@@ -113,20 +110,16 @@ async function execute(rawArgs: unknown, ctx: AssistantToolContext): Promise<unk
                 1
             );
 
-            const schedule = j.cronExpression
-                ?? (j.interval ? `every ${j.interval.value} ${j.interval.unit}` : null);
+            const schedule = j.cronExpression ?? null;
 
             return {
                 id: j._id?.toString(),
                 code: j.code ?? null,
                 name: j.name ?? null,
                 description: shortText(j.description, 200),
-                scope: j.scope ?? null,
                 active: j.active ?? false,
                 pausedAt: j.pausedAt ?? null,
-                type: j.type ?? null,
                 schedule,
-                timezone: j.timezone ?? null,
                 lastRunAt: j.lastRunAt ?? null,
                 nextRunAt: j.nextRunAt ?? null,
                 neverRun: j.lastRunAt == null,

@@ -165,6 +165,7 @@ export function validateConfiguration(): void {
             validateString('KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL, true),
             validateString('KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL, true),
             validateString('KAFKA_TOPIC_API_ACCESS', process.env.KAFKA_TOPIC_API_ACCESS, true),
+            validateString('KAFKA_TOPIC_CRON_EXECUTE', process.env.KAFKA_TOPIC_CRON_EXECUTE, true),
             validateString('KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE, false),
             validateString('KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE, false),
             validateString('KAFKA_CONSUMER_GROUP_LOGIN_HISTORY', process.env.KAFKA_CONSUMER_GROUP_LOGIN_HISTORY, true),
@@ -177,6 +178,7 @@ export function validateConfiguration(): void {
             validateString('KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_API_ACCESS', process.env.KAFKA_CONSUMER_GROUP_API_ACCESS, true),
+            validateString('KAFKA_CONSUMER_GROUP_CRON_EXECUTE', process.env.KAFKA_CONSUMER_GROUP_CRON_EXECUTE, true),
         ].filter((e): e is ValidationError => e !== null));
 
         if (!['PLAINTEXT', 'SSL', 'SASL_PLAINTEXT', 'SASL_SSL'].includes(kafkaSecurityProtocol)) {

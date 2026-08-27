@@ -7,6 +7,7 @@ export type CronQueueMessage = {
     metadata?: Record<string, unknown>;
     enqueuedAt: string;
     notBefore?: string;
+    manual?: boolean;
 };
 
 export interface QueueAdapter {

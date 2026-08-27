@@ -9,7 +9,6 @@ export type CronHandlerContext = {
     company: Types.ObjectId | null;
     logger: serverLogger;
     signal: AbortSignal;
-    metadata: Record<string, unknown>;
     appendLog: (line: string) => void;
 };
 
@@ -26,17 +25,10 @@ export type CronJobSeed = {
     code: string;
     name: string;
     handler: string;
-    type: ICronJob["type"];
-    cronExpression?: string;
-    interval?: ICronJob["interval"];
-    timezone?: string;
+    cronExpression: string;
     active?: boolean;
-    singleton?: boolean;
-    executionStrategy?: ICronJob["executionStrategy"];
     maxRetries?: number;
     retryDelaySeconds?: number;
     timeoutSeconds?: number;
     priority?: number;
-    scope?: ICronJob["scope"];
-    missedRunPolicy?: ICronJob["missedRunPolicy"];
 };
