@@ -27,7 +27,8 @@ import {
     RestoreForm,
     RestoreResponse,
     SingleForm,
-    TableResponse
+    TableResponse,
+    TableForm
 } from "armonia/src/modules/core/types/shared.types";
 import {
     validateDeleteForm,
@@ -35,7 +36,6 @@ import {
     validateSingleForm
 } from "armonia/src/modules/core/utilities/zod/shared.validator";
 import {roleFormSchema} from "armonia/src/modules/core/api/company/private/roles/role.form.validator";
-import {RoleFormType} from "armonia/src/modules/core/api/company/private/roles/role.form.type";
 import {CompanyRole} from "armonia/src/modules/core/api/company/private/roles/role.dto";
 import {createRoleFormSchema} from "armonia/src/modules/core/api/company/private/roles/createRole.form.validator";
 import {PermissionDto} from "armonia/src/modules/core/api/company/private/roles/permission.dto";
@@ -53,7 +53,7 @@ router.post(
 );
 type GetCompanyRolesType = AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType;
 
-async function getCompanyRoles(params: GetCompanyRolesType & RoleFormType): Promise<TableResponse<CompanyRole>> {
+async function getCompanyRoles(params: GetCompanyRolesType & TableForm): Promise<TableResponse<CompanyRole>> {
     const { languageCode, company, logger, limit, offset, sortBy, sortOrder, sanitizedReadFields, dslFilterQuery } = params;
 
     logger.start("Fetching company roles...");
