@@ -2,7 +2,7 @@
  * Common mapper utilities shared by Core and feature-module DTO mappers.
  */
 
-import {ObjectId} from 'mongodb';
+import {Decimal128, ObjectId} from 'mongodb';
 import {MessageSenderType} from "armonia/src/modules/core/api/user/private/chats/messages/messages.form.response.type";
 import {IUser} from "@coreModule/database/schemas/user/user";
 import {ICompany} from "@coreModule/database/schemas/company/company";
@@ -28,7 +28,7 @@ export function objectIdToString(id: ObjectId | string | undefined | null): stri
 /**
  * Converts optional BSON Decimal128 (or a number) to a JavaScript number for JSON DTOs.
  */
-export function decimalToNumber(v: unknown): number | undefined {
+export function decimalToNumber(v: Decimal128 | unknown): number | undefined {
     if (v == null) return undefined;
     if (typeof v === "object" && v !== null && "toString" in v) {
         return parseFloat((v as {toString: () => string}).toString());
