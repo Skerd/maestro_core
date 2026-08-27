@@ -18,8 +18,7 @@ import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {isKafkaConnected} from "@coreModule/connections/connectToKafka";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {AUTHENTICATION, CONSTANTS, IP_INFO} from "@coreModule/environment";
-import Transaction, {TransactionType} from "@coreModule/database/schemas/transaction/transaction";
-import {firstOfMonth, generateRandomString, lastOfMonth} from "@coreModule/utilities/helpers";
+import {generateRandomString} from "@coreModule/utilities/helpers";
 import {
     AddToLoginHistory,
     SendActivationEmail,
@@ -202,7 +201,6 @@ export interface IUser extends Document, IOwnershipPluginFields {
     getCompanies: () => Promise<{_id: ObjectId, name: string}[]>;
     getCompanyIds: () => Promise<ObjectId[]>;
     isAdmin: (companyId: ObjectId) => Promise<boolean>;
-    getTransactionAmounts: (companyId: ObjectId, userId: ObjectId, transactionType: TransactionType, startDate?: Date, endDate?: Date) => Promise<{[key: string]: number}>;
 
 }
 
@@ -1733,35 +1731,6 @@ UserSchema.methods.getCompanyIds = async function (): Promise<ObjectId[]>{
 UserSchema.methods.isAdmin = async function (companyId: ObjectId): Promise<boolean>{
     const {isAdmin} = await this.getCompanyAccess(companyId);
     return isAdmin;
-}
-
-UserSchema.methods.getTransactionAmounts = async function (companyId: ObjectId, userId: ObjectId, transactionType: TransactionType, startDate: Date = firstOfMonth(), endDate: Date = lastOfMonth() ):Promise<{[key: string]: number}>{
-    let returnThis: {[key: string]: number} = {};
-    let result = await Transaction.aggregate([
-        {
-            // Filter by date range and transaction type
-            $match: {
-                date: {
-                    $gte: startDate,
-                    $lte: endDate
-                },
-                type: transactionType,  // Replace with your transaction type
-                company: companyId,
-                sender: userId,
-            }
-        },
-        {
-            // Group by currency and sum the amount
-            $group: {
-                _id: "$currency",  // Group by currency
-                totalAmount: { $sum: "$amount" }  // Sum the amounts
-            }
-        }
-    ]);
-    for( let res of result ){
-        returnThis[res._id.toString()] = res.totalAmount;
-    }
-    return returnThis;
 }
 
 // ownershipPlugin(UserSchema, true, false );
