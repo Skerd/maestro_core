@@ -1,7 +1,6 @@
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {applyRolePermissionIndexes} from "./rolePermission.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
-import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import {IOwnershipPluginFields} from "@coreModule/database/types/plugin-fields";
 
