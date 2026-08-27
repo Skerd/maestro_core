@@ -141,6 +141,16 @@ export interface CrudRouterConfig<T extends Document> {
      */
     selectProjection?: string;
 
+    /**
+     * Extra Mongoose projection fields appended on list / single / create-refetch /
+     * update-refetch when SchemaGuard already produced a select string.
+     * Use for DTO flags that are `read: "no-permission"` on the schema (so they
+     * never land in `populate.select`) but the UI still needs them (e.g. Role
+     * `canEdit` / `canDelete`). When SchemaGuard leaves select empty, the find
+     * stays unprojected so those fields are included with the rest of the document.
+     */
+    extraDocumentSelect?: string;
+
     /** Used in log messages. Defaults to `model.modelName`. */
     entityName?: string;
 
@@ -315,6 +325,13 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
     const selectSort   = config.selectSort   ?? {[selectSearchField]: 1};
     const selectProjection = config.selectProjection ?? `_id ${selectSearchField}`;
 
+    function documentSelect(populateSelect: string | undefined): string {
+        const extra = config.extraDocumentSelect;
+        if (!extra) return populateSelect || "";
+        if (!populateSelect) return "";
+        return `${populateSelect} ${extra}`;
+    }
+
     const listSchema         = config.listSchema         ?? ((lang: string, form: any) => validateTableForm(lang, form));
     const selectSchema       = config.selectSchema       ?? ((lang: string, form: any) => validateSelectForm(lang, form));
     const extraSelectFilter  = config.extraSelectFilter  ?? (() => ({}));
@@ -416,7 +433,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
             }
 
             const [docs, total] = await Promise.all([
-                service.find(filter, {logger, languageCode}, populate.populate, populate.select || "", !!sortBy && !!sortOrder ? {[sortBy]: sortOrder === "asc" ? 1 : -1} : defaultSort, limit, offset ?? 0),
+                service.find(filter, {logger, languageCode}, populate.populate, documentSelect(populate.select), !!sortBy && !!sortOrder ? {[sortBy]: sortOrder === "asc" ? 1 : -1} : defaultSort, limit, offset ?? 0),
                 service.count(filter, {logger, languageCode}),
             ]);
 
@@ -446,7 +463,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
                 await docFilterForId(params as any, _id),
                 {logger, languageCode},
                 populate.populate,
-                populate.select || "",
+                documentSelect(populate.select),
             );
 
             logger.finish(`Fetched ${entityName} ${_id}`);
@@ -490,7 +507,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
                     await docFilterForId(params as any, created._id.toString()),
                     {session, logger, languageCode},
                     populate.populate,
-                    populate.select || "",
+                    documentSelect(populate.select),
                 );
                 result = toDTO(populated);
             } catch {
@@ -550,7 +567,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
                     await docFilterForId(params as any, existing._id.toString()),
                     {session, logger, languageCode},
                     populate.populate,
-                    populate.select || "",
+                    documentSelect(populate.select),
                 );
                 result = config.enrichUpdate
                     ? await config.enrichUpdate(populated, params as any)
