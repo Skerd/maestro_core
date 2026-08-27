@@ -2,6 +2,7 @@ import type {Schema} from "mongoose";
 import type {SchemaDef} from "armonia/src/modules/core/helpers/schemaDefBuilder";
 import {collectPublicMediaIds} from "armonia/src/modules/core/helpers/collectPublicMediaIds";
 import {markPublic, markPublicFromDocument, markPublicFromSchemaWrite} from "@coreModule/utilities/media/mediaAccessService";
+import {ObjectId} from "mongodb";
 
 export type PublicMediaPluginOptions = {
     schemaDef: SchemaDef | Record<string, unknown>;
@@ -37,7 +38,7 @@ export function publicMediaPlugin(schema: Schema, options: PublicMediaPluginOpti
         if (doc) {
             if (options.companyFromDocumentId) {
                 const record = typeof doc.toObject === "function" ? doc.toObject() : doc;
-                await markPublicFromSchemaWrite(schemaDef, record, doc._id);
+                await markPublicFromSchemaWrite(schemaDef, record, doc._id as ObjectId);
             } else {
                 await markPublicFromDocument(schemaDef, doc);
             }
