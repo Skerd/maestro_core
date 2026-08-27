@@ -26,20 +26,15 @@ export function objectIdToString(id: ObjectId | string | undefined | null): stri
 }
 
 /**
- * Converts optional BSON Decimal128 (or legacy numeric fields read as number) to a JavaScript number for JSON DTOs.
+ * Converts optional BSON Decimal128 (or a number) to a JavaScript number for JSON DTOs.
  */
-export function decimal128ToNumber(value: unknown): number | undefined {
-    if (value == null) {
-        return undefined;
+export function decimalToNumber(v: unknown): number | undefined {
+    if (v == null) return undefined;
+    if (typeof v === "object" && v !== null && "toString" in v) {
+        return parseFloat((v as {toString: () => string}).toString());
     }
-    if (typeof value === 'number' && !Number.isNaN(value)) {
-        return value;
-    }
-    if (typeof value === 'object' && typeof (value as {toString?: () => string}).toString === 'function') {
-        const n = parseFloat((value as {toString: () => string}).toString());
-        return Number.isNaN(n) ? undefined : n;
-    }
-    return undefined;
+    if (typeof v === "number") return v;
+    return parseFloat(String(v));
 }
 
 /**
@@ -57,15 +52,6 @@ export function dateToISOString(date: Date | string | null | undefined): string 
     if (!date) return '';
     if (typeof date === 'string') return date;
     return date.toISOString();
-}
-
-export function decimalToNumber(v: unknown): number | undefined {
-    if (v == null) return undefined;
-    if (typeof v === "object" && v !== null && "toString" in v) {
-        return parseFloat((v as {toString: () => string}).toString());
-    }
-    if (typeof v === "number") return v;
-    return parseFloat(String(v));
 }
 
 export function mapMedia(media: any) {
