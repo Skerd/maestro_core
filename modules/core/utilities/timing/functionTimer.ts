@@ -170,40 +170,6 @@ export async function timeFunction<T>(
 }
 
 /**
- * Time a synchronous function execution
- * 
- * @param fn - Function to time
- * @param functionName - Name of the function
- * @param options - Timing options
- * @returns Result of the function and timing information
- * 
- * @example
- * ```typescript
- * const { result, timing } = timeFunctionSync(
- *     () => someSyncOperation(),
- *     'someSyncOperation',
- *     { logger }
- * );
- * ```
- */
-export function timeFunctionSync<T>(
-    fn: () => T,
-    functionName: string,
-    options: TimingOptions = {}
-): { result: T; timing: TimingResult } {
-    const timer = new FunctionTimer(functionName, options);
-    
-    try {
-        const result = fn();
-        const timing = timer.stop();
-        return { result, timing };
-    } catch (error) {
-        timer.stop();
-        throw error;
-    }
-}
-
-/**
  * Create a timer instance
  * 
  * @param functionName - Name of the function/operation
