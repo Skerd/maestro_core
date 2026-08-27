@@ -11,7 +11,7 @@ Shared types and validators live in **armonia** (`../armonia`). Maestro imports 
 - **Authentication**, permissions, rate limiting, and request validation middleware
 - **CRUD router factory** for standard list/select/create/edit/delete/restore endpoints
 - **Connections** to MongoDB, Redis, Kafka, WebSocket, and Telegram
-- **Cron job engine** with distributed locking and handler registry
+- **Cron job engine** (`cronjobs/engine`, `xServers/cronServer.ts`) with distributed locking and handler registry. The HTTP surface is manage-only (list, edit schedule/ops, run/pause/resume); create/delete are rejected. Jobs are seeded from registered handlers.
 - **Notifications**, emails, media (GridFS), and audit logging
 - **Environment** configuration and startup validation
 
@@ -25,11 +25,11 @@ modules/core/
 ├── database/
 │   ├── collections/  # Model registry and collected field metadata
 │   ├── filter/       # DSL filter parsing for table/list queries
-│   ├── plugins/      # ownership, audit, soft-delete Mongoose plugins
+│   ├── plugins/      # ownership, audit, soft-delete, lifecycle, publicMedia
 │   ├── schemas/      # Mongoose models (company, user, media, …)
 │   ├── security/     # SchemaGuard — field-level read/write permissions
 │   └── services/     # BaseCrudService and entity services
-├── domain/           # Business logic (notifications, messages, finance, websocket)
+├── domain/           # Business logic (notifications, messages, chat, publicChat, ai, websocket)
 ├── environment/      # Config, constants, startup validator
 ├── kafka/            # Kafka producers/consumers
 ├── loggers/          # Winston-based server logging
@@ -78,7 +78,7 @@ Each resource under `database/schemas/<resource>/` typically includes:
 | `<resource>.views.ts` | View configs for sinfonia view engine |
 | `<resource>.actions.ts` | Custom document actions (optional) |
 
-Standard plugins: `ownershipPlugin`, `auditPlugin`, `softDeletePlugin`.
+Standard plugins: `ownershipPlugin`, `auditPlugin`, `softDeletePlugin`, `lifeCyclePlugin`. `publicMediaPlugin` marks SchemaDef `publicAccess` media. Not every schema takes the full stack.
 
 ## Module selection
 
