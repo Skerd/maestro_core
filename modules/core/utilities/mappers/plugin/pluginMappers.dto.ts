@@ -4,6 +4,7 @@
  */
 
 import type {ObjectId} from "mongodb";
+import {mapPopulatedUserWithPhoto} from "@coreModule/utilities/mappers/common.mapper";
 
 /** User ref shape: populated doc or unpopulated ObjectId */
 export type UserRefSource =
@@ -17,6 +18,7 @@ export type UserRefDTO = {
     _id: string;
     name: string;
     surname: string;
+    photo?: string;
 };
 
 /**
@@ -77,7 +79,7 @@ export type OwnershipDTO = {
  * Returns an object to spread into entity DTOs. Only includes createdBy when it exists.
  */
 export function mapOwnershipToDTO<T extends OwnershipDoc>(doc: T): Partial<OwnershipDTO> {
-    const createdBy = mapUserRefToDTO(doc.createdBy);
+    const createdBy = mapPopulatedUserWithPhoto(doc.createdBy);
     return createdBy ? { createdBy } : {};
 }
 

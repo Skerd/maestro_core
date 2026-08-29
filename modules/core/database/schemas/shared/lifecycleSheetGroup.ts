@@ -41,6 +41,7 @@ export const lifecycleSheetGroup: ViewNode = {
                         label: "createdBy",
                         widgetProps: {
                             icon: "#User",
+                            avatarPath: "createdBy.photo",
                             parent: "createdBy",
                             valuePath: ["name", "surname"],
                             joinSeparator: " ",

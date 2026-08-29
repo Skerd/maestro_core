@@ -11,6 +11,7 @@ export const ownershipPlugin = (schema: Schema): void => {
                 keys: {
                     name: {},
                     surname: {},
+                    photo: {}
                 }
             },
             permissions: {

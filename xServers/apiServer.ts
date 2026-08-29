@@ -507,13 +507,13 @@ application.listen(SERVER.PORT, async () => {
     startApiHeartbeat();
     logger.debug("API server heartbeat started!");
 
-    logger.debug(`Starting Kafka connection supervisor...`);
-    await connectToKafka(logger);
-    logger.debug(`Kafka connection supervisor started!`);
+    // logger.debug(`Starting Kafka connection supervisor...`);
+    // await connectToKafka(logger);
+    // logger.debug(`Kafka connection supervisor started!`);
 
-    logger.debug(`Starting websocket connection supervisor...`);
-    await connectToWebSocketServer(logger);
-    logger.debug(`Websocket connection supervisor started!`);
+    // logger.debug(`Starting websocket connection supervisor...`);
+    // await connectToWebSocketServer(logger);
+    // logger.debug(`Websocket connection supervisor started!`);
 
     logger.debug("Registering all notification handlers...");
     await registerAllNotificationHandlers(logger);
