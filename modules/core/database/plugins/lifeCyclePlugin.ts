@@ -11,6 +11,14 @@ export const lifeCyclePlugin = (schema: Schema): void => {
                 cellType: COLUMN_TYPE.DATE,
                 visible: false,
             },
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
         },
         updatedAt: {
             type: SchemaTypes.Date,
@@ -20,6 +28,14 @@ export const lifeCyclePlugin = (schema: Schema): void => {
                 cellType: COLUMN_TYPE.DATE,
                 visible: false,
             },
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
         },
     });
 

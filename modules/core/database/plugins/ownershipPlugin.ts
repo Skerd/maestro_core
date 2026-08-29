@@ -1,6 +1,6 @@
 import {FieldPermissions, Schema, SchemaTypes} from "mongoose";
 
-export const ownershipPlugin = (schema: Schema, createdByUserPermissions?: FieldPermissions): void => {
+export const ownershipPlugin = (schema: Schema): void => {
     schema.add({
         createdBy: {
             type: SchemaTypes.ObjectId,
@@ -13,23 +13,14 @@ export const ownershipPlugin = (schema: Schema, createdByUserPermissions?: Field
                     surname: {},
                 }
             },
-            ...(
-                createdByUserPermissions ?
-                {
-                    permissions: createdByUserPermissions
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
                 }
-                :
-                {
-                    permissions: {
-                        self: {
-                            write: "no-permission"
-                        },
-                        others: {
-                            write: "no-permission"
-                        }
-                    }
-                }
-            ),
+            },
             dynamicTableConfiguration: {
                 visible: false,
                 refDisplayKey: ["name", "surname"]
