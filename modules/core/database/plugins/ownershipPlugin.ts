@@ -23,7 +23,7 @@ export const ownershipPlugin = (schema: Schema): void => {
                 }
             },
             dynamicTableConfiguration: {
-                visible: false,
+                visible: true,
                 refDisplayKey: ["name", "surname"],
                 avatarPath: "photo"
             }

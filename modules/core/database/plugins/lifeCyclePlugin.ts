@@ -8,7 +8,7 @@ export const lifeCyclePlugin = (schema: Schema): void => {
             dynamicTableConfiguration: {
                 filterable: true,
                 sortable: true,
-                cellType: COLUMN_TYPE.DATE,
+                cellType: COLUMN_TYPE.DATETIME,
                 visible: false,
             },
             permissions: {
@@ -25,7 +25,7 @@ export const lifeCyclePlugin = (schema: Schema): void => {
             dynamicTableConfiguration: {
                 filterable: true,
                 sortable: true,
-                cellType: COLUMN_TYPE.DATE,
+                cellType: COLUMN_TYPE.DATETIME,
                 visible: false,
             },
             permissions: {
