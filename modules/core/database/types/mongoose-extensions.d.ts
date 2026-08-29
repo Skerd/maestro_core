@@ -102,6 +102,13 @@ declare module "mongoose" {
             hrefTemplate?: string;
 
             /**
+             * Path on the referenced document holding a media ref (e.g. "photo"), shown as an
+             * avatar on each badge of an objectId cell. The path must be on the field's
+             * `refAllowlist` or it never reaches the client.
+             */
+            avatarPath?: string;
+
+            /**
              * When true, the field is excluded from filters and from table config columns.
              */
             hideColumn?: boolean;

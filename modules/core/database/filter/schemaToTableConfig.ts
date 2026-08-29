@@ -174,6 +174,9 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
                 if (typeof dtc.hrefTemplate === "string" && dtc.hrefTemplate.length > 0) {
                     meta.hrefTemplate = dtc.hrefTemplate;
                 }
+                if (typeof dtc.avatarPath === "string" && dtc.avatarPath.length > 0) {
+                    meta.avatarPath = dtc.avatarPath;
+                }
                 addColumn({
                     id: path,
                     accessorPath: path,
@@ -236,6 +239,13 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
             columnConfig["meta"] = {
                 ...columnConfig.meta,
                 hrefTemplate: schemaType.options.dynamicTableConfiguration.hrefTemplate,
+            };
+        }
+        if (typeof schemaType?.options?.dynamicTableConfiguration?.avatarPath === "string"
+            && schemaType.options.dynamicTableConfiguration.avatarPath.length > 0) {
+            columnConfig["meta"] = {
+                ...columnConfig.meta,
+                avatarPath: schemaType.options.dynamicTableConfiguration.avatarPath,
             };
         }
 
