@@ -27,7 +27,6 @@ export const currencySheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
@@ -38,7 +37,6 @@ export const currencySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "symbol",
                             permissions: {read: "symbol"},
                             field: {
                                 name: "symbol",
@@ -49,7 +47,6 @@ export const currencySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "abbreviation",
                             permissions: {read: "abbreviation"},
                             field: {
                                 name: "abbreviation",
@@ -60,7 +57,6 @@ export const currencySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "decimalPlaces",
                             permissions: {read: "decimalPlaces"},
                             field: {
                                 name: "decimalPlaces",
@@ -130,22 +126,7 @@ const currencyCreateFormNodes: ViewConfig["nodes"] = [
     },
 ];
 
-const currencyEditFormHiddenId: ViewConfig["nodes"] = [
-    {
-        render: "#Field",
-        field: {
-            name: "_id",
-            widget: "#Input",
-            widgetProps: {
-                type: "hidden",
-                className: "sr-only !absolute !h-px !w-px !p-0 !m-0 !border-0 !overflow-hidden",
-            },
-        },
-    },
-];
-
 const currencyEditFormNodes: ViewConfig["nodes"] = [
-    ...currencyEditFormHiddenId,
     {
         render: "#FormGrid",
         props: {columns: 2},
@@ -161,6 +142,7 @@ const currencyEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: CURRENCY_NAME_MAX},
                 },
+                permissions: {read: "name", write: "name"},
             },
             {
                 render: "#Field",
@@ -172,6 +154,7 @@ const currencyEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: CURRENCY_SYMBOL_MAX},
                 },
+                permissions: {read: "symbol", write: "symbol"},
             },
             {
                 render: "#Field",
@@ -183,6 +166,7 @@ const currencyEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: CURRENCY_ABBREVIATION_MAX},
                 },
+                permissions: {read: "abbreviation", write: "abbreviation"},
             },
             {
                 render: "#Field",
@@ -194,6 +178,7 @@ const currencyEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {type: "number", min: 0, max: 8, step: 1},
                 },
+                permissions: {read: "decimalPlaces", write: "decimalPlaces"},
             },
         ],
     },
