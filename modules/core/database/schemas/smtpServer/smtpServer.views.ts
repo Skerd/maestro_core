@@ -28,7 +28,6 @@ export const smtpServerSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
@@ -39,7 +38,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "sequence",
                             permissions: {read: "sequence"},
                             field: {
                                 name: "sequence",
@@ -50,7 +48,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "active",
                             permissions: {read: "active"},
                             field: {
                                 name: "active",
@@ -73,7 +70,6 @@ export const smtpServerSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "host",
                             permissions: {read: "host"},
                             field: {
                                 name: "host",
@@ -84,7 +80,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "port",
                             permissions: {read: "port"},
                             field: {
                                 name: "port",
@@ -95,7 +90,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "encryption",
                             permissions: {read: "encryption"},
                             field: {
                                 name: "encryption",
@@ -106,7 +100,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "authType",
                             permissions: {read: "authType"},
                             field: {
                                 name: "authType",
@@ -117,7 +110,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "username",
                             permissions: {read: "username"},
                             field: {
                                 name: "username",
@@ -151,7 +143,6 @@ export const smtpServerSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "fromEmail",
                             permissions: {read: "fromEmail"},
                             field: {
                                 name: "fromEmail",
@@ -162,7 +153,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "fromName",
                             permissions: {read: "fromName"},
                             field: {
                                 name: "fromName",
@@ -173,7 +163,6 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "replyTo",
                             permissions: {read: "replyTo"},
                             field: {
                                 name: "replyTo",
@@ -228,7 +217,6 @@ export const smtpServerSheetView: ViewConfig = {
                         {
                             render: "#DisplayCard",
                             permissions: {read: "lastTestMessage"},
-                            dependent: "lastTestMessage",
                             field: {
                                 name: "lastTestMessage",
                                 widget: "#DisplayCard",
@@ -248,7 +236,7 @@ export const smtpServerSheetView: ViewConfig = {
     ],
 };
 
-const smtpFormFields: ViewConfig["nodes"] = [
+const smtpServerCreateFormNode: ViewConfig["nodes"] = [
     {
         render: "#FormGrid",
         props: {columns: 3},
@@ -351,8 +339,10 @@ const smtpFormFields: ViewConfig["nodes"] = [
                             widget: "#Input",
                             label: "form.passwordLabel",
                             placeholder: "form.passwordPlaceholder",
-                            skipWriteAccessGate: true,
-                            widgetProps: {type: "password", autoComplete: "new-password"},
+                            widgetProps: {
+                                type: "password",
+                                autoComplete: "new-password"
+                            }
                         },
                     },
                 ],
@@ -398,6 +388,167 @@ const smtpFormFields: ViewConfig["nodes"] = [
     },
 ];
 
+const smtpServerEditFormNode: ViewConfig["nodes"] = [
+    {
+        render: "#FormGrid",
+        props: {columns: 3},
+        children: [
+            {
+                render: "#Field",
+                field: {
+                    name: "name",
+                    widget: "#Input",
+                    label: "form.nameLabel",
+                    placeholder: "form.namePlaceholder",
+                    required: true,
+                    widgetProps: {maxLength: SMTP_NAME_MAX},
+                },
+                permissions: {read: "name", write: "name"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "sequence",
+                    widget: "#Input",
+                    label: "form.sequenceLabel",
+                    placeholder: "form.sequencePlaceholder",
+                    required: true,
+                    widgetProps: {type: "number", min: 0, max: 10000, step: 1},
+                },
+                permissions: {read: "sequence", write: "sequence"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "host",
+                    widget: "#Input",
+                    label: "form.hostLabel",
+                    placeholder: "form.hostPlaceholder",
+                    required: true,
+                    widgetProps: {maxLength: SMTP_HOST_MAX},
+                },
+                permissions: {read: "host", write: "host"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "port",
+                    widget: "#Input",
+                    label: "form.portLabel",
+                    placeholder: "form.portPlaceholder",
+                    required: true,
+                    widgetProps: {type: "number", min: 1, max: 65535, step: 1},
+                },
+                permissions: {read: "port", write: "port"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "encryption",
+                    widget: "#SimpleSelect",
+                    label: "form.encryptionLabel",
+                    required: true,
+                    widgetProps: {
+                        options: [
+                            {value: "none", label: "form.encryption.none"},
+                            {value: "ssl", label: "form.encryption.ssl"},
+                            {value: "starttls", label: "form.encryption.starttls"},
+                        ],
+                        className: "grow w-full",
+                    },
+                },
+                permissions: {read: "encryption", write: "encryption"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "authType",
+                    widget: "#SimpleSelect",
+                    label: "form.authTypeLabel",
+                    required: true,
+                    widgetProps: {
+                        options: [
+                            {value: "login", label: "form.authType.login"},
+                            {value: "none", label: "form.authType.none"},
+                        ],
+                        className: "grow w-full",
+                    },
+                },
+                permissions: {read: "authType", write: "authType"},
+            },
+            {
+                render: "#FormWhenFieldValueIn",
+                props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "password"]},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "username",
+                            widget: "#Input",
+                            label: "form.usernameLabel",
+                            placeholder: "form.usernamePlaceholder",
+                            widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                        },
+                        permissions: {read: "username", write: "username"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "password",
+                            widget: "#Input",
+                            label: "form.passwordLabel",
+                            placeholder: "form.passwordPlaceholder",
+                            skipWriteAccessGate: true,
+                            widgetProps: {type: "password", autoComplete: "new-password"},
+                        },
+                        permissions: {write: "passwordEncrypted"},
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        render: "#FormGrid",
+        props: {columns: 3},
+        children: [
+            {
+                render: "#Field",
+                field: {
+                    name: "fromEmail",
+                    widget: "#Input",
+                    label: "form.fromEmailLabel",
+                    placeholder: "form.fromEmailPlaceholder",
+                    required: true,
+                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
+                },
+                permissions: {read: "fromEmail", write: "fromEmail"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "fromName",
+                    widget: "#Input",
+                    label: "form.fromNameLabel",
+                    placeholder: "form.fromNamePlaceholder",
+                    widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                },
+                permissions: {read: "fromName", write: "fromName"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "replyTo",
+                    widget: "#Input",
+                    label: "form.replyToLabel",
+                    placeholder: "form.replyToPlaceholder",
+                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
+                },
+                permissions: {read: "replyTo", write: "replyTo"},
+            },
+        ],
+    },
+];
+
 export const smtpServerCreateFormView: ViewConfig = {
     model: "smtpServers",
     viewType: "form",
@@ -405,7 +556,7 @@ export const smtpServerCreateFormView: ViewConfig = {
     accessModel: "smtpServers",
     apiUrl: "/api/auxiliary/smtpServer",
     method: "PUT",
-    nodes: smtpFormFields,
+    nodes: smtpServerCreateFormNode,
 };
 
 export const smtpServerEditFormView: ViewConfig = {
@@ -415,7 +566,7 @@ export const smtpServerEditFormView: ViewConfig = {
     accessModel: "smtpServers",
     apiUrl: "/api/auxiliary/smtpServer",
     method: "PATCH",
-    nodes: smtpFormFields,
+    nodes: smtpServerEditFormNode,
 };
 
 export const smtpServerViews: ViewConfig[] = [smtpServerSheetView, smtpServerCreateFormView, smtpServerEditFormView];

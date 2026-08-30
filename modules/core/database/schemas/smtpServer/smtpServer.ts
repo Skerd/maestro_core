@@ -103,8 +103,12 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             type: SchemaTypes.String,
             required: false,
             permissions: {
-                self: {read: "no-permission", write: "no-permission"},
-                others: {read: "no-permission", write: "no-permission"},
+                self: {
+                    read: "no-permission"
+                },
+                others: {
+                    read: "no-permission"
+                },
             },
         },
         fromEmail: {
