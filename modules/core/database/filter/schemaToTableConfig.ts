@@ -177,6 +177,9 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
                 if (typeof dtc.avatarPath === "string" && dtc.avatarPath.length > 0) {
                     meta.avatarPath = dtc.avatarPath;
                 }
+                if (typeof dtc.flagCodePath === "string" && dtc.flagCodePath.length > 0) {
+                    meta.flagCodePath = dtc.flagCodePath;
+                }
                 addColumn({
                     id: path,
                     accessorPath: path,
@@ -246,6 +249,25 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
             columnConfig["meta"] = {
                 ...columnConfig.meta,
                 avatarPath: schemaType.options.dynamicTableConfiguration.avatarPath,
+            };
+        }
+        /*
+         * A country ref shows its flag without every schema having to ask: `ref` is the schema's
+         * own declaration of what the field points at, which `inferCellTypeFromSchemaType`
+         * already keys `ref === "Media"` off. `code` rides along on `CountrySimpleSnippet`, the
+         * refAllowlist these fields share. An explicit `flagCodePath` still wins, and `""`
+         * opts out.
+         */
+        const declaredFlagCodePath = schemaType?.options?.dynamicTableConfiguration?.flagCodePath;
+        const refName = (schemaType?.options as {ref?: string} | undefined)?.ref
+            ?? ((schemaType as any)?.caster?.options?.ref as string | undefined);
+        const flagCodePath = typeof declaredFlagCodePath === "string"
+            ? declaredFlagCodePath
+            : refName === "Country" ? "code" : undefined;
+        if (typeof flagCodePath === "string" && flagCodePath.length > 0) {
+            columnConfig["meta"] = {
+                ...columnConfig.meta,
+                flagCodePath,
             };
         }
 

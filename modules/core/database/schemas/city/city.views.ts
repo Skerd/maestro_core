@@ -57,6 +57,7 @@ export const citySheetView: ViewConfig = {
                                 label: "country",
                                 widgetProps: {
                                     icon: "#Globe",
+                                    flagCodePath: "country.code",
                                     linkedRefPath: "country",
                                     linkedSheetModel: "countries",
                                     linkedSheetWidget: "#CountrySheetView",

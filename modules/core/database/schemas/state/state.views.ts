@@ -59,6 +59,7 @@ export const stateSheetView: ViewConfig = {
                                     linkedSheetModel: "countries",
                                     linkedSheetWidget: "#CountrySheetView",
                                     linkedSheetEntityProp: "country",
+                                    flagCodePath: "country.code"
                                 },
                             },
                         },
