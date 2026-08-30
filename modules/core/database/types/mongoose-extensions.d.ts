@@ -109,6 +109,12 @@ declare module "mongoose" {
             avatarPath?: string;
 
             /**
+             * Path on the referenced document holding an ISO country code, shown as a flag on
+             * each badge. Defaults to "code" for `ref: "Country"` fields; set "" to opt out.
+             */
+            flagCodePath?: string;
+
+            /**
              * When true, the field is excluded from filters and from table config columns.
              */
             hideColumn?: boolean;
