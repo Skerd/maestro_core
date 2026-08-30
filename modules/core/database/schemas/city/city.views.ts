@@ -23,7 +23,6 @@ export const citySheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
@@ -76,7 +75,7 @@ export const citySheetView: ViewConfig = {
 const cityCreateFormNodes: ViewConfig["nodes"] = [
     {
         render: "#FormGrid",
-        props: {columns: 2},
+        props: {columns: 3},
         children: [
             {
                 render: "#Field",
@@ -123,25 +122,10 @@ const cityCreateFormNodes: ViewConfig["nodes"] = [
     },
 ];
 
-const cityEditFormHiddenId: ViewConfig["nodes"] = [
-    {
-        render: "#Field",
-        field: {
-            name: "_id",
-            widget: "#Input",
-            widgetProps: {
-                type: "hidden",
-                className: "sr-only !absolute !h-px !w-px !p-0 !m-0 !border-0 !overflow-hidden",
-            },
-        },
-    },
-];
-
 const cityEditFormNodes: ViewConfig["nodes"] = [
-    ...cityEditFormHiddenId,
     {
         render: "#FormGrid",
-        props: {columns: 2},
+        props: {columns: 3},
         permissions: {writeAny: ["name", "country", "state"]},
         children: [
             {
@@ -154,6 +138,7 @@ const cityEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: CITY_NAME_MAX},
                 },
+                permissions: {read: "name", write: "name"},
             },
             {
                 render: "#Field",
@@ -168,6 +153,7 @@ const cityEditFormNodes: ViewConfig["nodes"] = [
                         cascadeClearFormFields: ["state"],
                     },
                 },
+                permissions: {read: "country", write: "country"},
             },
             {
                 render: "#Field",
@@ -184,6 +170,7 @@ const cityEditFormNodes: ViewConfig["nodes"] = [
                         normalizeEmptyToUndefined: true,
                     },
                 },
+                permissions: {read: "state", write: "state"},
             },
         ],
     },
