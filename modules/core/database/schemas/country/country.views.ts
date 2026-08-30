@@ -27,7 +27,6 @@ export const countrySheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
@@ -38,7 +37,6 @@ export const countrySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "code",
                             permissions: {read: "code"},
                             field: {
                                 name: "code",
@@ -49,7 +47,6 @@ export const countrySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "phoneCode",
                             permissions: {read: "phoneCode"},
                             field: {
                                 name: "phoneCode",
@@ -69,7 +66,7 @@ export const countrySheetView: ViewConfig = {
 const countryCreateFormNodes: ViewConfig["nodes"] = [
     {
         render: "#FormGrid",
-        props: {columns: 2},
+        props: {columns: 3},
         children: [
             {
                 render: "#Field",
@@ -107,25 +104,10 @@ const countryCreateFormNodes: ViewConfig["nodes"] = [
     },
 ];
 
-const countryEditFormHiddenId: ViewConfig["nodes"] = [
-    {
-        render: "#Field",
-        field: {
-            name: "_id",
-            widget: "#Input",
-            widgetProps: {
-                type: "hidden",
-                className: "sr-only !absolute !h-px !w-px !p-0 !m-0 !border-0 !overflow-hidden",
-            },
-        },
-    },
-];
-
 const countryEditFormNodes: ViewConfig["nodes"] = [
-    ...countryEditFormHiddenId,
     {
         render: "#FormGrid",
-        props: {columns: 2},
+        props: {columns: 3},
         permissions: {writeAny: ["name", "code", "phoneCode", "currency"]},
         children: [
             {
@@ -138,6 +120,7 @@ const countryEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: COUNTRY_NAME_MAX},
                 },
+                permissions: {read: "name", write: "name"},
             },
             {
                 render: "#Field",
@@ -149,6 +132,7 @@ const countryEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: COUNTRY_CODE_MAX},
                 },
+                permissions: {write: "code", read: "code"},
             },
             {
                 render: "#Field",
@@ -159,17 +143,8 @@ const countryEditFormNodes: ViewConfig["nodes"] = [
                     placeholder: "form.phoneCodePlaceholder",
                     widgetProps: {maxLength: COUNTRY_PHONE_CODE_MAX},
                 },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "currency",
-                    widget: "#ApiSelect",
-                    label: "form.currencyLabel",
-                    placeholder: "form.currencyPlaceholder",
-                    widgetProps: {apiUrl: "/api/finance/currency/select"},
-                },
-            },
+                permissions: {read: "phoneCode", write: "phoneCode"},
+            }
         ],
     },
 ];
