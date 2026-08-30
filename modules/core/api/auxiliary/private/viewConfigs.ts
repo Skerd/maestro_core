@@ -108,26 +108,44 @@ function filterViewConfig(
         config.nodes,
         readFields,
         writeFields,
-        applyWriteAllowlistAsDisabled
+        applyWriteAllowlistAsDisabled,
+        /** Sheets lock an unreadable card rather than dropping it — see `lockCardInstead`. */
+        config.viewType === "sheet"
     );
     if (filteredNodes.length === 0) return null;
     return { ...config, nodes: filteredNodes };
+}
+
+/**
+ * A sheet `#DisplayCard` the account cannot read is served locked instead of being dropped:
+ * a field missing from a sheet reads as "this entity has no such data", which is a different
+ * (and wrong) statement from "you may not see this". Only cards, and only sheets — a layout
+ * node or a media strip has nothing to render a lock in, so those still go.
+ */
+function lockCardInstead(node: ViewNode, lockUnreadableCards: boolean): ViewNode | null {
+    if (!lockUnreadableCards || node.render !== "#DisplayCard" || !node.field) return null;
+    return { ...node, field: { ...node.field, locked: true }, children: undefined };
 }
 
 function filterNodes(
     nodes: ViewNode[],
     readFields: SanitizedFields,
     writeFields: SanitizedFields,
-    applyWriteAllowlistAsDisabled: boolean
+    applyWriteAllowlistAsDisabled: boolean,
+    lockUnreadableCards = false
 ): ViewNode[] {
     const result: ViewNode[] = [];
 
     for (const node of nodes) {
         if (node.permissions?.readAny?.length) {
             if (!node.permissions.readAny.some((k) => hasField(readFields, k))) {
+                const locked = lockCardInstead(node, lockUnreadableCards);
+                if (locked) result.push(locked);
                 continue;
             }
         } else if (node.permissions?.read && !hasField(readFields, node.permissions.read)) {
+            const locked = lockCardInstead(node, lockUnreadableCards);
+            if (locked) result.push(locked);
             continue;
         }
         if (node.dependentAny?.length) {
@@ -174,7 +192,8 @@ function filterNodes(
                     processedNode.children,
                     readFields,
                     writeFields,
-                    applyWriteAllowlistAsDisabled
+                    applyWriteAllowlistAsDisabled,
+                    lockUnreadableCards
                 ),
             };
         }
