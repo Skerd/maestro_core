@@ -26,7 +26,6 @@ export const stateSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
@@ -37,7 +36,6 @@ export const stateSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "code",
                             permissions: {read: "code"},
                             field: {
                                 name: "code",
@@ -74,7 +72,7 @@ export const stateSheetView: ViewConfig = {
 const stateCreateFormNodes: ViewConfig["nodes"] = [
     {
         render: "#FormGrid",
-        props: {columns: 2},
+        props: {columns: 3},
         children: [
             {
                 render: "#Field",
@@ -113,25 +111,10 @@ const stateCreateFormNodes: ViewConfig["nodes"] = [
     },
 ];
 
-const stateEditFormHiddenId: ViewConfig["nodes"] = [
-    {
-        render: "#Field",
-        field: {
-            name: "_id",
-            widget: "#Input",
-            widgetProps: {
-                type: "hidden",
-                className: "sr-only !absolute !h-px !w-px !p-0 !m-0 !border-0 !overflow-hidden",
-            },
-        },
-    },
-];
-
 const stateEditFormNodes: ViewConfig["nodes"] = [
-    ...stateEditFormHiddenId,
     {
         render: "#FormGrid",
-        props: {columns: 2},
+        props: {columns: 3},
         permissions: {writeAny: ["name", "code", "country"]},
         children: [
             {
@@ -144,6 +127,7 @@ const stateEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: STATE_NAME_MAX},
                 },
+                permissions: {write: "name", read: "name"},
             },
             {
                 render: "#Field",
@@ -155,6 +139,7 @@ const stateEditFormNodes: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: STATE_CODE_MAX},
                 },
+                permissions: {write: "code", read: "code"},
             },
             {
                 render: "#Field",
@@ -164,8 +149,12 @@ const stateEditFormNodes: ViewConfig["nodes"] = [
                     widget: "#ApiSelect",
                     label: "form.countryLabel",
                     placeholder: "form.countryPlaceholder",
-                    widgetProps: {apiUrl: "/api/auxiliary/country/select"},
+                    widgetProps: {
+                        apiUrl: "/api/auxiliary/country/select",
+                        pageSize: 200
+                    }
                 },
+                permissions: {write: "country", read: "country"},
             },
         ],
     },
