@@ -62,8 +62,12 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
             type: SchemaTypes.String,
             required: false,
             permissions: {
-                self:   {write: "no-permission", publicRead: false},
-                others: {write: "no-permission", publicRead: false},
+                self:   {
+                    read: "no-permission"
+                },
+                others: {
+                    read: "no-permission"
+                },
             },
             dynamicTableConfiguration: {
                 filterable: false,
@@ -123,4 +127,4 @@ normalizeSchemaPermissions(MessagingProvider);
 export default MessagingProvider;
 
 addModelData(MessagingProvider, messagingProviderViews);
-validateSchemaDefAgainstMongoose(MessagingProviderSchema, MessagingProviderSchemaDef, "MessagingProvider", ["authTokenEncrypted", "active", "lastTestedAt", "lastTestStatus", "lastTestMessage"]);
+validateSchemaDefAgainstMongoose(MessagingProviderSchema, MessagingProviderSchemaDef, "MessagingProvider", ["active", "lastTestedAt", "lastTestStatus", "lastTestMessage"]);

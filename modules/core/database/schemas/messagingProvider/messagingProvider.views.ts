@@ -27,7 +27,6 @@ export const messagingProviderSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "name",
                             permissions: {read: "name"},
                             field: {
                                 name: "name",
@@ -38,7 +37,6 @@ export const messagingProviderSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "providerType",
                             permissions: {read: "providerType"},
                             field: {
                                 name: "providerType",
@@ -49,7 +47,6 @@ export const messagingProviderSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "active",
                             permissions: {read: "active"},
                             field: {
                                 name: "active",
@@ -72,7 +69,6 @@ export const messagingProviderSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "accountSid",
                             permissions: {read: "accountSid"},
                             field: {
                                 name: "accountSid",
@@ -106,7 +102,6 @@ export const messagingProviderSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "fromPhone",
                             permissions: {read: "fromPhone"},
                             field: {
                                 name: "fromPhone",
@@ -117,7 +112,6 @@ export const messagingProviderSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            dependent: "fromWhatsapp",
                             permissions: {read: "fromWhatsapp"},
                             field: {
                                 name: "fromWhatsapp",
@@ -172,7 +166,6 @@ export const messagingProviderSheetView: ViewConfig = {
                         {
                             render: "#DisplayCard",
                             permissions: {read: "lastTestMessage"},
-                            dependent: "lastTestMessage",
                             field: {
                                 name: "lastTestMessage",
                                 widget: "#DisplayCard",
@@ -192,7 +185,7 @@ export const messagingProviderSheetView: ViewConfig = {
     ],
 };
 
-const messagingProviderFormFields: ViewConfig["nodes"] = [
+const messagingProviderCreateFormNode: ViewConfig["nodes"] = [
     {
         render: "#FormGrid",
         props: {columns: 3},
@@ -234,15 +227,7 @@ const messagingProviderFormFields: ViewConfig["nodes"] = [
             },
             {
                 render: "#Field",
-                field: {
-                    name: "authToken",
-                    widget: "#Input",
-                    label: "form.authTokenLabel",
-                    placeholder: "form.authTokenPlaceholder",
-                    required: true,
-                    skipWriteAccessGate: true,
-                    widgetProps: {type: "password", autoComplete: "new-password"},
-                },
+                field: {name: "authTokenEncrypted", widget: "#Input", label: "form.authTokenEncryptedLabel", placeholder: "form.authTokenEncryptedPlaceholder", required: true, widgetProps: {type: "password", autoComplete: "new-password"}},
             },
             {
                 render: "#Field",
@@ -268,6 +253,90 @@ const messagingProviderFormFields: ViewConfig["nodes"] = [
     },
 ];
 
+const messagingProviderEditFormNode: ViewConfig["nodes"] = [
+    {
+        render: "#FormGrid",
+        props: {columns: 3},
+        children: [
+            {
+                render: "#Field",
+                field: {
+                    name: "name",
+                    widget: "#Input",
+                    label: "form.nameLabel",
+                    placeholder: "form.namePlaceholder",
+                    required: true,
+                    widgetProps: {maxLength: MESSAGING_PROVIDER_NAME_MAX},
+                },
+                permissions: {read: "name", write: "name"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "providerType",
+                    widget: "#SimpleSelect",
+                    label: "form.providerTypeLabel",
+                    required: true,
+                    widgetProps: {
+                        options: [{value: "twilio", label: "form.providerType.twilio"}],
+                        className: "grow w-full",
+                    },
+                },
+                permissions: {read: "providerType", write: "providerType"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "accountSid",
+                    widget: "#Input",
+                    label: "form.accountSidLabel",
+                    placeholder: "form.accountSidPlaceholder",
+                    required: true,
+                    widgetProps: {maxLength: MESSAGING_PROVIDER_ACCOUNT_SID_MAX},
+                },
+                permissions: {read: "accountSid", write: "accountSid"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "authTokenEncrypted",
+                    widget: "#Input",
+                    label: "form.authTokenEncryptedLabel",
+                    placeholder: "form.authTokenEncryptedPlaceholder",
+                    required: false,
+                    widgetProps: {
+                        type: "password",
+                        autoComplete: "new-password"
+                    }
+                },
+                permissions: {write: "authTokenEncrypted"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "fromPhone",
+                    widget: "#Input",
+                    label: "form.fromPhoneLabel",
+                    placeholder: "form.fromPhonePlaceholder",
+                    widgetProps: {type: "tel", maxLength: MESSAGING_PROVIDER_PHONE_MAX},
+                },
+                permissions: {read: "fromPhone", write: "fromPhone"},
+            },
+            {
+                render: "#Field",
+                field: {
+                    name: "fromWhatsapp",
+                    widget: "#Input",
+                    label: "form.fromWhatsappLabel",
+                    placeholder: "form.fromWhatsappPlaceholder",
+                    widgetProps: {type: "tel", maxLength: MESSAGING_PROVIDER_PHONE_MAX},
+                },
+                permissions: {write: "fromWhatsapp", read: "fromWhatsapp"},
+            },
+        ],
+    },
+];
+
 export const messagingProviderCreateFormView: ViewConfig = {
     model: "messagingProviders",
     viewType: "form",
@@ -275,7 +344,7 @@ export const messagingProviderCreateFormView: ViewConfig = {
     accessModel: "messagingProviders",
     apiUrl: "/api/auxiliary/messagingProvider",
     method: "PUT",
-    nodes: messagingProviderFormFields,
+    nodes: messagingProviderCreateFormNode,
 };
 
 export const messagingProviderEditFormView: ViewConfig = {
@@ -285,24 +354,7 @@ export const messagingProviderEditFormView: ViewConfig = {
     accessModel: "messagingProviders",
     apiUrl: "/api/auxiliary/messagingProvider",
     method: "PATCH",
-    nodes: messagingProviderFormFields.map((node) => {
-        if (node.render !== "#FormGrid" || !node.children) return node;
-        return {
-            ...node,
-            children: node.children.map((child) => {
-                if (child.field?.name !== "authToken") return child;
-                return {
-                    ...child,
-                    field: {
-                        ...child.field,
-                        label: "form.authTokenEditLabel",
-                        placeholder: "form.authTokenEditPlaceholder",
-                        required: false,
-                    },
-                };
-            }),
-        };
-    }),
+    nodes: messagingProviderEditFormNode
 };
 
 export const messagingProviderViews: ViewConfig[] = [

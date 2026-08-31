@@ -22,21 +22,21 @@ export const {router} = createCrudRouter({
     defaultSort:    {name: 1},
     entityName:     "MessagingProvider",
     actions:        MessagingProviderActions,
-    buildCreateData: async ({name, providerType, accountSid, authToken, fromPhone, fromWhatsapp}: any) => ({
+    buildCreateData: async ({name, providerType, accountSid, authTokenEncrypted, fromPhone, fromWhatsapp}: any) => ({
         name:              name.trim(),
         providerType,
         accountSid:        accountSid.trim(),
-        authTokenEncrypted: authToken?.trim() ? encryptProviderToken(authToken.trim()) : undefined,
+        authTokenEncrypted: authTokenEncrypted?.trim() ? encryptProviderToken(authTokenEncrypted.trim()) : undefined,
         fromPhone:         fromPhone?.trim() || undefined,
         fromWhatsapp:      fromWhatsapp?.trim() || undefined,
         active:            true,
     }),
-    buildUpdateData: async ({name, providerType, accountSid, authToken, fromPhone, fromWhatsapp}: any, w: any) => {
+    buildUpdateData: async ({name, providerType, accountSid, authTokenEncrypted, fromPhone, fromWhatsapp}: any, w: any) => {
         const update: Record<string, unknown> = {};
         if (name         !== undefined && w.name)         update.name         = name.trim();
         if (providerType !== undefined && w.providerType) update.providerType = providerType;
         if (accountSid   !== undefined && w.accountSid)   update.accountSid   = accountSid.trim();
-        if (authToken?.trim() && w.accountSid)            update.authTokenEncrypted = encryptProviderToken(authToken.trim());
+        if (authTokenEncrypted?.trim() && w.authTokenEncrypted) update.authTokenEncrypted = encryptProviderToken(authTokenEncrypted.trim());
         if (fromPhone    !== undefined && w.fromPhone)    update.fromPhone    = fromPhone?.trim() || null;
         if (fromWhatsapp !== undefined && w.fromWhatsapp) update.fromWhatsapp = fromWhatsapp?.trim() || null;
         return update;
