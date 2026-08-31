@@ -276,8 +276,8 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                 render: "#FormGrid",
                 props: {columns: 2},
                 children: [
-                    {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}},
-                    {render: "#Field", field: {name: "email", widget: "#Input", label: "form.emailLabel", placeholder: "form.emailPlaceholder", required: true}},
+                    {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}, permissions: {read: "name", write: "name"}},
+                    {render: "#Field", field: {name: "email", widget: "#Input", label: "form.emailLabel", placeholder: "form.emailPlaceholder", required: true}, permissions: {read: "email", write: "email"}},
                     {
                         render: "#Field",
                         field: {
@@ -287,13 +287,13 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             placeholder: "form.phoneNumberNumberPlaceholder",
                             required: true,
                             widgetProps: {defaultCountry: "AL"},
-                        },
+                        }, permissions: {read: "phoneNumber", write: "phoneNumber"},
                     },
-                    {render: "#Field", field: {name: "website", widget: "#Input", label: "form.websiteLabel", placeholder: "form.websitePlaceholder"}},
-                    {render: "#Field", field: {name: "linkedin", widget: "#Input", label: "form.linkedinLabel", placeholder: "form.linkedinPlaceholder"}},
-                    {render: "#Field", field: {name: "instagram", widget: "#Input", label: "form.instagramLabel", placeholder: "form.instagramPlaceholder"}},
-                    {render: "#Field", field: {name: "facebook", widget: "#Input", label: "form.facebookLabel", placeholder: "form.facebookPlaceholder"}},
-                    {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder", required: true}},
+                    {render: "#Field", field: {name: "website", widget: "#Input", label: "form.websiteLabel", placeholder: "form.websitePlaceholder"}, permissions: {read: "website", write: "website"}},
+                    {render: "#Field", field: {name: "linkedin", widget: "#Input", label: "form.linkedinLabel", placeholder: "form.linkedinPlaceholder"}, permissions: {read: "linkedin", write: "linkedin"}},
+                    {render: "#Field", field: {name: "instagram", widget: "#Input", label: "form.instagramLabel", placeholder: "form.instagramPlaceholder"}, permissions: {write: "instagram", read: "instagram"}},
+                    {render: "#Field", field: {name: "facebook", widget: "#Input", label: "form.facebookLabel", placeholder: "form.facebookPlaceholder"}, permissions: {read: "facebook", write: "facebook"}},
+                    {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder", required: true}, permissions: {read: "vat", write: "vat"}},
                     {
                         render: "div",
                         props: {className: "md:col-span-2"},
@@ -306,7 +306,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                                     label: "form.allowedDomainsLabel",
                                     placeholder: "form.allowedDomainsPlaceholder",
                                     widgetProps: {removeTooltipKey: "remove"},
-                                },
+                                }, permissions: {read: "allowedDomains", write: "allowedDomains"},
                             },
                         ],
                     },
@@ -468,6 +468,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             placeholder: "form.descriptionPlaceholder",
                             widgetProps: {className: "resize-none max-h-[250px] overflow-y-auto"},
                         },
+                        permissions: {read: "description", write: "description"},
                     },
                     {
                         render: "#Field",
@@ -477,6 +478,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             label: "form.logoLabel",
                             widgetProps: {mediaType: "image", mode: "single"},
                         },
+                        permissions: {read: "logo", write: "logo"},
                     },
                 ],
             },
@@ -497,7 +499,8 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             name: "publicAiChat.enabled",
                             widget: "#Switch",
                             label: "form.enabledLabel"
-                        }
+                        },
+                        permissions: {read: "publicAiChat.enabled", write: "publicAiChat.enabled"}
                     },
                     {
                         render: "#Field",
@@ -505,7 +508,8 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             name: "publicAiChat.requireIdentification",
                             widget: "#Switch",
                             label: "form.requireIdentificationLabel"
-                        }
+                        },
+                        permissions: {read: "publicAiChat.requireIdentification", write: "publicAiChat.requireIdentification"}
                     },
                     {
                         render: "#Field",
@@ -513,7 +517,8 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             name: "publicAiChat.humanHandoffEnabled",
                             widget: "#Switch",
                             label: "form.humanHandoffEnabledLabel"
-                        }
+                        },
+                        permissions: {read: "publicAiChat.humanHandoffEnabled", write: "publicAiChat.humanHandoffEnabled"}
                     },
                     {
                         render: "#Field",
@@ -524,6 +529,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             placeholder: "form.greetingPlaceholder",
                             widgetProps: {className: "resize-none max-h-[160px] overflow-y-auto"},
                         },
+                        permissions: {write: "publicAiChat.greeting", read: "publicAiChat.greeting"},
                     },
                     {
                         render: "#Field",
@@ -534,6 +540,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                             placeholder: "form.personaPlaceholder",
                             widgetProps: {className: "resize-none max-h-[250px] overflow-y-auto"},
                         },
+                        permissions: {read: "publicAiChat.persona", write: "publicAiChat.persona"},
                     },
                 ],
             },
