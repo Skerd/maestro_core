@@ -21,7 +21,6 @@ export const loginHistorySheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            dependent: "user",
                             permissions: {read: "user"},
                             field: {
                                 name: "user",
