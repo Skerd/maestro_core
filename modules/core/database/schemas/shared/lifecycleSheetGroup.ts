@@ -7,6 +7,8 @@ import type {ViewNode} from "armonia/src/modules/core/api/auxiliary/private/view
 export const lifecycleSheetGroup: ViewNode = {
     render: "#SheetGroup",
     props: {title: "lifecycle", defaultOpen: true},
+    dependentAny: ["createdAt", "updatedAt", "createdBy", "deletedAt", "deletedBy"],
+    permissions: { readAny: ["createdAt", "updatedAt", "createdBy", "deletedAt", "deletedBy"] },
     children: [
         {
             render: "#SheetGrid",
