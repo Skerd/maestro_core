@@ -69,7 +69,6 @@ export const cronJobSheetView: ViewConfig = {
                         {
                             render: "#DisplayCard",
                             permissions: {read: "description"},
-                            dependent: "description",
                             field: {
                                 name: "description",
                                 widget: "#DisplayCard",
@@ -211,6 +210,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: CRON_JOB_NAME_MAX},
                 },
+                permissions: {read: "name", write: "name"},
             },
             {
                 render: "#Field",
@@ -222,6 +222,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {maxLength: CRON_JOB_CRON_EXPRESSION_MAX},
                 },
+                permissions: {read: "cronExpression", write: "cronExpression"},
             },
             {
                 render: "#Field",
@@ -232,6 +233,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {type: "number", min: 0, max: CRON_JOB_PRIORITY_MAX, step: 1},
                 },
+                permissions: {read: "priority", write: "priority"},
             },
             {
                 render: "#Field",
@@ -242,6 +244,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {type: "number", min: 0, max: CRON_JOB_MAX_RETRIES_MAX, step: 1},
                 },
+                permissions: {write: "maxRetries", read: "maxRetries"},
             },
             {
                 render: "#Field",
@@ -252,6 +255,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                     required: true,
                     widgetProps: {type: "number", min: 0, max: CRON_JOB_RETRY_DELAY_SECONDS_MAX, step: 1},
                 },
+                permissions: {read: "retryDelaySeconds", write: "retryDelaySeconds"},
             },
             {
                 render: "#Field",
@@ -266,6 +270,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                         step: 1,
                     },
                 },
+                permissions: {read: "timeoutSeconds", write: "timeoutSeconds"},
             },
             {
                 render: "#Field",
@@ -283,6 +288,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                         className: "grow w-full",
                     },
                 },
+                permissions: {read: "missedRunPolicy", write: "missedRunPolicy"},
             },
         ],
     },
@@ -302,6 +308,7 @@ const cronJobEditFormFields: ViewConfig["nodes"] = [
                         maxLength: CRON_JOB_DESCRIPTION_MAX,
                     },
                 },
+                permissions: {write: "description", read: "description"},
             },
         ],
     },
