@@ -178,4 +178,4 @@ normalizeSchemaPermissions(SmtpServer);
 export default SmtpServer;
 
 addModelData(SmtpServer, smtpServerViews);
-validateSchemaDefAgainstMongoose(SmtpServerSchema, SmtpServerSchemaDef, "SmtpServer", ["passwordEncrypted", "active", "lastTestedAt", "lastTestStatus", "lastTestMessage",]);
+validateSchemaDefAgainstMongoose(SmtpServerSchema, SmtpServerSchemaDef, "SmtpServer", ["active", "lastTestedAt", "lastTestStatus", "lastTestMessage"]);

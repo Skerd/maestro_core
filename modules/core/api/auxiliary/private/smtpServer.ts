@@ -24,7 +24,7 @@ export const {router} = createCrudRouter({
     defaultSort: {sequence: 1, name: 1},
     entityName: "SmtpServer",
     actions: SmtpServerActions,
-    buildCreateData: async ({name, sequence, host, port, encryption, authType, username, password, fromEmail, fromName, replyTo,}) => ({
+    buildCreateData: async ({name, sequence, host, port, encryption, authType, username, passwordEncrypted, fromEmail, fromName, replyTo,}) => ({
         name: name.trim(),
         sequence: sequence ?? 10,
         active: false,
@@ -33,12 +33,12 @@ export const {router} = createCrudRouter({
         encryption: encryption as SmtpEncryptionType,
         authType: authType as SmtpAuthType,
         username: authType === "login" ? username?.trim() : undefined,
-        passwordEncrypted: authType === "login" && password?.trim() ? encryptSmtpPassword(password.trim()) : undefined,
+        passwordEncrypted: authType === "login" && passwordEncrypted?.trim() ? encryptSmtpPassword(passwordEncrypted.trim()) : undefined,
         fromEmail: fromEmail.trim().toLowerCase(),
         fromName: fromName?.trim() || "",
         replyTo: replyTo ? replyTo.trim() : undefined
     }),
-    buildUpdateData: async ({name, sequence, host, port, encryption, authType, username, password, fromEmail, fromName, replyTo}, w) => {
+    buildUpdateData: async ({name, sequence, host, port, encryption, authType, username, passwordEncrypted, fromEmail, fromName, replyTo}, w) => {
         const update: Record<string, unknown> = {};
         if (name !== undefined && w.name) update.name = name.trim();
         if (sequence !== undefined && w.sequence) update.sequence = sequence;
@@ -49,8 +49,8 @@ export const {router} = createCrudRouter({
         if (username !== undefined && w.username) {
             update.username = authType === "login" ? username?.trim() || null : null;
         }
-        if (password !== undefined && password?.trim() && (w.username || w.authType)) {
-            update.passwordEncrypted = encryptSmtpPassword(password.trim());
+        if (passwordEncrypted?.trim() && w.passwordEncrypted) {
+            update.passwordEncrypted = encryptSmtpPassword(passwordEncrypted.trim());
         }
         if (fromEmail !== undefined && w.fromEmail) update.fromEmail = fromEmail.trim().toLowerCase();
         if (fromName !== undefined && w.fromName) update.fromName = fromName?.trim() ?? "";

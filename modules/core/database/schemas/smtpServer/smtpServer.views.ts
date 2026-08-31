@@ -320,7 +320,7 @@ const smtpServerCreateFormNode: ViewConfig["nodes"] = [
             },
             {
                 render: "#FormWhenFieldValueIn",
-                props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "password"]},
+                props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "passwordEncrypted"]},
                 children: [
                     {
                         render: "#Field",
@@ -334,16 +334,7 @@ const smtpServerCreateFormNode: ViewConfig["nodes"] = [
                     },
                     {
                         render: "#Field",
-                        field: {
-                            name: "password",
-                            widget: "#Input",
-                            label: "form.passwordLabel",
-                            placeholder: "form.passwordPlaceholder",
-                            widgetProps: {
-                                type: "password",
-                                autoComplete: "new-password"
-                            }
-                        },
+                        field: {name: "passwordEncrypted", widget: "#Input", label: "form.passwordEncryptedLabel", placeholder: "form.passwordEncryptedPlaceholder", widgetProps: {type: "password", autoComplete: "new-password"}},
                     },
                 ],
             },
@@ -478,7 +469,7 @@ const smtpServerEditFormNode: ViewConfig["nodes"] = [
             },
             {
                 render: "#FormWhenFieldValueIn",
-                props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "password"]},
+                props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "passwordEncrypted"]},
                 children: [
                     {
                         render: "#Field",
@@ -493,14 +484,7 @@ const smtpServerEditFormNode: ViewConfig["nodes"] = [
                     },
                     {
                         render: "#Field",
-                        field: {
-                            name: "password",
-                            widget: "#Input",
-                            label: "form.passwordLabel",
-                            placeholder: "form.passwordPlaceholder",
-                            skipWriteAccessGate: true,
-                            widgetProps: {type: "password", autoComplete: "new-password"},
-                        },
+                        field: {name: "passwordEncrypted", widget: "#Input", required: false, label: "form.passwordEncryptedLabel", placeholder: "form.passwordEncryptedPlaceholder", widgetProps: {type: "password", autoComplete: "new-password"}},
                         permissions: {write: "passwordEncrypted"},
                     },
                 ],
