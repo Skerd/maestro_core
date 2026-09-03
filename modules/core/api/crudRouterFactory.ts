@@ -515,7 +515,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
             }
 
             logger.finish(`Created ${entityName} ${created._id}`);
-            return result;
+            return result ?? {_id: created._id.toString()};
         }),
     );
 
