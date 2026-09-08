@@ -270,11 +270,11 @@ function setupEndpointsHeaderValidationHandling(application: Application, parent
  * Catches all errors thrown in route handlers and middleware, formats them
  * using the error handler utility, and returns consistent error responses.
  * 
- * Error response format:
+ * Error response format (ServerError JSON):
  * - status: HTTP status code
- * - error: Error message
- * - errorCode: Application-specific error code
- * - extraMessage: Additional error details (optional)
+ * - message: Error message
+ * - error_code: Application-specific error code
+ * - extra_message: Additional error details (optional)
  * - content: Error content/data (optional)
  * 
  * @param application - Express application instance
@@ -298,7 +298,7 @@ function setupEndpointsErrorHandling(application: Application, parentLogger: ser
             logger.err("Internal server error, cannot notify user about server problems!");
             return res.status(500).json({
                 error: "Internal server error",
-                errorCode: "internal_error"
+                error_code: "internal_error"
             });
         }
     });

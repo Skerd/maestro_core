@@ -184,7 +184,7 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         logger.fail(error);
         return res.status(error.status || 400).json({
             error: error.message,
-            errorCode: error.error_code,
+            error_code: error.error_code,
             extraMessage: error.extra_message,
             content: error.content
         });
