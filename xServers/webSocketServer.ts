@@ -96,7 +96,7 @@ function updateServerConfiguration(parentLogger?: serverLogger): void {
  * Sends data to all WebSocket clients subscribed to the given room.
  *
  * Uses the `{code, payload}` envelope shape the FE evaluator already expects
- * (see `withWebSocket.tsx`). Per-room message counters are incremented for
+ * (see `webSocketContext.tsx`). Per-room message counters are incremented for
  * the user activity panel.
  */
 export function sendOnlineData(code: string, payload: unknown, room: string): void {
