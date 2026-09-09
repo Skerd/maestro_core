@@ -9,7 +9,7 @@ import {
     CompanyUserRequestsType,
     CompanyUserType
 } from "armonia/src/modules/core/api/company/private/users/allUsers.form.response.type";
-import {mapOwnershipToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {mapLifeCycleToDTO, mapOwnershipToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 function toDate(d: Date | string | null | undefined): Date | undefined {
     if (d == null) return undefined;
@@ -88,6 +88,7 @@ export function userToCompanyUserDTO(user: IUser | null | undefined): CompanyUse
         unsuccessfulLogins: role?.unsuccessfulLogins ?? undefined,
         lockedOutUntil: role?.lockedOutUntil ? toDate(role.lockedOutUntil) : undefined,
         ...mapOwnershipToDTO(user),
+        ...mapLifeCycleToDTO(user),
     };
 }
 

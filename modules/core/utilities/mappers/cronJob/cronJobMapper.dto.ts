@@ -37,9 +37,6 @@ export function cronExecutionToDTO(doc: ICronExecution, job?: ICronJob): CronExe
         job: job
             ? {_id: job._id.toString(), code: job.code, name: job.name}
             : undefined,
-        company: doc.company
-            ? (mapPopulatedRef(doc.company) ?? {_id: doc.company.toString()})
-            : null,
         status: doc.status,
         startedAt: doc.startedAt.toISOString(),
         finishedAt: doc.finishedAt?.toISOString(),
@@ -50,8 +47,8 @@ export function cronExecutionToDTO(doc: ICronExecution, job?: ICronJob): CronExe
         logs: doc.logs,
         error: doc.error,
         metadata: doc.metadata as Record<string, unknown> | undefined,
-        createdAt: doc.createdAt?.toISOString(),
-        updatedAt: doc.updatedAt?.toISOString(),
+        ...mapOwnershipToDTO(doc),
+        ...mapLifeCycleToDTO(doc),
     };
 }
 

@@ -41,6 +41,7 @@ import {
 } from "@coreModule/kafka/kafkaProducer";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
+import {ILifeCyclePluginFields} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets";
@@ -91,7 +92,7 @@ export interface IEmbeddedCompanyRole {
     _id: ObjectId;
 }
 
-export interface IUser extends Document {
+export interface IUser extends Document, ILifeCyclePluginFields {
 
     _id: ObjectId,
     username: string,
@@ -236,14 +237,10 @@ const UserSchema = new Schema<IUser>(
             type: SchemaTypes.String,
             required: true,
             default: "Europe/Berlin",
-            dynamicTableConfiguration: {
-                visible: false,
-            }
         },
         birthday: {
             type: SchemaTypes.Date,
             dynamicTableConfiguration: {
-                visible: false,
                 cellType: COLUMN_TYPE.DATE
             }
         },
@@ -293,7 +290,6 @@ const UserSchema = new Schema<IUser>(
             type: SchemaTypes.ObjectId,
             ref: "Media",
             dynamicTableConfiguration: {
-                visible: false,
                 filterable: false,
                 sortable: false,
                 cellType: COLUMN_TYPE.AVATAR
@@ -306,6 +302,9 @@ const UserSchema = new Schema<IUser>(
                     write: "no-permission"
                 },
                 others: {}
+            },
+            dynamicTableConfiguration: {
+                dtoPath: "verified"
             }
         },
         emailVerifiedAt: {
@@ -318,9 +317,6 @@ const UserSchema = new Schema<IUser>(
                     write: "no-permission"
                 }
             },
-            dynamicTableConfiguration: {
-                visible: false
-            }
         },
         registeredFrom: {
             type: SchemaTypes.ObjectId,
@@ -335,7 +331,6 @@ const UserSchema = new Schema<IUser>(
                 }
             },
             dynamicTableConfiguration: {
-                visible: false,
                 refDisplayKey: ["name", "surname"]
             }
         },
@@ -484,7 +479,8 @@ const UserSchema = new Schema<IUser>(
                         others: {}
                     },
                     dynamicTableConfiguration: {
-                        dtoPath: "roles"
+                        dtoPath: "roles",
+                        refDisplayKey: ["name"],
                     }
                 },
                 company: {
@@ -522,9 +518,6 @@ const UserSchema = new Schema<IUser>(
             type: SchemaTypes.String,
             enum: ["active", "notActive"],
             default: "notActive",
-            dynamicTableConfiguration: {
-                visible: false,
-            }
         },
         mfaSecret: {
             type: SchemaTypes.String,
@@ -1156,6 +1149,7 @@ UserSchema.methods.createOrUpdateSession = async function (companyId: ObjectId, 
         // Update existing session
         userSession.lastActiveAt = now;
         userSession.expiresAt = expiresAt;
+        userSession.ipAddress = ipAddress;
         if( userSession.geolocation && geolocation ){
             userSession.geolocation.push(geolocation);
         }
@@ -1711,9 +1705,23 @@ UserSchema.methods.isAdmin = async function (companyId: ObjectId): Promise<boole
 
 // Plugin exceptions (do not apply the Country stack):
 // - ownershipPlugin: a user belongs to many companies (`companies` / `roles`), not one `company`.
-// - lifeCyclePlugin: `registerDate` is the join timestamp; createdAt/updatedAt add nothing.
+// - lifeCyclePlugin: indexes `{company: 1, _id: 1}`; User has no `company` field. `registerDate`
+//   remains the join timestamp. `auditPlugin` still enables mongoose timestamps.
 // - softDeletePlugin: users are not soft-deleted (model delete/restore are no-permission).
 auditPlugin(UserSchema);
+for (const path of ["createdAt", "updatedAt"] as const) {
+    const schemaType = UserSchema.path(path);
+    if (!schemaType) continue;
+    schemaType.options.dynamicTableConfiguration = {
+        filterable: true,
+        sortable: true,
+        cellType: COLUMN_TYPE.DATETIME,
+    };
+    schemaType.options.permissions = {
+        self: {write: "no-permission"},
+        others: {write: "no-permission"},
+    };
+}
 applyUserIndexes(UserSchema);
 const User = model<IUser>("User", UserSchema);
 normalizeSchemaPermissions(User);

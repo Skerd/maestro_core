@@ -97,7 +97,7 @@ export class JobRunner {
         if (!execution) {
             execution = await CronExecution.create({
                 jobId: job._id,
-                company: job.company ?? null,
+                company: job.company,
                 status: "running",
                 startedAt: new Date(),
                 serverId: serverId(),

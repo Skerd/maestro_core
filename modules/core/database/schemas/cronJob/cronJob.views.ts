@@ -32,6 +32,26 @@ export const cronJobSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
+                            permissions: {read: "name"},
+                            field: {
+                                name: "name",
+                                widget: "#DisplayCard",
+                                label: "name",
+                                widgetProps: {icon: "#Tag"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "code"},
+                            field: {
+                                name: "code",
+                                widget: "#DisplayCard",
+                                label: "code",
+                                widgetProps: {icon: "#Hash"},
+                            },
+                        },
+                        {
+                            render: "#DisplayCard",
                             permissions: {read: "handler"},
                             field: {
                                 name: "handler",

@@ -1,32 +1,7 @@
 import {UserSession} from "armonia/src/modules/core/api/user/private/userSession/userSession.dto";
 import {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
-import {mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 import {mapPopulatedSimpleUser} from "@coreModule/utilities/mappers/common.mapper";
-
-function mapGeolocation(geo: IUserSession["geolocation"]): UserSession["geolocation"] {
-    if (!geo?.length) {
-        return [];
-    }
-    return geo.map((g) => ({
-        ip: String(g.ip ?? ""),
-        hostname: String(g.hostname ?? ""),
-        city: String(g.city ?? ""),
-        region: String(g.region ?? ""),
-        country: String(g.country ?? ""),
-        loc: String(g.loc ?? ""),
-        org: String(g.org ?? ""),
-        postal: String(g.postal ?? ""),
-        timezone: String(g.timezone ?? ""),
-        time: g.time == null ? null : Number(g.time),
-    }));
-}
-
-function dateToIso(d: Date | undefined | null): string {
-    if (!d) {
-        return "";
-    }
-    return d instanceof Date ? d.toISOString() : new Date(d as unknown as string).toISOString();
-}
 
 export function userSessionToDTO(model: IUserSession): UserSession {
     return {
@@ -36,13 +11,26 @@ export function userSessionToDTO(model: IUserSession): UserSession {
         deviceId: model.deviceId,
         userAgent: model.userAgent,
         ipAddress: model.ipAddress,
-        geolocation: mapGeolocation(model.geolocation),
-        createdAt: dateToIso(model.createdAt),
-        lastActiveAt: dateToIso(model.lastActiveAt),
-        expiresAt: dateToIso(model.expiresAt),
+        geolocation: model.geolocation ? model.geolocation.map((g) => {
+            return {
+                ip: g.ip,
+                hostname: g.hostname ,
+                city: g.city,
+                region: g.region,
+                country: g.country,
+                loc: g.loc,
+                org: g.org,
+                postal: g.postal,
+                timezone: g.timezone,
+                time: g.time,
+            }
+        }) : undefined,
+        lastActiveAt: model.lastActiveAt,
+        expiresAt: model.expiresAt,
         isActive: model.isActive,
         ...mapSoftDeleteToDTO(model),
         ...mapOwnershipToDTO(model),
+        ...mapLifeCycleToDTO(model),
     };
 }
 

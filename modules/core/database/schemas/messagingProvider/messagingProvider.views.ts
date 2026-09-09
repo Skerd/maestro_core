@@ -143,7 +143,7 @@ export const messagingProviderSheetView: ViewConfig = {
                                     icon: "#CircleDot",
                                     languageKeyCategory: "lastTestStatusValues", type: "enum",
                                     variantLookupField: "lastTestStatus",
-                                    variantLookupMap: {ok: "success", failed: "destructive"},
+                                    variantLookupMap: {success: "success", failed: "destructive"},
                                 },
                             },
                         },

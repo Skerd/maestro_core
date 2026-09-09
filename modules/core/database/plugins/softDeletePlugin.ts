@@ -69,8 +69,10 @@ export const softDeletePlugin = (
                 }
             },
             dynamicTableConfiguration: {
+                filterable: true,
+                sortable: true,
+                cellType: COLUMN_TYPE.DATETIME,
                 visible: false,
-                cellType: COLUMN_TYPE.DELETE_STATUS
             }
         },
         [DELETED_BY]: {

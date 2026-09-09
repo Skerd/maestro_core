@@ -19,6 +19,8 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
     const options = schemaType.options ?? {};
     const opts = options as { enum?: string[]; ref?: string };
     const caster = (schemaType as any).caster;
+    const cellTypeOverride = (options as {dynamicTableConfiguration?: {cellType?: COLUMN_TYPE}})
+        .dynamicTableConfiguration?.cellType;
 
     // const cfg = REF_SELECT_REGISTRY[f.ref];
     // return { ...f, apiUrl: cfg.apiUrl, postBodyKeys: cfg.postBodyKeys };
@@ -51,7 +53,7 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
     // Date
     if (schemaType instanceof SchemaTypes.Date) {
         return {
-            type: COLUMN_TYPE.DATE,
+            type: cellTypeOverride === COLUMN_TYPE.DATE ? COLUMN_TYPE.DATE : COLUMN_TYPE.DATETIME,
             operators: DATE_OPERATORS,
         };
     }

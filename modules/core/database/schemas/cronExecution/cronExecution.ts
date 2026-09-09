@@ -1,5 +1,11 @@
 import {Document, model, Schema, SchemaTypes, Types} from "mongoose";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
+import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {applyCronExecutionIndexes} from "@coreModule/database/schemas/cronExecution/cronExecution.indexes";
 import {CRON_EXECUTION_STATUSES} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.constants";
@@ -11,9 +17,8 @@ const publicRead = {
     others: {write: "no-permission"},
 };
 
-export interface ICronExecution extends Document {
+export interface ICronExecution extends Document, IOwnershipPluginFields, ILifeCyclePluginFields {
     jobId: Types.ObjectId;
-    company?: Types.ObjectId | null;
     status: CronExecutionStatus;
     startedAt: Date;
     finishedAt?: Date;
@@ -24,8 +29,6 @@ export interface ICronExecution extends Document {
     logs?: string[];
     error?: {message: string; stack?: string};
     metadata?: Record<string, unknown>;
-    createdAt: Date;
-    updatedAt: Date;
 }
 
 const CronExecutionSchema = new Schema<ICronExecution>(
@@ -38,7 +41,6 @@ const CronExecutionSchema = new Schema<ICronExecution>(
             dynamicTableConfiguration: {},
             permissions: publicRead,
         },
-        company: {type: SchemaTypes.ObjectId, ref: "Company", required: false, default: null},
         status: {
             type: SchemaTypes.String,
             required: true,
@@ -62,7 +64,6 @@ const CronExecutionSchema = new Schema<ICronExecution>(
     },
     {
         accessMode: "loose",
-        timestamps: true,
         permissions: {
             self: {
                 create: "no-permission",
@@ -73,6 +74,8 @@ const CronExecutionSchema = new Schema<ICronExecution>(
     },
 );
 
+ownershipPlugin(CronExecutionSchema);
+lifeCyclePlugin(CronExecutionSchema);
 applyCronExecutionIndexes(CronExecutionSchema);
 const CronExecution = model<ICronExecution>("CronExecution", CronExecutionSchema);
 normalizeSchemaPermissions(CronExecution);

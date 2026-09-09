@@ -50,7 +50,7 @@ export class MessagingProviderActions {
                 doc._id,
                 {
                     lastTestedAt: new Date(),
-                    lastTestStatus: "ok",
+                    lastTestStatus: "success",
                     lastTestMessage: result.message,
                 },
                 {session, logger, languageCode, auditUserId: actionUserCtx.userId},

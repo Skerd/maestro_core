@@ -4,17 +4,27 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields,
+} from "@coreModule/database/types/plugin-fields";
 import {SimpleUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {addModelData} from "@coreModule/database/collections";
 import {applyLoginHistoryIndexes} from "@coreModule/database/schemas/loginHistory/loginHistory.indexes";
 import {loginHistoryViews} from "@coreModule/database/schemas/loginHistory/loginHistory.views";
+import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
 
-const geoConfig = {filterable: false, sortable: false, hideColumn: true};
+const geoItemConfig = {filterable: true, sortable: false, visible: false};
+const geoColumnConfig = {
+    filterable: false,
+    sortable: false,
+    cellType: COLUMN_TYPE.ADDRESS,
+    refDisplayKey: ["city", "country"],
+};
 
-export interface ILoginHistory extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
-    createdAt?: Date;
-    updatedAt?: Date;
+export interface ILoginHistory extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     user: IUser;
     time: Date;
     status: "success" | "failure";
@@ -159,7 +169,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 ip: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -169,7 +179,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 hostname: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -179,7 +189,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 city: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -189,7 +199,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 region: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -199,7 +209,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 country: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -209,7 +219,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 loc: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -219,7 +229,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 org: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -229,7 +239,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 postal: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -239,7 +249,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 timezone: {
                     type: SchemaTypes.String,
                     default: "",
-                    dynamicTableConfiguration: geoConfig,
+                    dynamicTableConfiguration: geoItemConfig,
                     permissions: {
                         self: {
                             publicRead: true,
@@ -248,10 +258,7 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 },
             },
             default: {},
-            dynamicTableConfiguration: {
-                ...geoConfig,
-                visible: false,
-            },
+            dynamicTableConfiguration: geoColumnConfig,
             permissions: {
                 self: {
                     publicRead: true,
@@ -261,13 +268,13 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
     },
     {
         accessMode: "loose",
-        timestamps: true,
     }
 );
 
 ownershipPlugin(LoginHistorySchema);
 auditPlugin(LoginHistorySchema);
 softDeletePlugin(LoginHistorySchema);
+lifeCyclePlugin(LoginHistorySchema);
 applyLoginHistoryIndexes(LoginHistorySchema);
 const LoginHistory = model<ILoginHistory>("LoginHistory", LoginHistorySchema);
 normalizeSchemaPermissions(LoginHistory);

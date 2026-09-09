@@ -56,7 +56,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             default: 10,
             min: 0,
             max: 10000,
-            dynamicTableConfiguration: {filterable: false, sortable: true},
+            dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         active: {
             type: SchemaTypes.Boolean,
@@ -77,7 +77,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             required: true,
             min: 1,
             max: 65535,
-            dynamicTableConfiguration: {filterable: false, sortable: true},
+            dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         encryption: {
             type: SchemaTypes.String,
@@ -117,7 +117,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
             trim: true,
             lowercase: true,
             maxlength: SMTP_EMAIL_MAX,
-            dynamicTableConfiguration: {filterable: false, sortable: true},
+            dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         fromName: {
             type: SchemaTypes.String,
@@ -142,7 +142,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
                 self: {write: "no-permission"},
                 others: {write: "no-permission"},
             },
-            dynamicTableConfiguration: {filterable: false, sortable: true},
+            dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         lastTestStatus: {
             type: SchemaTypes.String,
@@ -152,7 +152,7 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
                 self: {write: "no-permission"},
                 others: {write: "no-permission"},
             },
-            dynamicTableConfiguration: {filterable: false, sortable: true},
+            dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         lastTestMessage: {
             type: SchemaTypes.String,

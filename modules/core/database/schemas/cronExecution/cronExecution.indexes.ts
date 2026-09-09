@@ -2,6 +2,8 @@ import {Schema} from "mongoose";
 import {CRON} from "@coreModule/environment";
 
 export function applyCronExecutionIndexes(schema: Schema): void {
+    schema.index({company: 1, createdAt: -1});
+    schema.index({createdAt: -1});
     schema.index({jobId: 1, startedAt: -1});
     schema.index({company: 1, status: 1, startedAt: -1});
     schema.index({status: 1, startedAt: -1});

@@ -38,7 +38,6 @@ import {
     type DefaultRoleDefinition,
 } from "@coreModule/database/schemas/role/role.defaults";
 import {ensureModuleDefaultRolesRegistered} from "@coreModule/utilities/modules/ensureModuleDefaultRoles";
-import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {seedCronJobsForCompany} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs";
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
 import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
@@ -224,7 +223,10 @@ const CompanySchema: Schema = new Schema(
             type: Schema.Types.ObjectId,
             ref: "Company",
             default: null,
-            refAllowlist: CompanyBlankSnippet
+            refAllowlist: CompanyBlankSnippet,
+            dynamicTableConfiguration: {
+                refDisplayKey: ["name", "vat"],
+            },
         },
         isActive: {
             type: SchemaTypes.Boolean,
@@ -327,7 +329,6 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
             let savedRolesSlugs = savedRoles.map((role) => role.slug);
 
             let rolesToCreate = seededRoles.filter((role) => !savedRolesSlugs.includes(defaultRoleSlug(this.name, role)));
-            let createdRoles: IRole[] = [];
 
             for (const savedRole of savedRoles) {
                 const definition = definitionBySlug.get(savedRole.slug);
@@ -383,7 +384,7 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
                 const permissions = role.isAdmin
                     ? await RolePermission.find().select("_id").session(session ?? null)
                     : await resolveDefaultRolePermissionIds(role, session);
-                let newRole = await new Role({
+                await new Role({
                     _id: new ObjectId(),
                     company: this._id,
                     createdBy: this.createdBy,
@@ -396,67 +397,7 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
                     canDelete: role.canDelete,
                     permissions: permissions as IRole["permissions"],
                 }).save({session});
-                createdRoles.push(newRole);
                 logger.debug(`Created role named '${role.name}' with slug '${role.slug}'`);
-            }
-
-            /** Default system users get every default role; creator is wired in assignCreatorRoles (admin). */
-            const allCompanyRoles = [...savedRoles, ...createdRoles];
-            const allRoleIds = allCompanyRoles.map((role) => role._id);
-
-            let defaultUserIds = await User.find({username: {$in: defaultSysUsers.map((user) => user.username)}}).select("_id").session(session ?? null);
-            const creatorId = documentObjectId(this.createdBy);
-            const defaultIdList = defaultUserIds?.map((user) => user._id) || [];
-            const idsForFullRoles = creatorId
-                ? defaultIdList.filter((id) => !id.equals(creatorId))
-                : defaultIdList;
-
-            if (idsForFullRoles.length > 0 && allRoleIds.length > 0) {
-                await User.updateMany(
-                    {
-                        _id: {$in: idsForFullRoles},
-                        "roles.company": this._id,
-                    },
-                    {
-                        $addToSet: {
-                            "roles.$[slot].roles": {$each: allRoleIds},
-                        },
-                    },
-                    {
-                        session,
-                        arrayFilters: [{"slot.company": this._id}],
-                    }
-                );
-
-                const usersNeedingMembership = await User.find({
-                    _id: {$in: idsForFullRoles},
-                    roles: {$not: {$elemMatch: {company: this._id}}},
-                }).select("_id").session(session ?? null);
-
-                if (usersNeedingMembership.length > 0) {
-                    await User.updateMany(
-                        {
-                            _id: {$in: usersNeedingMembership.map((user) => user._id)},
-                        },
-                        {
-                            $addToSet: {
-                                companies: this._id,
-                            },
-                            $push: {
-                                roles: {
-                                    active: "active",
-                                    unsuccessfulLogins: 0,
-                                    lockedOutUntil: null,
-                                    lastLogin: null,
-                                    rolesCount: allRoleIds.length,
-                                    roles: allRoleIds,
-                                    company: this._id,
-                                },
-                            },
-                        },
-                        {session}
-                    );
-                }
             }
 
         }

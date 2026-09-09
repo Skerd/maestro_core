@@ -17,6 +17,10 @@ import {
     MESSAGING_PROVIDER_NAME_MAX,
     MESSAGING_PROVIDER_PHONE_MAX,
 } from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.schema-def";
+import {
+    MESSAGING_PROVIDER_TEST_STATUSES,
+    type MessagingProviderTestStatus,
+} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.constants";
 import {messagingProviderViews} from "@coreModule/database/schemas/messagingProvider/messagingProvider.views";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 
@@ -30,7 +34,7 @@ export interface IMessagingProvider extends Document, IOwnershipPluginFields, IS
     active: boolean;
     company: ICompany;
     lastTestedAt?: Date;
-    lastTestStatus?: string;
+    lastTestStatus?: MessagingProviderTestStatus;
     lastTestMessage?: string;
 }
 
@@ -99,11 +103,12 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
             type: SchemaTypes.Date,
             required: false,
             permissions: {self: {write: "no-permission"}, others: {write: "no-permission"}},
-            dynamicTableConfiguration: {filterable: false, sortable: true},
+            dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         lastTestStatus: {
             type: SchemaTypes.String,
             required: false,
+            enum: [...MESSAGING_PROVIDER_TEST_STATUSES],
             permissions: {self: {write: "no-permission"}, others: {write: "no-permission"}},
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },

@@ -4,15 +4,27 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
-import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {
+    ILifeCyclePluginFields,
+    IOwnershipPluginFields,
+    ISoftDeletePluginFields,
+} from "@coreModule/database/types/plugin-fields";
 import {SimpleUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {addModelData} from "@coreModule/database/collections";
 import {applyUserSessionIndexes} from "@coreModule/database/schemas/userSession/userSession.indexes";
 import {userSessionViews} from "@coreModule/database/schemas/userSession/userSession.views";
+import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
 
-const geoItemConfig = {filterable: false, sortable: false, hideColumn: true};
+const geoItemConfig = {filterable: true, sortable: false, visible: false};
+const geoColumnConfig = {
+    filterable: false,
+    sortable: false,
+    cellType: COLUMN_TYPE.ADDRESS,
+    refDisplayKey: ["city", "country"],
+};
 
-export interface IUserSession extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
+export interface IUserSession extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     user: IUser;
     sessionId: string;
     deviceId: string;
@@ -30,7 +42,6 @@ export interface IUserSession extends Document, IOwnershipPluginFields, ISoftDel
         timezone: string;
         time: number | null;
     }[];
-    createdAt: Date;
     lastActiveAt: Date;
     expiresAt: Date;
     isActive: boolean;
@@ -167,22 +178,7 @@ const UserSessionSchema = new Schema<IUserSession>(
         geolocation: {
             type: [geolocationItemSchema],
             default: [],
-            dynamicTableConfiguration: {
-                filterable: false,
-                sortable: false,
-                visible: false,
-            },
-            permissions: {
-                self: {
-                    publicRead: true,
-                    write: "no-permission"
-                },
-            },
-        },
-        createdAt: {
-            type: SchemaTypes.Date,
-            default: Date.now,
-            dynamicTableConfiguration: {},
+            dynamicTableConfiguration: geoColumnConfig,
             permissions: {
                 self: {
                     publicRead: true,
@@ -234,6 +230,7 @@ const UserSessionSchema = new Schema<IUserSession>(
 ownershipPlugin(UserSessionSchema);
 auditPlugin(UserSessionSchema);
 softDeletePlugin(UserSessionSchema);
+lifeCyclePlugin(UserSessionSchema);
 applyUserSessionIndexes(UserSessionSchema);
 const UserSession = model<IUserSession>("UserSession", UserSessionSchema);
 normalizeSchemaPermissions(UserSession);
