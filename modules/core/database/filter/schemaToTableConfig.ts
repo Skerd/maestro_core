@@ -5,10 +5,12 @@ import type {
 import {collectPathsFromSanitized} from "armonia/src/modules/core/database/filter/pathUtils";
 import {SanitizedFields} from "armonia/src/modules/core/types";
 import {
+    ARRAY_OPERATORS,
     BOOLEAN_OPERATORS,
     COLUMN_TYPE,
     DATE_OPERATORS,
     ENUM_OPERATORS,
+    EXISTENCE_OPERATORS,
     NUMBER_OPERATORS,
     OBJECT_ID_OPERATORS,
     STRING_OPERATORS
@@ -21,9 +23,18 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
     const caster = (schemaType as any).caster;
     const cellTypeOverride = (options as {dynamicTableConfiguration?: {cellType?: COLUMN_TYPE}})
         .dynamicTableConfiguration?.cellType;
+    const ref = opts.ref ?? (caster?.options?.ref as string | undefined);
 
     // const cfg = REF_SELECT_REGISTRY[f.ref];
     // return { ...f, apiUrl: cfg.apiUrl, postBodyKeys: cfg.postBodyKeys };
+
+    // Media refs: existence only (has a file vs empty). Not a media-library picker.
+    if (ref === "Media" || cellTypeOverride === COLUMN_TYPE.FILE || cellTypeOverride === COLUMN_TYPE.AVATAR) {
+        return {
+            type: cellTypeOverride === COLUMN_TYPE.AVATAR ? COLUMN_TYPE.AVATAR : COLUMN_TYPE.FILE,
+            operators: EXISTENCE_OPERATORS,
+        };
+    }
 
     // String with enum -> enum type
     if (schemaType instanceof SchemaTypes.String && Array.isArray(opts.enum)) {
@@ -42,10 +53,18 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
         };
     }
 
-    // Number
+    // Number (including percentage cell override)
     if (schemaType instanceof SchemaTypes.Number) {
         return {
-            type: COLUMN_TYPE.NUMBER,
+            type: cellTypeOverride === COLUMN_TYPE.PERCENTAGE ? COLUMN_TYPE.PERCENTAGE : COLUMN_TYPE.NUMBER,
+            operators: NUMBER_OPERATORS,
+        };
+    }
+
+    // Decimal128 — same operators as number; percentage override keeps cell/filter types aligned
+    if (schemaType.instance === "Decimal128") {
+        return {
+            type: cellTypeOverride === COLUMN_TYPE.PERCENTAGE ? COLUMN_TYPE.PERCENTAGE : COLUMN_TYPE.NUMBER,
             operators: NUMBER_OPERATORS,
         };
     }
@@ -66,9 +85,8 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
         };
     }
 
-    // ObjectId (single or array)
+    // ObjectId (single)
     if (schemaType instanceof SchemaTypes.ObjectId) {
-        const ref = opts.ref ?? (caster?.options?.ref as string | undefined);
         let rest: Partial<TableColumnConfig["filterConfig"]> = {}
         if( !!ref && REF_SELECT_REGISTRY[ref] ){
             rest = {
@@ -87,19 +105,34 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
     // Array of ObjectIds
     if (schemaType instanceof SchemaTypes.Array && caster) {
         if (caster instanceof SchemaTypes.ObjectId) {
-            const ref = (caster as any).options?.ref ?? (opts.ref as string | undefined);
+            const arrayRef = (caster as any).options?.ref ?? (opts.ref as string | undefined);
             let rest: Partial<TableColumnConfig["filterConfig"]> = {}
-            if( !!ref && REF_SELECT_REGISTRY[ref] ){
+            if( !!arrayRef && REF_SELECT_REGISTRY[arrayRef] ){
                 rest = {
-                    apiUrl: REF_SELECT_REGISTRY[ref].apiUrl,
-                    postBodyKeys: REF_SELECT_REGISTRY[ref].postBodyKeys,
+                    apiUrl: REF_SELECT_REGISTRY[arrayRef].apiUrl,
+                    postBodyKeys: REF_SELECT_REGISTRY[arrayRef].postBodyKeys,
                 }
             }
             return {
                 type: COLUMN_TYPE.OBJECT_ID,
-                ref,
+                ref: arrayRef,
                 operators: OBJECT_ID_OPERATORS,
                 ...rest
+            };
+        }
+        const casterEnum = (caster.options as {enum?: string[]} | undefined)?.enum;
+        const arrayEnum = opts.enum ?? casterEnum;
+        if (caster instanceof SchemaTypes.String && Array.isArray(arrayEnum)) {
+            return {
+                type: COLUMN_TYPE.ENUM,
+                enumValues: arrayEnum,
+                operators: ENUM_OPERATORS,
+            };
+        }
+        if (caster instanceof SchemaTypes.String) {
+            return {
+                type: COLUMN_TYPE.ARRAY,
+                operators: ARRAY_OPERATORS,
             };
         }
     }
@@ -127,6 +160,7 @@ function inferCellTypeFromSchemaType(schemaType: SchemaType): COLUMN_TYPE {
         return COLUMN_TYPE.ARRAY;
     }
     if (schemaType instanceof SchemaTypes.Number) return COLUMN_TYPE.NUMBER;
+    if (schemaType.instance === "Decimal128") return COLUMN_TYPE.NUMBER;
     if (schemaType instanceof SchemaTypes.Date) return COLUMN_TYPE.DATETIME;
     if (schemaType instanceof SchemaTypes.Boolean) return COLUMN_TYPE.BOOLEAN;
     if (schemaType instanceof SchemaTypes.ObjectId) return ref === "Media" ? COLUMN_TYPE.FILE : COLUMN_TYPE.OBJECT_ID;
