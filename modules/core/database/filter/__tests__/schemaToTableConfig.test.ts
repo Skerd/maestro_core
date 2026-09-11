@@ -68,4 +68,41 @@ describe("buildTableColumnsFromSchema", () => {
             operators: EXISTENCE_OPERATORS,
         });
     });
+
+    it("maps nested receipt media to a filterable FILE column", () => {
+        const NestedSchema = new Schema({
+            paymentReceipts: {
+                type: [{
+                    amount: {type: SchemaTypes.Number},
+                    media: {
+                        type: [{type: SchemaTypes.ObjectId, ref: "Media"}],
+                        dynamicTableConfiguration: {
+                            cellType: COLUMN_TYPE.FILE,
+                            filterable: true,
+                            sortable: false,
+                            dtoPath: "paymentReceiptsMedia",
+                        },
+                    },
+                }],
+                dynamicTableConfiguration: {
+                    cellType: COLUMN_TYPE.OBJECT_ID,
+                    filterable: false,
+                    sortable: false,
+                },
+            },
+        });
+        const NestedModel = model("SchemaToTableConfigNestedMediaProbe", NestedSchema);
+        const columns = buildTableColumnsFromSchema(
+            NestedModel,
+            new Set(["paymentReceipts", "paymentReceipts.amount", "paymentReceipts.media"]),
+        );
+        const byId = Object.fromEntries(columns.map((c) => [c.id, c]));
+        expect(byId["paymentReceipts.media"]!.cellType).toBe(COLUMN_TYPE.FILE);
+        expect(byId["paymentReceipts.media"]!.dtoPath).toBe("paymentReceiptsMedia");
+        expect(byId["paymentReceipts.media"]!.filterConfig).toEqual({
+            type: COLUMN_TYPE.FILE,
+            operators: EXISTENCE_OPERATORS,
+        });
+        expect(byId.paymentReceipts!.filterConfig).toBeUndefined();
+    });
 });
