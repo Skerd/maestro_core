@@ -8,14 +8,10 @@
     ""
   ],
   "main": "",
-  "opencv4nodejs": {
-    "disableAutoBuild": true
-  },
   "scripts": {
     "clean:js": "find . -name '*.js' ! -path '*/node_modules/*' -delete",
     "build": "tsc --skipLibCheck",
     "fetch:opencv-js": "mkdir -p vendor && curl -fsSL 'https://docs.opencv.org/4.10.0/opencv.js' -o vendor/opencv.js",
-    "rebuild:opencv4nodejs": "sh scripts/rebuild-opencv4nodejs.sh",
     "install:native": "sh scripts/npm-install-with-native.sh",
     "clean": "find . -name '*.js' ! -path '*/node_modules/*' -delete",
     "start:api": "node scripts/run.js api",
@@ -58,7 +54,6 @@
     "@types/pdf-parse": "^1.1.5",
     "@types/socket.io": "^3.0.2",
     "@types/websocket": "^1.0.5",
-    "@u4/opencv4nodejs": "^7.1.2",
     "@xmldom/xmldom": "^0.9.10",
     "adm-zip": "^0.5.16",
     "armonia": "../armonia",
