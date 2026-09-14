@@ -6,7 +6,6 @@ import {
     BasicCompanyInfoFormResponseType,
     Company as CompanyData
 } from "armonia/src/modules/core/api/company/private/company/company.dto";
-import {allCompaniesFormSchema} from "armonia/src/modules/core/api/company/private/company/company.form.validator";
 import {companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
@@ -15,8 +14,8 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/dslFilterMW";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
-import {CompanyFormType} from "armonia/src/modules/core/api/company/private/company/company.form.type";
-import {TableResponse} from "armonia/src/modules/core/types/shared.types";
+import {TableForm, TableResponse} from "armonia/src/modules/core/types/shared.types";
+import {validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
 import {SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 
 /**
@@ -50,11 +49,11 @@ router.post(
     "",
     authMW("private"),
     rateLimiter({windowMs: 60000, max: 60}),
-    validateFormZod(allCompaniesFormSchema),
+    validateFormZod(validateTableForm),
     dslFilterMW({ model: "companies" }),
     asyncHandler(getCompanies)
 );
-type GetCompaniesType = AuthenticatedMWType & DslFilterMWType & SchemaSanitizerMWType & CompanyFormType;
+type GetCompaniesType = AuthenticatedMWType & DslFilterMWType & SchemaSanitizerMWType & TableForm;
 /**
  * Paginated list of companies with role-resolved permissions.
  *

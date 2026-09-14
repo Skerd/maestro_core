@@ -16,7 +16,7 @@ import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collec
 import {BaseCrudService} from "@coreModule/database/services/baseCrudService";
 import {assertCanDelete} from "@coreModule/database/relationsRegistry";
 import {escapeRegex} from "@coreModule/utilities/helpers";
-import {DeletedDataReadFields, UnSanitizedFields} from "armonia/src/modules/core/types";
+import {DeletedDataReadFields, SanitizedFields, UnSanitizedFields} from "armonia/src/modules/core/types";
 import {
     validateDeleteForm,
     validateRestoreForm,
@@ -37,9 +37,45 @@ import type {
     TableResponse,
 } from "armonia/src/modules/core/types/shared.types";
 
+// ── Param helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Default form body when `TCreate` / `TEdit` are omitted.
+ * Index signature keeps existing destructuring working; intersection with
+ * `TransactionRequiredParams` still types `company`, `session`, `logger`, etc.
+ */
+export type CrudLooseBody = {[key: string]: any};
+
+/** Create-route params: auth + required transaction session + validated create form. */
+export type CrudCreateParams<TCreate extends object = CrudLooseBody> =
+    TransactionRequiredParams & TCreate;
+
+/**
+ * Update-route params passed to `buildUpdateData`.
+ * Includes schema sanitizer fields, the validated edit form, and the pre-update document.
+ */
+export type CrudUpdateParams<T extends Document, TEdit extends object = CrudLooseBody> =
+    TransactionRequiredParams & SchemaSanitizerMWType & TEdit & {
+        _id: string;
+        existing: T;
+    };
+
+type SelectRouteParams = AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType & SelectForm & CrudLooseBody;
+type ListRouteParams = AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType & TableForm & CrudLooseBody;
+
+// ── Internal param types (merged by middleware chain) ─────────────────────────
+
+type ReadParams   = AuthenticatedMWType & SchemaSanitizerMWType;
+type DeleteParams = AuthenticatedMWType & TransactionRequiredParams & DeleteForm;
+type RestoreParams = AuthenticatedMWType & TransactionRequiredParams & RestoreForm;
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
-export interface CrudRouterConfig<T extends Document> {
+export interface CrudRouterConfig<
+    T extends Document,
+    TCreate extends object = CrudLooseBody,
+    TEdit extends object = CrudLooseBody,
+> {
     /** Collection name used by schemaSanitizer (e.g. "countries"). */
     collectionName: string;
     /** The Mongoose model. */
@@ -66,21 +102,21 @@ export interface CrudRouterConfig<T extends Document> {
      * Receives the validated request params after schema validation.
      * May be async to support service lookups (e.g. resolving parent entities).
      */
-    extraSelectFilter?: (params: Record<string, any>) => Record<string, unknown> | Promise<Record<string, unknown>>;
+    extraSelectFilter?: (params: SelectRouteParams) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
     /**
      * Extra MongoDB filter entries merged into the list route's base `{company}` filter.
      * Receives the validated request params after schema validation.
      * May be async to support service lookups (e.g. resolving parent entities).
      */
-    extraListFilter?: (params: Record<string, any>) => Record<string, unknown> | Promise<Record<string, unknown>>;
+    extraListFilter?: (params: ListRouteParams) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
     /**
      * When provided, replaces the default `{ company: company._id }` guard on
      * single / update / delete / restore (merged with `_id` where applicable).
      * Use for models with nullable `company` (e.g. platform-global cron jobs).
      */
-    documentFilter?: (params: Record<string, any>) => Record<string, unknown> | Promise<Record<string, unknown>>;
+    documentFilter?: (params: AuthenticatedMWType & CrudLooseBody) => Record<string, unknown> | Promise<Record<string, unknown>>;
 
     /**
      * When provided, replaces the built-in select route handler entirely.
@@ -88,7 +124,7 @@ export interface CrudRouterConfig<T extends Document> {
      * Use when the select endpoint requires logic incompatible with the default
      * single-field search (e.g. multi-field search, cross-collection lookups).
      */
-    overrideSelectHandler?: (params: Record<string, any>) => Promise<SelectResponse>;
+    overrideSelectHandler?: (params: SelectRouteParams) => Promise<SelectResponse>;
 
     /** Zod schema factory for the create route. */
     createSchema: (lang: string, form: any) => ZodObject<any>;
@@ -111,20 +147,22 @@ export interface CrudRouterConfig<T extends Document> {
     /**
      * Builds the data object passed to `service.create()`.
      * `company` is appended automatically — do not include it here.
-     * Receives the full validated request body (including `session`, `logger`, `languageCode`).
+     * Receives auth + transaction session + validated create form fields.
      * May be async to support service lookups (e.g. resolving a parent entity by id).
      */
-    buildCreateData: (params: Record<string, any>) => Record<string, any> | Promise<Record<string, any>>;
+    buildCreateData: (
+        params: CrudCreateParams<TCreate>,
+    ) => Record<string, any> | Promise<Record<string, any>>;
 
     /**
      * Builds the `$set` object passed to `service.updateById()`.
-     * Called with the validated request body and the user's write-permission map.
+     * Called with auth + session + sanitizer + validated edit form + `existing`, and the write-permission map.
      * Must check `writeFields[key]` before including each field.
      * May be async to support service lookups (e.g. resolving a parent entity by id).
      */
     buildUpdateData: (
-        params: Record<string, any>,
-        writeFields: Record<string, any>,
+        params: CrudUpdateParams<T, TEdit>,
+        writeFields: SanitizedFields,
     ) => Record<string, any> | Promise<Record<string, any>>;
 
     /**
@@ -165,28 +203,31 @@ export interface CrudRouterConfig<T extends Document> {
      * Receives the created document and the full request params.
      * Use for post-create side effects like updating related documents, emitting notifications, or sending emails.
      */
-    afterCreate?: (created: T, params: Record<string, any>) => Promise<void>;
+    afterCreate?: (created: T, params: CrudCreateParams<TCreate>) => Promise<void>;
 
     /**
      * Called after `service.updateById()` completes.
      * Receives the full validated params and the pre-update document.
      * Use for side effects like deleting old media or emitting notifications.
      */
-    afterUpdate?: (params: Record<string, any>, existing: T) => Promise<void>;
+    afterUpdate?: (
+        params: TransactionRequiredParams & SchemaSanitizerMWType & TEdit & {_id: string},
+        existing: T,
+    ) => Promise<void>;
 
     /**
      * Called before deletion. Receives the full validated params and the found document.
      * Throw to abort deletion (e.g. entity is in use). When provided, replaces the default
      * `assertCanDelete` relation check so the callback owns all pre-delete validation.
      */
-    beforeDelete?: (params: Record<string, any>, doc: T) => Promise<void>;
+    beforeDelete?: (params: DeleteParams, doc: T) => Promise<void>;
 
     /**
      * Called after `service.deleteById()` completes (within the same transaction).
      * Receives the full validated params and the deleted document.
      * Use for relational cleanup (e.g. removing back-references from related documents).
      */
-    afterDelete?: (params: Record<string, any>, doc: T) => Promise<void>;
+    afterDelete?: (params: DeleteParams, doc: T) => Promise<void>;
 
     /**
      * When provided, replaces the built-in restore route handler entirely.
@@ -195,28 +236,31 @@ export interface CrudRouterConfig<T extends Document> {
      * cannot be expressed as simple before/after hooks (e.g. checking related entity availability).
      * The override is responsible for calling `SchemaGuard.checkModelPermission` itself.
      */
-    overrideRestoreHandler?: (params: Record<string, any>) => Promise<RestoreResponse>;
+    overrideRestoreHandler?: (params: RestoreParams) => Promise<RestoreResponse>;
 
     /**
      * Replaces the default `toDTOArray(docs)` call in the list route.
      * Use when the list response needs extra async data (e.g. statistics, related counts).
      * Receives the fetched documents and the full request params.
      */
-    enrichList?: (docs: T[], params: Record<string, any>) => Promise<unknown[]>;
+    enrichList?: (docs: T[], params: ListRouteParams) => Promise<unknown[]>;
 
     /**
      * Replaces the default `toDTO(doc)` call in the single route.
      * Use when the single response needs extra async data (e.g. statistics, related entities).
      * Receives the fetched document and the full request params.
      */
-    enrichSingle?: (doc: T, params: Record<string, any>) => Promise<unknown>;
+    enrichSingle?: (doc: T, params: ReadParams & SingleForm) => Promise<unknown>;
 
     /**
      * Replaces the default `toDTO(doc)` call in the update route's response.
      * Use when the update response needs extra async data (e.g. statistics).
      * Receives the re-fetched document and the full request params.
      */
-    enrichUpdate?: (doc: T, params: Record<string, any>) => Promise<unknown>;
+    enrichUpdate?: (
+        doc: T,
+        params: TransactionRequiredParams & SchemaSanitizerMWType & TEdit & {_id: string},
+    ) => Promise<unknown>;
 
     /**
      * Action class whose methods are decorated with @action().
@@ -262,13 +306,6 @@ export interface CrudRouterConfig<T extends Document> {
     };
 }
 
-// ── Internal param types (merged by middleware chain) ─────────────────────────
-
-type ReadParams   = AuthenticatedMWType & SchemaSanitizerMWType;
-type WriteParams  = AuthenticatedMWType & SchemaSanitizerMWType & TransactionRequiredParams;
-type DeleteParams = AuthenticatedMWType & TransactionRequiredParams & DeleteForm;
-type RestoreParams = AuthenticatedMWType & TransactionRequiredParams & RestoreForm;
-
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 /**
@@ -306,7 +343,11 @@ type RestoreParams = AuthenticatedMWType & TransactionRequiredParams & RestoreFo
  *     }),
  * });
  */
-export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>): { router: Router } {
+export function createCrudRouter<
+    T extends Document,
+    TCreate extends object = CrudLooseBody,
+    TEdit extends object = CrudLooseBody,
+>(config: CrudRouterConfig<T, TCreate, TEdit>): { router: Router } {
     const {
         collectionName,
         model,
@@ -338,7 +379,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
     const extraListFilter    = config.extraListFilter    ?? (() => ({}));
     const documentFilter     = config.documentFilter;
 
-    async function docFilterForId(params: Record<string, any>, id: string): Promise<Record<string, unknown>> {
+    async function docFilterForId(params: AuthenticatedMWType, id: string): Promise<Record<string, unknown>> {
         if (documentFilter) {
             return {_id: new ObjectId(id), ...(await documentFilter(params))};
         }
@@ -357,16 +398,16 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
         "/select",
         authMW("private"),
         rateLimiter({windowMs: 60000, max: readLimit}),
-        validateFormZod((lang, form) => selectSchema(lang, form)),
+        validateFormZod((lang, form) => selectSchema(lang ?? "", form)),
         schemaSanitizer({model: collectionName, requiredModes: ["read"]}),
         dslFilterMW({model: collectionName, fieldName: "filters"}),
-        asyncHandler(async (params: AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType & SelectForm) => {
+        asyncHandler(async (params: SelectRouteParams) => {
             if (config.overrideSelectHandler) {
-                return config.overrideSelectHandler(params as any);
+                return config.overrideSelectHandler(params);
             }
 
             const {logger, languageCode, actionUserCtx, company, dslFilterQuery} = params;
-            const name: string | undefined = (params as any)[selectSearchField];
+            const name: string | undefined = params[selectSearchField];
 
             logger.start(`Fetching ${entityName} for select...`);
 
@@ -380,7 +421,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
 
             const filter: Record<string, unknown> = {
                 company: company._id,
-                ...(await extraSelectFilter(params as any)),
+                ...(await extraSelectFilter(params)),
             };
             if (name !== undefined && name !== "") {
                 filter[selectSearchField] = {$regex: escapeRegex(String(name).trim()), $options: "i"};
@@ -413,10 +454,10 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
         "",
         authMW("private"),
         rateLimiter({windowMs: 60000, max: readLimit}),
-        validateFormZod((lang, form) => listSchema(lang, form)),
+        validateFormZod((lang, form) => listSchema(lang ?? "", form)),
         schemaSanitizer({model: collectionName, requiredModes: ["read"]}),
         dslFilterMW({model: collectionName}),
-        asyncHandler(async (params: ReadParams & DslFilterMWType & TableForm) => {
+        asyncHandler(async (params: ListRouteParams) => {
             const {logger, languageCode, company, limit, offset, sortBy, sortOrder, sanitizedReadFields, dslFilterQuery} = params;
 
             logger.start(`Fetching ${entityName} list...`);
@@ -424,9 +465,9 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
             const populate = SchemaGuard.generatePopulate(sanitizedReadFields, model.schema);
             const filter: Record<string, unknown> = {
                 ...(documentFilter
-                    ? await documentFilter(params as any)
+                    ? await documentFilter(params)
                     : {company: company._id}),
-                ...(await extraListFilter(params as any)),
+                ...(await extraListFilter(params)),
             };
             if (dslFilterQuery && Object.keys(dslFilterQuery as object).length > 0) {
                 filter.$and = [...((filter.$and as unknown[]) ?? []), dslFilterQuery];
@@ -439,7 +480,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
 
             logger.finish(`Finished fetching ${entityName} list!`);
             const listData = config.enrichList
-                ? await config.enrichList(docs as T[], params as any)
+                ? await config.enrichList(docs as T[], params)
                 : toDTOArray(docs);
             return {data: listData, total} as TableResponse<unknown>;
         }),
@@ -460,7 +501,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
 
             const populate = SchemaGuard.generatePopulate(sanitizedReadFields, model.schema);
             const doc = await service.findOneOrThrow(
-                await docFilterForId(params as any, _id),
+                await docFilterForId(params, _id),
                 {logger, languageCode},
                 populate.populate,
                 documentSelect(populate.select),
@@ -468,7 +509,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
 
             logger.finish(`Fetched ${entityName} ${_id}`);
             return config.enrichSingle
-                ? await config.enrichSingle(doc, params as any)
+                ? await config.enrichSingle(doc, params)
                 : toDTO(doc);
         }),
     );
@@ -481,14 +522,14 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
         rateLimiter({windowMs: 60000, max: writeLimit}),
         transactionHandler(),
         ...(config.createMiddleware ?? []) as RequestHandler[],
-        validateFormZod((lang, form) => config.createSchema(lang, form)),
-        asyncHandler(async (params: WriteParams) => {
+        validateFormZod((lang, form) => config.createSchema(lang ?? "", form)),
+        asyncHandler(async (params: CrudCreateParams<TCreate>) => {
             const {logger, languageCode, session, company, actionUserCtx} = params;
 
             logger.start(`Creating ${entityName}...`);
             SchemaGuard.checkModelPermission(model, "create", actionUserCtx, languageCode);
 
-            const createData = await buildCreateData(params as any);
+            const createData = await buildCreateData(params);
             const createPayload = Object.prototype.hasOwnProperty.call(createData, "company")
                 ? createData
                 : {...createData, company};
@@ -497,14 +538,14 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
                 {session, logger, languageCode, auditUserId: actionUserCtx.userId},
             );
 
-            await config.afterCreate?.(created, params as any);
+            await config.afterCreate?.(created, params);
 
             let result: unknown;
             try {
                 const readFields = SchemaGuard.sanitizeFields(model, getModelCollectedData(collectionName).readFields!, "read", actionUserCtx, languageCode);
                 const populate = SchemaGuard.generatePopulate(readFields, model.schema);
                 const populated = await service.findOneOrThrow(
-                    await docFilterForId(params as any, created._id.toString()),
+                    await docFilterForId(params, created._id.toString()),
                     {session, logger, languageCode},
                     populate.populate,
                     documentSelect(populate.select),
@@ -529,19 +570,19 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
         ...(config.editMiddleware ?? []) as RequestHandler[],
         schemaSanitizer({model: collectionName, requiredModes: ["read", "write"]}),
         validateFormZod((lang, _form, writeFields, readFields) =>
-            config.editSchema(lang, null, writeFields, readFields)
+            config.editSchema(lang ?? "", null, writeFields, readFields)
         ),
-        asyncHandler(async (params: WriteParams & {_id: string}) => {
+        asyncHandler(async (params: TransactionRequiredParams & SchemaSanitizerMWType & TEdit & {_id: string}) => {
             const {logger, languageCode, session, _id, company, actionUserCtx, sanitizedWriteFields} = params;
 
             logger.start(`Updating ${entityName} ${_id}...`);
 
             const existing = await service.findOneOrThrow(
-                await docFilterForId(params as any, _id),
+                await docFilterForId(params, _id),
                 {session, logger, languageCode},
             );
 
-            const updateData = await buildUpdateData({...params as any, existing}, sanitizedWriteFields ?? {});
+            const updateData = await buildUpdateData({...params, existing}, sanitizedWriteFields ?? {});
             const $setFields: Record<string, unknown> = {};
             const $unsetFields: Record<string, string> = {};
             for (const [key, value] of Object.entries(updateData)) {
@@ -557,20 +598,20 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
                 {session, logger, languageCode, auditUserId: actionUserCtx.userId, returnNew: true},
             );
 
-            await config.afterUpdate?.(params as any, existing);
+            await config.afterUpdate?.(params, existing);
 
             let result: unknown;
             try {
                 const readFields = SchemaGuard.sanitizeFields(model, getModelCollectedData(collectionName).readFields!, "read", actionUserCtx, languageCode);
                 const populate = SchemaGuard.generatePopulate(readFields, model.schema);
                 const populated = await service.findOneOrThrow(
-                    await docFilterForId(params as any, existing._id.toString()),
+                    await docFilterForId(params, existing._id.toString()),
                     {session, logger, languageCode},
                     populate.populate,
                     documentSelect(populate.select),
                 );
                 result = config.enrichUpdate
-                    ? await config.enrichUpdate(populated, params as any)
+                    ? await config.enrichUpdate(populated, params)
                     : toDTO(populated);
             } catch {
                 logger.debug(`User has no read permission on ${entityName}`);
@@ -596,19 +637,19 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
             SchemaGuard.checkModelPermission(model, "delete", actionUserCtx, languageCode);
 
             const doc = await service.findOneOrThrow(
-                await docFilterForId(params as any, _id),
+                await docFilterForId(params, _id),
                 {session, logger, languageCode},
             );
 
             if (config.beforeDelete) {
-                await config.beforeDelete(params as any, doc);
+                await config.beforeDelete(params, doc);
             } else {
                 await assertCanDelete(model.modelName, doc._id, languageCode, session);
             }
 
             await service.deleteById(_id, {session, logger, languageCode, auditUserId: actionUserCtx.userId});
 
-            await config.afterDelete?.(params as any, doc);
+            await config.afterDelete?.(params, doc);
 
             let response: DeleteResponse = {message: `${entityName} successfully deleted`};
             try {
@@ -647,7 +688,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
         transactionHandler(),
         asyncHandler(async (params: RestoreParams) => {
             if (config.overrideRestoreHandler) {
-                return config.overrideRestoreHandler(params as any);
+                return config.overrideRestoreHandler(params);
             }
 
             const {logger, languageCode, session, _id, actionUserCtx, company} = params;
@@ -656,7 +697,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
             SchemaGuard.checkModelPermission(model, "restore", actionUserCtx, languageCode);
 
             await service.restoreOneOrThrow(
-                await docFilterForId(params as any, _id),
+                await docFilterForId(params, _id),
                 {session, logger, languageCode, auditUserId: actionUserCtx.userId},
             );
 
@@ -676,7 +717,7 @@ export function createCrudRouter<T extends Document>(config: CrudRouterConfig<T>
             if (options.rateLimit)      mw.push(rateLimiter(options.rateLimit));
             if (options.transaction)    mw.push(transactionHandler());
             if (options.middleware?.length) mw.push(...options.middleware as RequestHandler[]);
-            if (options.schema)         mw.push(validateFormZod((lang, form) => options.schema!(lang, form)));
+            if (options.schema)         mw.push(validateFormZod((lang, form) => options.schema!(lang ?? "", form)));
             const handler = (actionsInstance[methodName] as Function).bind(actionsInstance);
             router.post(`/${methodName}`, ...mw, asyncHandler(handler));
         }

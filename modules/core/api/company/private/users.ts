@@ -28,7 +28,7 @@ import {SimpleUsersFormType} from "armonia/src/modules/core/api/company/private/
 import {
     SimpleUsersFormResponseType
 } from "armonia/src/modules/core/api/company/private/users/simpleUsers.form.response.type";
-import {AllUsersFormResponseType} from "armonia/src/modules/core/api/company/private/users/allUsers.form.response.type";
+import type {CompanyUserType} from "armonia/src/modules/core/api/company/private/users/companyUser.dto";
 import {AllUsersFormType} from "armonia/src/modules/core/api/company/private/users/allUsers.form.type";
 import {getAllUsersFormSchema} from "armonia/src/modules/core/api/company/private/users/allUsers.form.validator";
 import {
@@ -49,9 +49,6 @@ import {escapeRegex, generateRandomString} from "@coreModule/utilities/helpers";
 import {
     inviteCompanyUserFormSchema
 } from "armonia/src/modules/core/api/company/private/users/inviteUser.form.validator";
-import {
-    InviteUserFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/inviteUser.form.response.type";
 import {InviteUserFormType} from "armonia/src/modules/core/api/company/private/users/inviteUser.form.type";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {
@@ -59,50 +56,16 @@ import {
 } from "armonia/src/modules/core/api/company/private/users/getUsersSelect.form.validator";
 import {GetUsersSelectFormType} from "armonia/src/modules/core/api/company/private/users/getUsersSelect.form.type";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
-import {
-    GetUsersSelectFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/getUsersSelect.form.response.type";
 import {usersToCompanyUserDTO} from "@coreModule/utilities/mappers/user/userMapper.dto";
 import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/dslFilterMW";
 import {
-    unlockActivationFormSchema
-} from "armonia/src/modules/core/api/company/private/users/unlockActivation.form.validator";
-import {
-    UnlockActivationFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/unlockActivation.form.response.type";
-import {
-    unlockPasswordResetFormSchema
-} from "armonia/src/modules/core/api/company/private/users/unlockPasswordReset.form.validator";
-import {
-    UnlockPasswordResetFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/unlockPasswordReset.form.response.type";
-import {
-    unlockMfaDeactivationFormSchema
-} from "armonia/src/modules/core/api/company/private/users/unlockMfaDeactivation.form.validator";
-import {
-    UnlockMfaDeactivationFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/unlockMfaDeactivation.form.response.type";
-import {
-    resendInvitationEmailFormSchema
-} from "armonia/src/modules/core/api/company/private/users/resendInvitationEmail.form.validator";
-import {
-    ResendInvitationEmailFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/resendInvitationEmail.form.response.type";
-import {
-    resendActivationEmailFormSchema
-} from "armonia/src/modules/core/api/company/private/users/resendActivationEmail.form.validator";
-import {
-    ResendActivationEmailFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/resendActivationEmail.form.response.type";
-import {
-    unlockInvitationFormSchema
-} from "armonia/src/modules/core/api/company/private/users/unlockInvitation.form.validator";
-import {
-    UnlockInvitationFormResponseType
-} from "armonia/src/modules/core/api/company/private/users/unlockInvitation.form.response.type";
-import {UnlockInvitationFormType} from "armonia/src/modules/core/api/company/private/users/unlockInvitation.form.type";
+    unlockUserRequestFormSchema
+} from "armonia/src/modules/core/api/company/private/users/unlockUserRequest.form.validator";
+import type {UnlockUserRequestFormType} from "armonia/src/modules/core/api/company/private/users/unlockUserRequest.form.type";
+import type {ResendUserEmailFormResponseType} from "armonia/src/modules/core/api/company/private/users/resendUserEmail.form.response.type";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
+import type {ActionMessage, SelectResponse, TableResponse} from "armonia/src/modules/core/types/shared.types";
 
 
 /**
@@ -124,10 +87,10 @@ const DEFAULT_NEW_USER_TIMEZONE = "Europe/Tirane";
  * @returns The existing user document if one exists but is not in this company; otherwise null.
  * @throws Api validation exception if user already has a role in the company.
  */
-async function ensureUserCanBeAddedToCompany(email: string, company: { _id?: ObjectId }, opts: CrudOptions): Promise<IUser | null> {
+async function ensureUserCanBeAddedToCompany(email: string, company: { _id?: ObjectId }, opts: CrudOptions & { languageCode: string }): Promise<IUser | null> {
     const existingUser = await userService.findOne({ username: email }, opts);
     if (existingUser && company._id && (await existingUser.hasAtLeastOneRole(company._id))) {
-        throw apiValidationException("user_with_same_username_already_exists_cant_create", null, null, opts.languageCode);
+        throw apiValidationException("user_with_same_username_already_exists_cant_create", "", null, opts.languageCode);
     }
     return existingUser ?? null;
 }
@@ -252,7 +215,7 @@ const router = Router();
  * @route POST /api/company/users/select
  * @access Private
  * @body {GetUsersSelectFormType} - page, limit, name?, administration?
- * @returns {Promise<GetUsersSelectFormResponseType>} { data, total }
+ * @returns {Promise<SelectResponse>} { data, total }
  *
  * @remarks
  * - Rate limited: 120 requests per minute
@@ -272,7 +235,7 @@ router.post(
  * @returns { data, total } — data is array of { value, label } for use in select components.
  * @remarks No schemaSanitizer — narrow projection; not full model list read
  */
-async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormType): Promise<GetUsersSelectFormResponseType> {
+async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormType): Promise<SelectResponse> {
     const { logger, company, name, languageCode, actionUserCtx, page, limit, fetchAdministrationUsers } = params;
     let { administration } = params;
 
@@ -361,7 +324,7 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
  * @route POST /api/company/users
  * @access Private
  * @body {AllUsersFormType} - offset, limit, sortBy?, sortOrder?, username?, name?, status?, roles?, administration, filter?
- * @returns {Promise<AllUsersFormResponseType>} total and data (CompanyUserType[])
+ * @returns {Promise<TableResponse<CompanyUserType>>} total and data (CompanyUserType[])
  *
  * @remarks
  * - Rate limited: 80 requests per minute
@@ -385,7 +348,7 @@ type GetCompanyUsersType = AuthenticatedMWType & SchemaSanitizerMWType & DslFilt
  * @returns Paginated list of company users with id, username, name, surname, phoneNumber, roles, status.
  * @remarks Uses params.sanitizedReadFields from schemaSanitizer; merges params.dslFilterQuery into base filter
  */
-async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): Promise<AllUsersFormResponseType> {
+async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): Promise<TableResponse<CompanyUserType>> {
     const { offset, limit, sortBy, sortOrder, administration, sanitizedReadFields, dslFilterQuery, logger, userInfo, company, languageCode, actionUserCtx } = params;
 
     logger.start(`Trying to get company users`);
@@ -566,7 +529,7 @@ type CreateNewUserType = TransactionRequiredParams & AuthenticatedMWType & Schem
  */
 async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Promise<CreateUserFormResponseType> {
     const { email, password, name, surname, userRole, logger, languageCode, userInfo, company, session, actionUserCtx } = params;
-    const opts: CrudOptions = { session, logger, languageCode };
+    const opts: CrudOptions & { languageCode: string } = { session, logger, languageCode };
 
     logger.start(`Trying to register new user...`);
     SchemaGuard.checkModelPermission(User, "create", actionUserCtx);
@@ -653,7 +616,7 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
  * @access Private
  * @requires Transaction
  * @body {InviteUserFormType} - email, name, surname, userRole, welcomeMessage?
- * @returns {Promise<InviteUserFormResponseType>} Success message
+ * @returns {Promise<ActionMessage>} Success message
  *
  * @throws {apiValidationException} If user with same email already belongs to the company
  * @throws If role is invalid or not a non-admin company role
@@ -682,9 +645,9 @@ type InviteUserType = TransactionRequiredParams & AuthenticatedMWType & SchemaSa
  * @throws If user already in company, or role invalid, or model permission denied.
  * @remarks Uses schemaSanitizer write; builds payload from validated body + tenancy defaults
  */
-async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<InviteUserFormResponseType> {
+async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<ActionMessage> {
     const { email, name, surname, userRole, welcomeMessage, logger, languageCode, userInfo, company, session, actionUserCtx } = params;
-    const opts: CrudOptions = { session, logger, languageCode, auditUserId: actionUserCtx.userId };
+    const opts: CrudOptions & { languageCode: string } = { session, logger, languageCode, auditUserId: actionUserCtx.userId };
 
     logger.start(`Trying to invite user [${email}]...`);
     SchemaGuard.checkModelPermission(User, "create", actionUserCtx);
@@ -784,18 +747,18 @@ router.patch(
     "/unlockActivation",
     authMW("private"),
     rateLimiter({ windowMs: 60000, max: 30 }),
-    validateFormZod(unlockActivationFormSchema),
+    validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
     asyncHandler(unlockActivation)
 );
 /**
  * Unlocks activation lock for a company user.
  */
-async function unlockActivation(body: any): Promise<UnlockActivationFormResponseType> {
+async function unlockActivation(body: any): Promise<ActionMessage> {
     const { userInfo, logger, languageCode, actionUserCtx, session, parentBypass, resendEmail } = body;
 
     if (!parentBypass) {
-        throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
+        throw apiValidationException("user_permissions_not_sufficient", "", null, languageCode);
     }
 
     logger.start(`Unlocking activation for user ${userInfo._id}`);
@@ -845,7 +808,7 @@ router.patch(
     "/unlockPasswordReset",
     authMW("private"),
     rateLimiter({ windowMs: 60000, max: 30 }),
-    validateFormZod(unlockPasswordResetFormSchema),
+    validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
     asyncHandler(unlockPasswordReset)
 );
@@ -853,11 +816,11 @@ router.patch(
 /**
  * Unlocks password reset lock for a company user.
  */
-async function unlockPasswordReset(body: any): Promise<UnlockPasswordResetFormResponseType> {
+async function unlockPasswordReset(body: any): Promise<ActionMessage> {
     const { userInfo, logger, languageCode, actionUserCtx, session, parentBypass, resendEmail } = body;
 
     if (!parentBypass) {
-        throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
+        throw apiValidationException("user_permissions_not_sufficient", "", null, languageCode);
     }
 
     logger.start(`Unlocking password reset for user ${userInfo._id}`);
@@ -905,18 +868,18 @@ router.patch(
     "/unlockMfaDeactivation",
     authMW("private"),
     rateLimiter({ windowMs: 60000, max: 30 }),
-    validateFormZod(unlockMfaDeactivationFormSchema),
+    validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
     asyncHandler(unlockMfaDeactivation)
 );
 /**
  * Unlocks MFA deactivation lock for a company user.
  */
-async function unlockMfaDeactivation(body: any): Promise<UnlockMfaDeactivationFormResponseType> {
+async function unlockMfaDeactivation(body: any): Promise<ActionMessage> {
     const { userInfo, logger, languageCode, actionUserCtx, session, parentBypass, resendEmail } = body;
 
     if (!parentBypass) {
-        throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
+        throw apiValidationException("user_permissions_not_sufficient", "", null, languageCode);
     }
 
     logger.start(`Unlocking MFA deactivation for user ${userInfo._id}`);
@@ -964,26 +927,26 @@ router.patch(
     "/unlockInvitation",
     authMW("private"),
     rateLimiter({ windowMs: 60000, max: 30 }),
-    validateFormZod(unlockInvitationFormSchema),
+    validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
     asyncHandler(unlockInvitation)
 );
 
-async function unlockInvitation(body: AuthenticatedMWType & TransactionRequired & UnlockInvitationFormType): Promise<UnlockInvitationFormResponseType> {
+async function unlockInvitation(body: AuthenticatedMWType & TransactionRequired & UnlockUserRequestFormType): Promise<ActionMessage> {
     const { userInfo, logger, languageCode, actionUserCtx, session, parentBypass, resendEmail, company} = body;
 
     if (!parentBypass) {
-        throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
+        throw apiValidationException("user_permissions_not_sufficient", "", null, languageCode);
     }
 
     if ( !(company._id.equals(userInfo.requests?.invitation?.company)) ){
-        throw apiValidationException("cannot_unlock_invitation", null, null, languageCode);
+        throw apiValidationException("cannot_unlock_invitation", "", null, languageCode);
     }
     if (!userInfo.requests?.invitation) {
-        throw apiValidationException("invitation_not_found", null, null, languageCode);
+        throw apiValidationException("invitation_not_found", "", null, languageCode);
     }
     if (userInfo.requests.invitation.accepted === true) {
-        throw apiValidationException("invitation_already_accepted", null, null, languageCode);
+        throw apiValidationException("invitation_already_accepted", "", null, languageCode);
     }
 
     logger.start(`Unlocking invitation for user ${userInfo._id}`);
@@ -1008,7 +971,11 @@ async function unlockInvitation(body: AuthenticatedMWType & TransactionRequired 
         );
         const welcomeMessage = receiverUser?.requests?.invitation?.welcomeMessage || "";
 
-        const inviter = await userService.findById(receiverUser.requests.invitation.invitedBy?._id, {logger, languageCode})
+        const invitedById = receiverUser.requests?.invitation?.invitedBy?._id;
+        if (!invitedById) {
+            throw apiValidationException("invitation_not_found", "", null, languageCode);
+        }
+        const inviter = await userService.findByIdOrThrow(invitedById, {logger, languageCode});
         const inviterName = `${inviter.name || ""} ${inviter.surname || ""}`.trim() || inviter.username;
 
         await receiverUser.sendInvitationEmail(
@@ -1043,26 +1010,25 @@ router.patch(
     "/resendActivationEmail",
     authMW("private"),
     rateLimiter({ windowMs: 60000, max: 30 }),
-    validateFormZod(resendActivationEmailFormSchema),
     transactionHandler(),
     asyncHandler(resendActivationEmail)
 );
 
-async function resendActivationEmail(body: AuthenticatedMWType & TransactionRequired): Promise<ResendActivationEmailFormResponseType> {
+async function resendActivationEmail(body: AuthenticatedMWType & TransactionRequired): Promise<ResendUserEmailFormResponseType> {
     const { userInfo, logger, languageCode, actionUserCtx, session, parentBypass } = body;
 
     if (!parentBypass) {
-        throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
+        throw apiValidationException("user_permissions_not_sufficient", "", null, languageCode);
     }
 
     if (!userInfo.requests?.activation) {
-        throw apiValidationException("activation_not_found", null, null, languageCode);
+        throw apiValidationException("activation_not_found", "", null, languageCode);
     }
 
     const lockedUntil = userInfo.requests.activation.lockedUntil;
     const now = new Date();
     if (lockedUntil && new Date(lockedUntil).getTime() > now.getTime()) {
-        throw apiValidationException("activation_link_sent_too_many_times", null, null, languageCode);
+        throw apiValidationException("activation_link_sent_too_many_times", "", null, languageCode);
     }
 
     logger.start(`Resending activation email for user ${userInfo._id}`);
@@ -1106,31 +1072,30 @@ router.patch(
     "/resendInvitationEmail",
     authMW("private"),
     rateLimiter({ windowMs: 60000, max: 30 }),
-    validateFormZod(resendInvitationEmailFormSchema),
     transactionHandler(),
     asyncHandler(resendInvitationEmail)
 );
-async function resendInvitationEmail(body: AuthenticatedMWType & TransactionRequired): Promise<ResendInvitationEmailFormResponseType> {
+async function resendInvitationEmail(body: AuthenticatedMWType & TransactionRequired): Promise<ResendUserEmailFormResponseType> {
     const { userInfo, logger, languageCode, actionUserCtx, session, parentBypass, company } = body;
 
     if (!parentBypass) {
-        throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
+        throw apiValidationException("user_permissions_not_sufficient", "", null, languageCode);
     }
 
     if ( !(company._id.equals(userInfo.requests?.invitation?.company)) ){
-        throw apiValidationException("cannot_unlock_invitation", null, null, languageCode);
+        throw apiValidationException("cannot_unlock_invitation", "", null, languageCode);
     }
     if (!userInfo.requests?.invitation) {
-        throw apiValidationException("invitation_not_found", null, null, languageCode);
+        throw apiValidationException("invitation_not_found", "", null, languageCode);
     }
     if (userInfo.requests.invitation.accepted === true) {
-        throw apiValidationException("invitation_already_accepted", null, null, languageCode);
+        throw apiValidationException("invitation_already_accepted", "", null, languageCode);
     }
 
     const lockedUntil = userInfo.requests.invitation.lockedUntil;
     const now = new Date();
     if (lockedUntil && new Date(lockedUntil).getTime() > now.getTime()) {
-        throw apiValidationException("invitation_link_sent_too_many_times", null, null, languageCode);
+        throw apiValidationException("invitation_link_sent_too_many_times", "", null, languageCode);
     }
 
     logger.start(`Resending invitation email for user ${userInfo._id}`);
@@ -1138,7 +1103,11 @@ async function resendInvitationEmail(body: AuthenticatedMWType & TransactionRequ
     SchemaGuard.sanitizeFields(User, {requests: {keys: {invitation: {keys: {invitationExpiresAt: {}}}}}}, "write", actionUserCtx, languageCode);
 
     const welcomeMessage = userInfo?.requests?.invitation?.welcomeMessage || "";
-    const inviter = await userService.findById(userInfo.requests.invitation.invitedBy?._id, {logger, languageCode})
+    const invitedById = userInfo.requests.invitation.invitedBy?._id;
+    if (!invitedById) {
+        throw apiValidationException("invitation_not_found", "", null, languageCode);
+    }
+    const inviter = await userService.findByIdOrThrow(invitedById, {logger, languageCode});
     const inviterName = `${inviter.name || ""} ${inviter.surname || ""}`.trim() || inviter.username;
 
     await userInfo.sendInvitationEmail(

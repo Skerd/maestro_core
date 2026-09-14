@@ -42,19 +42,13 @@ export type ApiServerHealth = {
     lastHeartbeat?: number;
     lastStart?: number;
     serverId?: string;
-    /** completed + failed. */
     processed: number;
-    /** Responses with status < 400. */
     completed: number;
-    /** Responses with status ≥ 400. */
     failed: number;
-    /** Cumulative request duration in ms (over all processed requests). */
     totalMs: number;
-    /** Mean request duration in ms (0 when nothing processed yet). */
     averageMs: number;
 };
 
-// In-process cumulative counters (owned by the API server process).
 let completed = 0;
 let failed = 0;
 let totalMs = 0;

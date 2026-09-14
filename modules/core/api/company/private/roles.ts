@@ -8,7 +8,7 @@ import {rolesToDTO, roleToDTO} from "@coreModule/utilities/mappers/role/roleMapp
 import {rolesToSelect} from "@coreModule/utilities/mappers/role/roleMapper.select";
 import {PermissionsFormType} from "armonia/src/modules/core/api/company/private/roles/permissions.form.type";
 import {getPermissionsFormSchema} from "armonia/src/modules/core/api/company/private/roles/permissions.form.validator";
-import Role, {type IRole} from "@coreModule/database/schemas/role/role";
+import Role from "@coreModule/database/schemas/role/role";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {PermissionDto} from "armonia/src/modules/core/api/company/private/roles/permission.dto";
@@ -67,7 +67,7 @@ export const {router} = createCrudRouter({
         };
     },
     buildUpdateData: async (params, writeFields) => {
-        const existing = params.existing as IRole;
+        const existing = params.existing;
         if (!existing.canEdit) {
             throw apiValidationException("userRole_not_found", null, null, params.languageCode);
         }

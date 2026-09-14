@@ -35,7 +35,8 @@ export type NotAuthenticatedMWType = {
     requestIp: string,
     requestSource: "panel" | "client"
 }
-export type AuthenticatedMWType = NotAuthenticatedMWType & {
+
+export type Authenticated = {
     user: JWTTokenType,
     parentBypass: JWTTokenType | null,
     singleCompanyId: string,
@@ -45,6 +46,8 @@ export type AuthenticatedMWType = NotAuthenticatedMWType & {
     actionUserCtx: UserContext,
     company: ICompany,
 }
+
+export type AuthenticatedMWType = NotAuthenticatedMWType & Authenticated;
 
 export default (type: "public" | "private") => async (req: any, res: any, next: any) => {
 

@@ -21,10 +21,10 @@ export const {router} = createCrudRouter({
         decimalPlaces,
         abbreviation,
     }),
-    buildUpdateData: ({name, symbol, decimalPlaces, abbreviation}, w) => ({
-        ...(name          !== undefined && w.name          && {name}),
-        ...(symbol        !== undefined && w.symbol        && {symbol}),
-        ...(decimalPlaces !== undefined && w.decimalPlaces && {decimalPlaces}),
-        ...(abbreviation  !== undefined && w.abbreviation  && {abbreviation}),
+    buildUpdateData: ({name, symbol, decimalPlaces, abbreviation}, writeFields) => ({
+        ...(name          !== undefined && writeFields.name          && {name}),
+        ...(symbol        !== undefined && writeFields.symbol        && {symbol}),
+        ...(decimalPlaces !== undefined && writeFields.decimalPlaces && {decimalPlaces}),
+        ...(abbreviation  !== undefined && writeFields.abbreviation  && {abbreviation}),
     }),
 });

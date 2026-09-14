@@ -89,7 +89,7 @@ import {Media} from "armonia/src/modules/core/types";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import User from "@coreModule/database/schemas/user/user";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
-import {CompanyUserType} from "armonia/src/modules/core/api/company/private/users/allUsers.form.response.type";
+import {CompanyUserType} from "armonia/src/modules/core/api/company/private/users/companyUser.dto";
 import {userToCompanyUserDTO} from "@coreModule/utilities/mappers/user/userMapper.dto";
 import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 

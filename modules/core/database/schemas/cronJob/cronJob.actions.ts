@@ -8,10 +8,9 @@ import {kafkaQueueAdapter} from "@coreModule/cronjobs/adapters/kafkaQueueAdapter
 import CronJob from "@coreModule/database/schemas/cronJob/cronJob";
 import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
 import {cronExecutionService} from "@coreModule/database/schemas/cronExecution/cronExecution.service";
-import {validateCronJobExecutionsListForm} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJobExecutions.form.validator";
 import {cronExecutionsToDTO, cronJobToDTO} from "@coreModule/utilities/mappers/cronJob/cronJobMapper.dto";
 import type {CronJob as CronJobDTO, CronJobMetrics} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.dto";
-import {validateSingleForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import {validateSingleForm, validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
 import {schemaSanitizer} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {dslFilterMW} from "@coreModule/utilities/middlewares/dslFilterMW";
 
@@ -146,7 +145,7 @@ export class CronJobActions {
     }
 
     @action({
-        schema: validateCronJobExecutionsListForm,
+        schema: validateTableForm,
         rateLimit: {windowMs: 60000, max: 60},
         middleware: [
             schemaSanitizer({model: "cronexecutions", requiredModes: ["read"]}),

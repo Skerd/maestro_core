@@ -8,7 +8,7 @@ import {mapPopulatedRef, mapPopulatedSimpleUser, objectIdToString} from "@coreMo
 import {
     CompanyUserRequestsType,
     CompanyUserType
-} from "armonia/src/modules/core/api/company/private/users/allUsers.form.response.type";
+} from "armonia/src/modules/core/api/company/private/users/companyUser.dto";
 import {mapLifeCycleToDTO, mapOwnershipToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 function toDate(d: Date | string | null | undefined): Date | undefined {

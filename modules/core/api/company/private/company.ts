@@ -23,12 +23,6 @@ import {
 import {
     DeactivateCompanyFormType
 } from "armonia/src/modules/core/api/company/private/company/deactivateCompany.form.type";
-import {
-    systemMaintenanceNotifyFormSchema
-} from "armonia/src/modules/core/api/company/private/company/systemMaintenanceNotify.form.validator";
-import {
-    SystemMaintenanceNotifyFormType
-} from "armonia/src/modules/core/api/company/private/company/systemMaintenanceNotify.form.type";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import Company from "@coreModule/database/schemas/company/company";
 import {MediaUploaded, mediaUploadMW} from "@coreModule/utilities/middlewares/mediaUploadMW";
@@ -451,68 +445,6 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     logger.finish(`Finished update company!`);
 
     return { message: "Company successfully updated" };
-}
-
-/**
- * POST /api/company/system-maintenance-notify
- *
- * Broadcasts a system maintenance notification to all active company members. Company admins only.
- */
-router.post(
-    "/system-maintenance-notify",
-    authMW("private"),
-    rateLimiter({
-        windowMs: 60000,
-        max: 10
-    }),
-    validateFormZod(systemMaintenanceNotifyFormSchema),
-    transactionHandler(),
-    asyncHandler(notifySystemMaintenance)
-);
-type NotifySystemMaintenanceType = TransactionRequiredParams & SystemMaintenanceNotifyFormType;
-/**
- * Notifies active company members about scheduled maintenance (admin only).
- */
-async function notifySystemMaintenance(params: NotifySystemMaintenanceType): Promise<ActionMessage> {
-    const { logger, languageCode, session, company, actionUserInfo, message, startsAt, endsAt } = params;
-
-    logger.start(`Broadcasting system maintenance notification for company [${company._id.toString()}]...`);
-
-    const isAdmin = await actionUserInfo.isAdmin(company._id);
-    if (!isAdmin) {
-        throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
-    }
-
-    const maintenanceMembers = await userService.find(
-        {
-            companies: company._id,
-            "roles.company": company._id,
-            "roles.active": "active"
-        },
-        { session, logger, languageCode },
-        null,
-        "_id"
-    );
-    const receiverIds = maintenanceMembers.map((u) => u._id.toString());
-    if (receiverIds.length > 0) {
-        emitNotificationEvent(
-            NotificationEventCodes.SYSTEM_MAINTENANCE, 
-            {
-                receiverIds,
-                payload: {
-                    companyId: company._id.toString(),
-                    message,
-                    startsAt,
-                    endsAt,
-                    languageCode
-                },
-                session
-            }
-        );
-    }
-
-    logger.finish(`System maintenance notification broadcast complete`);
-    return { message: "Maintenance notification sent to company members" };
 }
 
 /**

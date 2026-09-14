@@ -512,36 +512,4 @@ export function registerNotificationEventHandlers(): void {
             }
         }
     });
-
-    notificationEventBus.on(NotificationEventCodes.SYSTEM_MAINTENANCE, async (event: NotificationEvent) => {
-        const { receiverIds, payload } = event;
-        const companyId = payload.companyId as string;
-        const message = (payload.message as string) ?? "";
-        const startsAt = payload.startsAt as string | undefined;
-        const endsAt = payload.endsAt as string | undefined;
-        const opts = createNotifOpts(event);
-
-        const windowParts = [startsAt, endsAt].filter(Boolean);
-        const windowStr = windowParts.length ? ` (${windowParts.join(" – ")})` : "";
-        const description = `Scheduled maintenance${windowStr}: ${message}`;
-
-        for (const receiverId of receiverIds) {
-            try {
-                await createAndPushNotification(
-                    {
-                        receiver: new ObjectId(receiverId),
-                        company: new ObjectId(companyId),
-                        code: NotificationEventCodes.SYSTEM_MAINTENANCE,
-                        description,
-                        content: { message, startsAt, endsAt },
-                        importance: NotificationImportance.HIGH,
-                        category: NotificationCategory.SYSTEM
-                    },
-                    opts
-                );
-            } catch (e) {
-                console.error(`Failed to create SYSTEM_MAINTENANCE notification for ${receiverId}:`, e);
-            }
-        }
-    });
 }
