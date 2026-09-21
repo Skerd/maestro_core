@@ -302,7 +302,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                                 render: "#Field",
                                 field: {
                                     name: "allowedDomains",
-                                    widget: "#StringArrayField",
+                                    widget: "#StringArrayInput",
                                     label: "form.allowedDomainsLabel",
                                     placeholder: "form.allowedDomainsPlaceholder",
                                     widgetProps: {removeTooltipKey: "remove"},

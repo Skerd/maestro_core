@@ -69,6 +69,48 @@ describe("buildTableColumnsFromSchema", () => {
         });
     });
 
+    it("passes declared enum tones through to the column meta", () => {
+        const ToneSchema = new Schema({
+            status: {
+                type: SchemaTypes.String,
+                enum: ["won", "lost", "negotiation", "new"],
+                dynamicTableConfiguration: {
+                    enumTones: {won: "success", lost: "danger", negotiation: "warning"},
+                },
+            },
+        });
+        const ToneModel = model("SchemaToTableConfigTonesProbe", ToneSchema);
+        const columns = buildTableColumnsFromSchema(ToneModel, new Set(["status"]));
+        expect(columns[0]!.meta?.enumTones).toEqual({
+            won: "success",
+            lost: "danger",
+            negotiation: "warning",
+        });
+    });
+
+    it("drops tones the client cannot paint instead of shipping a dead class name", () => {
+        const BadToneSchema = new Schema({
+            status: {
+                type: SchemaTypes.String,
+                enum: ["won", "lost"],
+                /* "succes" is a typo and "bg-red-500" is a schema reaching for the palette. */
+                dynamicTableConfiguration: {
+                    enumTones: {won: "succes", lost: "bg-red-500", other: "info"} as never,
+                },
+            },
+            note: {
+                type: SchemaTypes.String,
+                dynamicTableConfiguration: {enumTones: {} as never},
+            },
+        });
+        const BadToneModel = model("SchemaToTableConfigBadTonesProbe", BadToneSchema);
+        const columns = buildTableColumnsFromSchema(BadToneModel, new Set(["status", "note"]));
+        const byId = Object.fromEntries(columns.map((c) => [c.id, c]));
+        expect(byId.status!.meta?.enumTones).toEqual({other: "info"});
+        /* An empty map must not create a `meta` the client then has to defend against. */
+        expect(byId.note!.meta?.enumTones).toBeUndefined();
+    });
+
     it("maps nested receipt media to a filterable FILE column", () => {
         const NestedSchema = new Schema({
             paymentReceipts: {

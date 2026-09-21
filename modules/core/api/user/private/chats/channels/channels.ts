@@ -68,16 +68,16 @@ import {InboxBadgesFormResponseType} from "armonia/src/modules/core/api/user/pri
 const router = Router();
 
 /**
- * GET /api/user/chats/channels/inbox-badges
+ * GET /api/user/chats/channels/inboxBadges
  *
  * Panel-load snapshot for sidebar badges: waiting website-chat queue size,
  * plus unread counts for staff conversations and assigned ("mine") website chats.
  *
- * @route GET /api/user/chats/channels/inbox-badges
+ * @route GET /api/user/chats/channels/inboxBadges
  * @access Private
  */
 router.get(
-    "/inbox-badges",
+    "/inboxBadges",
     authMW("private"),
     rateLimiter({
         windowMs: 60000,

@@ -69,6 +69,8 @@ type ClientWebSocket = WebSocket & {
     languageCode: string;
     /** Array of room IDs this connection is subscribed to */
     rooms: string[];
+    /** Tail of this connection's JOIN/LEAVE queue (see `queueRoomOperation`). */
+    roomOperations?: Promise<void>;
     /** Heartbeat timer for ping-pong */
     timer: any,
     /** Connection death timer (closes connection if no pong received) */
@@ -322,6 +324,17 @@ async function onJoinRoomMessage(code: string, payload: string[], user: any, log
     }));
 
 }
+/**
+ * Runs one connection's JOIN/LEAVE handlers one at a time. Each handler checks `ws.rooms` and only
+ * updates it after awaiting, so overlapping handlers (a quick leave-and-rejoin) could leave the
+ * connection out of a room the client still holds. A failed operation does not block later ones.
+ */
+function queueRoomOperation(ws: ClientWebSocket, operation: () => Promise<void>): Promise<void> {
+    const result = (ws.roomOperations ?? Promise.resolve()).then(operation);
+    ws.roomOperations = result.catch(() => {});
+    return result;
+}
+
 async function onLeaveRoomMessage(code: string, payload: string[], user: any, logger: serverLogger, ws: ClientWebSocket){
     logger.updateSpace();
     logger.debug(`[${code} ${user.id}] Ready to remove user '${ws.userId}' from the following rooms: [${payload.join(", ")}]`);
@@ -489,7 +502,15 @@ async function webSocketOnMessage<T>(message: string, ws: ClientWebSocket){
             await onVisitorMessage(code, message, ws, logger);
         }
         else {
-            const userFromToken = validateJWTToken(ws.token, ws.languageCode);
+            let userFromToken: JWTTokenType;
+            try {
+                userFromToken = validateJWTToken(ws.token, ws.languageCode);
+            } catch (e: any) {
+                // 1008 tells the client not to retry this token; it reconnects once it has a new one.
+                logger.fail(`Connection token not valid, thus the connection action cannot proceed further. Terminating. Error: ${e?.message || e}`);
+                ws.close(1008, "Invalid websocket token");
+                return;
+            }
             if( [WebSocketMessageCodes.TYPING_START, WebSocketMessageCodes.TYPING_STOP].includes(code) ){
                 try{
                     const receivedMessage: WebSocketMessage<{channelId: string, userId: string}> = JSON.parse(message.toString());
@@ -564,20 +585,23 @@ async function webSocketOnMessage<T>(message: string, ws: ClientWebSocket){
             }
             else if (code === WebSocketMessageCodes.JOIN_ROOM) {
                 const receivedMessage: WebSocketMessage<Room[]> = JSON.parse(message.toString());
-                await onJoinRoomMessage(code, receivedMessage.payload, userFromToken, logger, ws);
+                await queueRoomOperation(ws, () => onJoinRoomMessage(code, receivedMessage.payload, userFromToken, logger, ws));
             }
             else if( code === WebSocketMessageCodes.LEAVE_ROOM ) {
                 const receivedMessage: WebSocketMessage<Room[]> = JSON.parse(message.toString());
-                await onLeaveRoomMessage(code, receivedMessage.payload, userFromToken, logger, ws);
+                await queueRoomOperation(ws, () => onLeaveRoomMessage(code, receivedMessage.payload, userFromToken, logger, ws));
             }
         }
 
         logger.finish(`Calculated ${ws.isMachine ? "machine" : "client"}'s websocket request ${code}`);
     }
     catch(e: any){
-        logger.fail(`Connection token not valid, thus the connection action cannot proceed further. Terminating. Error: ${e?.message || e}`);
+        // Unparseable frames break protocol (1008, final). Anything else is a server-side failure:
+        // 1011 lets the client reconnect with backoff and rejoin its rooms.
+        const malformed = e instanceof SyntaxError;
+        logger.fail(`${malformed ? "Malformed websocket message" : "Websocket message handling failed"}. Terminating. Error: ${e?.message || e}`);
         try {
-            ws.close(1008, "Invalid websocket message");
+            ws.close(malformed ? 1008 : 1011, malformed ? "Invalid websocket message" : "Internal error");
         } catch (closeError) {
             // Ignore close errors
         }
@@ -735,6 +759,8 @@ export async function webSocketOnNewConnection(ws: ClientWebSocket, req: any){
                 if (ws.deathTimer) {
                     clearTimeout(ws.deathTimer);
                 }
+                // Let an in-flight JOIN finish so the rooms it adds are released below.
+                await ws.roomOperations;
                 if (AllUsersWebSockets[ws.userId]) {
                     const filterThese: string[] = [];
                     for (const userWebSocket of AllUsersWebSockets[ws.userId]) {

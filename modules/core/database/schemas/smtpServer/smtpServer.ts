@@ -152,7 +152,11 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
                 self: {write: "no-permission"},
                 others: {write: "no-permission"},
             },
-            dynamicTableConfiguration: {filterable: true, sortable: true},
+            dynamicTableConfiguration: {
+                enumTones: {
+                    ok:       "success",
+                    failed:   "danger",
+                },filterable: true, sortable: true},
         },
         lastTestMessage: {
             type: SchemaTypes.String,

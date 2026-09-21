@@ -196,7 +196,13 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             type: SchemaTypes.String,
             enum: Object.values(NotificationStatus),
             default: NotificationStatus.Info,
-            dynamicTableConfiguration: {},
+            dynamicTableConfiguration: {
+                enumTones: {
+                    success:   "success",
+                    error:     "danger",
+                    warning:   "warning",
+                    info:      "info",
+                },},
             permissions: {
                 self: {
                     publicRead: true,

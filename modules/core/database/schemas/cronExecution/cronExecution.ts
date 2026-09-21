@@ -46,7 +46,14 @@ const CronExecutionSchema = new Schema<ICronExecution>(
             required: true,
             enum: [...CRON_EXECUTION_STATUSES],
             default: "running",
-            dynamicTableConfiguration: {},
+            dynamicTableConfiguration: {
+                enumTones: {
+                    running:     "info",
+                    success:     "success",
+                    failed:      "danger",
+                    timeout:     "danger",
+                    cancelled:   "danger",
+                },},
             permissions: publicRead,
         },
         startedAt: {type: SchemaTypes.Date, required: true, default: () => new Date()},

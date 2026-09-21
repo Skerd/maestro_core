@@ -39,6 +39,8 @@ export interface IMedia extends Document, IOwnershipPluginFields, ISoftDeletePlu
     };
     durationInSeconds?: number;
     isPublic: boolean;
+    /** Uploaded ahead of the record that will use it and not yet found referenced (see `orphanUploadCleanup`). */
+    pendingReference?: boolean;
     createdAt: Date;
     uploadedAt: Date;
 }
@@ -284,6 +286,18 @@ const MediaSchema = new Schema<IMedia>(
         isPublic: {
             type: Boolean,
             default: false,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
+        },
+        pendingReference: {
+            type: Boolean,
+            required: false,
             permissions: {
                 self: {
                     write: "no-permission"

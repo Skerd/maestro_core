@@ -16,6 +16,20 @@ import {
     STRING_OPERATORS
 } from "armonia/src/modules/core/database/filter/typeOperators";
 import {REF_SELECT_REGISTRY} from "armonia/src/modules/core/database/filter/refSelectRegistry";
+import {EnumTone, isEnumTone} from "armonia/src/modules/core/api/company/private/users/tableConfig.form.response.type";
+
+/**
+ * Only the tones the client knows how to paint travel to it: a typo in a schema
+ * ("succes") is dropped here rather than reaching the panel as a dead class name.
+ */
+function sanitizeEnumTones(declared: unknown): Record<string, EnumTone> | undefined {
+    if (!declared || typeof declared !== "object" || Array.isArray(declared)) return undefined;
+    const tones: Record<string, EnumTone> = {};
+    for (const [value, tone] of Object.entries(declared as Record<string, unknown>)) {
+        if (isEnumTone(tone)) tones[value] = tone;
+    }
+    return Object.keys(tones).length > 0 ? tones : undefined;
+}
 
 function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["filterConfig"] {
     const options = schemaType.options ?? {};
@@ -216,6 +230,10 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
                 if (typeof dtc.flagCodePath === "string" && dtc.flagCodePath.length > 0) {
                     meta.flagCodePath = dtc.flagCodePath;
                 }
+                const embeddedEnumTones = sanitizeEnumTones(dtc.enumTones);
+                if (embeddedEnumTones) {
+                    meta.enumTones = embeddedEnumTones;
+                }
                 addColumn({
                     id: path,
                     accessorPath: path,
@@ -304,6 +322,13 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
             columnConfig["meta"] = {
                 ...columnConfig.meta,
                 flagCodePath,
+            };
+        }
+        const enumTones = sanitizeEnumTones(schemaType?.options?.dynamicTableConfiguration?.enumTones);
+        if (enumTones) {
+            columnConfig["meta"] = {
+                ...columnConfig.meta,
+                enumTones,
             };
         }
 

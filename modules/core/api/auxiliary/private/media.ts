@@ -42,7 +42,8 @@ router.post(
     "/upload-batch",
     authMW("private"),
     rateLimiter({windowMs: 60000, max: 30}),
-    mediaUploadMW({fieldName: "files", maxFiles: 50, maxFileSize: 100 * 1024 * 1024}),
+    // The ids go into a form submitted afterwards; unused ones are swept by `core.orphanUploadCleanup`.
+    mediaUploadMW({fieldName: "files", maxFiles: 50, maxFileSize: 100 * 1024 * 1024, markPendingReference: true}),
     asyncHandler(uploadBatch),
 );
 

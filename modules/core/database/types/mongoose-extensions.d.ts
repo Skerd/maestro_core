@@ -1,5 +1,6 @@
 import "mongoose";
 import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
+import {EnumTone} from "armonia/src/modules/core/api/company/private/users/tableConfig.form.response.type";
 
 declare module "mongoose" {
 
@@ -113,6 +114,18 @@ declare module "mongoose" {
              * each badge. Defaults to "code" for `ref: "Country"` fields; set "" to opt out.
              */
             flagCodePath?: string;
+
+            /**
+             * Enum value → semantic tone for the list badge: "success" | "warning" |
+             * "danger" | "info" | "neutral". Declare only the values that carry meaning;
+             * anything left out renders as a plain outline badge.
+             *
+             * The schema says what a value *means*, never how it looks — the panel owns
+             * the palette, so a theme change does not touch a single schema.
+             *
+             * E.g. `{won: "success", lost: "danger", negotiation: "warning"}`.
+             */
+            enumTones?: Record<string, EnumTone>;
 
             /**
              * When true, the field is excluded from filters and from table config columns.

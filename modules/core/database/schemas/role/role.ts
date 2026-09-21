@@ -14,6 +14,7 @@ import {
 } from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {invalidateRoleAccess} from "@coreModule/utilities/security/roleAccessCache";
+import {roleViews} from "@coreModule/database/schemas/role/role.views";
 
 export interface IRole extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string,
@@ -212,4 +213,4 @@ const Role = mongoose.model<IRole>("Role", RoleSchema);
 normalizeSchemaPermissions(Role);
 export default Role;
 
-addModelData(Role);
+addModelData(Role, roleViews);

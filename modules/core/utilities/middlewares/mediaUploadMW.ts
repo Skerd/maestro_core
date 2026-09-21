@@ -54,6 +54,11 @@ export interface UnifiedMediaUploadOptions {
     extractImageResolution?: boolean;
     /** Whether to extract video/audio duration (requires ffmpeg, default: false) */
     extractMediaDuration?: boolean;
+    /**
+     * Marks the created Media as not yet referenced by any record (default: false). For uploads made
+     * ahead of the form that will use them; `core.orphanUploadCleanup` removes any never referenced.
+     */
+    markPendingReference?: boolean;
 }
 
 /**
@@ -462,7 +467,8 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         validateOfficeDocuments = true,
         blockDangerousOfficeContent = true,
         extractImageResolution = true,
-        extractMediaDuration = true
+        extractMediaDuration = true,
+        markPendingReference = false
     } = options;
 
     // Configure multer with memory storage (we'll stream to GridFS)
@@ -852,6 +858,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         fileId: mongooseFileId as any, // Type assertion needed due to MongoDB vs Mongoose ObjectId types
                         createdBy: userId as any, // Type assertion for Mongoose ObjectId (ownershipPlugin)
                         ...(req.body?.user?.company && { company: req.body?.user?.company?._id as any }),
+                        ...(markPendingReference && { pendingReference: true }),
                         metadata,
                         // Legacy fields for backward compatibility
                         mimeType: file.mimetype,

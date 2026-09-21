@@ -110,7 +110,11 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
             required: false,
             enum: [...MESSAGING_PROVIDER_TEST_STATUSES],
             permissions: {self: {write: "no-permission"}, others: {write: "no-permission"}},
-            dynamicTableConfiguration: {filterable: true, sortable: true},
+            dynamicTableConfiguration: {
+                enumTones: {
+                    success:   "success",
+                    failed:    "danger",
+                },filterable: true, sortable: true},
         },
         lastTestMessage: {
             type: SchemaTypes.String,

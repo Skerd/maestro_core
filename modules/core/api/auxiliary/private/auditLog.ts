@@ -1,6 +1,7 @@
 import {Request, Router} from "express";
 import {ObjectId} from "mongodb";
 import AuditLog, {AuditDiffEntry} from "@coreModule/database/schemas/auditLog/auditLog";
+import {resolveAuditReferenceLabels} from "@coreModule/database/schemas/auditLog/auditReferenceLabels";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
@@ -241,8 +242,14 @@ async function getDocumentAuditLogs(reqBody: DocAuditParams, _routeParams: unkno
     const hasMore = rawEntries.length > limit;
     const slice = hasMore ? rawEntries.slice(0, limit) : rawEntries;
 
+    const valuesByField = new Map<string, unknown[]>();
     const entries: DocumentAuditEntryDto[] = slice.map((doc) => {
         const diffFiltered = filterAuditDiff(doc.diff as Record<string, AuditDiffEntry>, sanitizedRead);
+        for (const [field, entry] of Object.entries(diffFiltered)) {
+            const values = valuesByField.get(field) ?? [];
+            values.push(entry.from, entry.to);
+            valuesByField.set(field, values);
+        }
         const actor = actorDto(doc.actorId);
         return {
             id: String(doc._id),
@@ -261,11 +268,20 @@ async function getDocumentAuditLogs(reqBody: DocAuditParams, _routeParams: unkno
         nextCursorOut = encodeAuditCursor({createdAt: lastAt.toISOString(), id: String(last._id)});
     }
 
+    const referenceLabels = await resolveAuditReferenceLabels({
+        model: collected.model,
+        valuesByField,
+        companyId: company._id,
+        userCtx: actionUserCtx,
+        languageCode,
+    });
+
     logger.finish(`Fetched ${entries.length} audit log row(s).`);
 
     return {
         entries,
         nextCursor: nextCursorOut,
+        referenceLabels,
     };
 }
 

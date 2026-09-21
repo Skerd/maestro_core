@@ -408,6 +408,11 @@ const UserSchema = new Schema<IUser>(
                     enum: ["active", "inactive", "invited"],
                     default: "active",
                     dynamicTableConfiguration: {
+                        enumTones: {
+                            active:     "success",
+                            inactive:   "neutral",
+                            invited:    "info",
+                        },
                         dtoPath: "status"
                     }
                 },
@@ -518,6 +523,12 @@ const UserSchema = new Schema<IUser>(
             type: SchemaTypes.String,
             enum: ["active", "notActive"],
             default: "notActive",
+            dynamicTableConfiguration: {
+                enumTones: {
+                    active:      "success",
+                    notActive:   "neutral",
+                },
+            },
         },
         mfaSecret: {
             type: SchemaTypes.String,

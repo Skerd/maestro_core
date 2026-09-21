@@ -110,7 +110,7 @@ async function loadOptionalModuleBootstraps(parentLogger?: serverLogger): Promis
     return bootstraps;
 }
 
-async function getAllModels(): Promise<Model<any>[]> {
+export async function getAllModels(): Promise<Model<any>[]> {
     const optional = await loadOptionalModuleBootstraps();
     const optionalModels = optional.flatMap((b) => b.models ?? []);
     return [...coreModels, ...optionalModels];

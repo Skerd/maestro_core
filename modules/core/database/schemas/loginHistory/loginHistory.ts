@@ -80,7 +80,11 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
             type: SchemaTypes.String,
             required: true,
             enum: ["success", "failure"],
-            dynamicTableConfiguration: {},
+            dynamicTableConfiguration: {
+                enumTones: {
+                    success:   "success",
+                    failure:   "danger",
+                },},
             permissions: {
                 self: {
                     publicRead: true,

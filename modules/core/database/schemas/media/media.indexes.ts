@@ -55,4 +55,9 @@ export function applyMediaIndexes(MediaSchema: Schema): void {
     MediaSchema.index({ fileName: 1, createdBy: 1 });                        // File name with creator
     MediaSchema.index({ originalName: 1, createdBy: 1 });                    // Original name with creator
     MediaSchema.index({ company: 1, isPublic: 1 });
+    // Orphaned upload sweep; only pending uploads are indexed.
+    MediaSchema.index(
+        { company: 1, createdAt: 1 },
+        { name: "pending_reference_sweep", partialFilterExpression: { pendingReference: true } }
+    );
 }

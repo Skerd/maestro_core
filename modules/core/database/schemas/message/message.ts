@@ -124,7 +124,14 @@ export const MessageSchema = new mongoose.Schema<IMessage>(
                     read: "no-permission",
                     write: "no-permission"
                 }
-            }
+            },
+            dynamicTableConfiguration: {
+                enumTones: {
+                    active:    "success",
+                    deleted:   "danger",
+                    edited:    "neutral",
+                },
+            },
         },
         type: {
             type: SchemaTypes.String,
