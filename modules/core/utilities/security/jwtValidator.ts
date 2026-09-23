@@ -9,6 +9,7 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {JWTTokenType} from "armonia/src/modules/core/api/user/public/login/login.form.response.type";
 import {AUTHENTICATION, CONSTANTS} from "@coreModule/environment";
 import {VISITOR_TOKEN_TYPE} from "@coreModule/utilities/security/visitorToken";
+import {UNSUBSCRIBE_TOKEN_TYPE} from "@coreModule/utilities/security/unsubscribeToken";
 
 /**
  * Validate and decode JWT token
@@ -39,6 +40,15 @@ export function validateJWTToken(token: string, languageCode: string = CONSTANTS
         if (decoded.type === VISITOR_TOKEN_TYPE) {
             throw new Error("Public-chat visitor tokens cannot authenticate API or websocket requests");
         }
+        // Unsubscribe tokens are likewise same-secret but single-purpose: they
+        // name an email address and a tenant, nothing more.
+        if (decoded.type === UNSUBSCRIBE_TOKEN_TYPE) {
+            throw new Error("Unsubscribe tokens cannot authenticate API or websocket requests");
+        }
+        // NOTE: this list is a denylist, so it is fail-open by construction —
+        // a new same-secret token type authenticates here until someone
+        // remembers to add it. Any future narrow-purpose token must be added
+        // above, and its own validator must require its `type` in return.
         return decoded;
     }
     catch (err) {

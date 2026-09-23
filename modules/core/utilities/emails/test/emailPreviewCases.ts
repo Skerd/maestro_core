@@ -133,12 +133,91 @@ function pinResetEvent(languageCode: string): ManagerPinResetEmailEvent {
  * Built lazily: the notifier modules must not load until the harness has stubbed
  * mail delivery, so `require` them inside the case rather than importing above.
  */
+/**
+ * Ad campaigns differ from the other previews: the body is authored by an admin
+ * and stored in the database, not read from a file. These samples stand in for
+ * that authored markup, exercising the table-based layout and the `{token}`
+ * substitution a real campaign would use.
+ */
+function adCampaignBase(languageCode: string) {
+    return {
+        email: EMAIL,
+        companyId: COMPANY_ID,
+        companyName: COMPANY_NAME,
+        fullName: FULL_NAME,
+        languageCode,
+        unsubscribeUrl: "https://vista.example/unsubscribe?token=preview",
+        preferencesUrl: "https://vista.example/unsubscribe?token=preview&manage=1",
+        tokens: {
+            firstName: "Ana",
+            lastName: "Marku",
+            fullName: FULL_NAME,
+            email: EMAIL,
+            companyName: COMPANY_NAME,
+            projectName: "Lakeview Residences",
+            unitList: "B-704, B-705",
+            unitNumber: "B-704",
+            year: "2026",
+        },
+    };
+}
+
+const CTA =
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:26px auto 0;">` +
+    `<tr><td bgcolor="#111114" style="background-color:#111114;border-radius:8px;">` +
+    `<a href="https://vista.example/projects" style="display:inline-block;padding:13px 28px;font-family:'Montserrat',Arial,sans-serif;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">{ctaLabel}</a>` +
+    `</td></tr></table>`;
+
+const adCampaignPreviews = [
+    {
+        name: "price-change",
+        subject: "A price update on {unitNumber} at {projectName}",
+        previewText: "{unitNumber} is now {newPrice}.",
+        tokens: {oldPrice: "CHF 248'000.00", newPrice: "CHF 231'000.00", priceChangePercent: "-6.9%"},
+        bodyHtml:
+            `<p>We wanted you to hear this from us first: the price of <strong>{unitNumber}</strong> at {projectName} has changed.</p>` +
+            `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 0;border-collapse:collapse;">` +
+            `<tr><td style="padding:10px 0;border-bottom:1px solid #eceef1;color:#8a9099;font-size:13px;">Previous price</td><td align="right" style="padding:10px 0;border-bottom:1px solid #eceef1;font-size:14px;"><s>{oldPrice}</s></td></tr>` +
+            `<tr><td style="padding:10px 0;border-bottom:1px solid #eceef1;color:#8a9099;font-size:13px;">New price</td><td align="right" style="padding:10px 0;border-bottom:1px solid #eceef1;font-size:15px;font-weight:600;color:#111114;">{newPrice}</td></tr>` +
+            `<tr><td style="padding:10px 0;color:#8a9099;font-size:13px;">Change</td><td align="right" style="padding:10px 0;font-size:14px;font-weight:600;color:#1f8a54;">{priceChangePercent}</td></tr>` +
+            `</table>` +
+            CTA.replace("{ctaLabel}", "View the unit"),
+    },
+    {
+        name: "offer",
+        subject: "{offerTitle} — until {offerEndsAt}",
+        previewText: "An offer for clients of {companyName}.",
+        tokens: {offerTitle: "Autumn completion offer", offerEndsAt: "31.10.2026"},
+        bodyHtml:
+            `<h2 style="margin:0 0 12px;font-size:19px;font-weight:600;color:#111114;">{offerTitle}</h2>` +
+            `<p>For a limited period we are covering notary and registration fees on remaining units at {projectName}.</p>` +
+            `<ul style="margin:16px 0 0;padding-left:20px;">` +
+            `<li style="margin:0 0 6px;">Notary and registration fees covered</li>` +
+            `<li style="margin:0 0 6px;">Flexible payment plan over 24 months</li>` +
+            `<li style="margin:0 0 6px;">Parking space included</li>` +
+            `</ul>` +
+            `<p style="margin:18px 0 0;color:#8a9099;font-size:13px;">Offer valid until {offerEndsAt}.</p>` +
+            CTA.replace("{ctaLabel}", "See the offer"),
+    },
+    {
+        name: "new-project",
+        subject: "Introducing {projectName}",
+        previewText: "A new development from {companyName}.",
+        tokens: {projectName: "Parkside Gardens"},
+        bodyHtml:
+            `<p>We are pleased to introduce <strong>{projectName}</strong>, our newest development.</p>` +
+            `<p style="margin:14px 0 0;">Forty-two apartments across four low-rise buildings, set around a private garden, with completion scheduled for late 2027. Clients hear about releases before they are listed publicly.</p>` +
+            CTA.replace("{ctaLabel}", "Explore the project"),
+    },
+];
+
 export function buildPreviewCases(): PreviewCase[] {
     const core = () => require("@coreModule/utilities/emails/notifiers");
     const reservation = () => require("@propertyManagement/utilities/emails/notifiers");
     const sale = () => require("@propertyManagement/utilities/emails/saleNotifiers");
     const order = () => require("@eCommerceModule/utilities/emails/sendProductOrderClientMail");
     const pin = () => require("@eCommerceModule/utilities/emails/sendManagerPinResetMail");
+    const campaign = () => require("@propertyManagement/utilities/emails/adCampaignNotifier");
 
     const cases: PreviewCase[] = [
         {
@@ -237,6 +316,22 @@ export function buildPreviewCases(): PreviewCase[] {
         module: "eCommerce",
         send: (lang) => pin().sendManagerPinResetMail(pinResetEvent(lang)),
     });
+
+    for (const preview of adCampaignPreviews) {
+        cases.push({
+            name: `adCampaign-${preview.name}`,
+            module: "propertyManagement",
+            send: async (lang) => {
+                await campaign().sendAdCampaignMail({
+                    ...adCampaignBase(lang),
+                    subject: preview.subject,
+                    previewText: preview.previewText,
+                    bodyHtml: preview.bodyHtml,
+                    tokens: {...adCampaignBase(lang).tokens, ...preview.tokens},
+                });
+            },
+        });
+    }
 
     return cases;
 }

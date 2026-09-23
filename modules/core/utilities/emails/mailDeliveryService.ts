@@ -166,25 +166,27 @@ function resolveFrom(
     return formatFromAddress(email, name);
 }
 
+/** Returns nodemailer's send info so callers that need a message id can read it. */
 async function sendViaTransporter(
     transporter: Transporter,
     mailOptions: MailDeliverySendOptions,
     config?: SmtpConnectionConfig,
-): Promise<void> {
+): Promise<{messageId?: string}> {
     const {fromEmail: _fe, fromName: _fn, ...rest} = mailOptions;
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
         ...rest,
         from: resolveFrom(mailOptions, config),
         replyTo: rest.replyTo ?? config?.replyTo ?? EMAIL.REPLY_TO_EMAIL,
     });
+    return {messageId: (info as any)?.messageId};
 }
 
-async function sendViaEnvFallback(mailOptions: MailDeliverySendOptions): Promise<void> {
+async function sendViaEnvFallback(mailOptions: MailDeliverySendOptions): Promise<{messageId?: string}> {
     const transporter = getEnvTransporter();
     if (!transporter) {
-        return;
+        return {};
     }
-    await sendViaTransporter(transporter, mailOptions);
+    return sendViaTransporter(transporter, mailOptions);
 }
 
 /**
@@ -257,6 +259,99 @@ export async function sendMail(
         logger.err(`All SMTP servers and env fallback failed for company ${companyKey}: ${err?.message ?? err}`);
         throw err;
     }
+}
+
+/** Connections one pooled transport may hold open, and messages it may reuse them for. */
+const POOL_MAX_CONNECTIONS = 5;
+const POOL_MAX_MESSAGES = 100;
+
+export type PooledMailSession = {
+    send(mailOptions: MailDeliverySendOptions): Promise<{messageId?: string}>;
+    close(): Promise<void>;
+};
+
+/**
+ * A reusable SMTP session for sending many messages to one company's servers.
+ *
+ * {@link sendMail} builds a transport **and calls `verify()` for every single
+ * message**. That is the right trade for transactional mail — fire and forget,
+ * no connection to manage — but for a campaign of a few thousand recipients it
+ * means thousands of redundant TCP+TLS handshakes, which providers throttle,
+ * tarpit or simply drop.
+ *
+ * This keeps one pooled, already-verified transport per configured server for
+ * the life of a campaign drain, using the identical failover ladder and env
+ * fallback as `sendMail`. `sendMail`'s own behaviour is deliberately untouched:
+ * dozens of transactional call sites depend on it.
+ *
+ * It also returns the provider's message id, which `sendMail` cannot — that is
+ * what lets a recipient row record exactly what was sent.
+ *
+ * Callers **must** `close()` (in a `finally`), or the pooled sockets stay open.
+ */
+export async function createPooledMailSession(
+    companyId: ObjectId | string | undefined | null,
+): Promise<PooledMailSession> {
+    const companyKey = companyId?.toString();
+    const servers = companyKey ? await loadActiveServers(companyKey) : [];
+
+    // Built lazily and reused: a server that never gets used costs no socket,
+    // and one that does is verified exactly once.
+    const transports = new Map<string, {transporter: Transporter; config: SmtpConnectionConfig}>();
+
+    async function transportFor(server: ISmtpServer) {
+        const key = server._id.toString();
+        const existing = transports.get(key);
+        if (existing) return existing;
+
+        const config = smtpServerToConnectionConfig(server);
+        const transporter = nodemailer.createTransport({
+            ...buildNodemailerOptions(config),
+            pool: true,
+            maxConnections: POOL_MAX_CONNECTIONS,
+            maxMessages: POOL_MAX_MESSAGES,
+        } as nodemailer.TransportOptions);
+        await transporter.verify();
+
+        const entry = {transporter, config};
+        transports.set(key, entry);
+        return entry;
+    }
+
+    return {
+        async send(mailOptions: MailDeliverySendOptions): Promise<{messageId?: string}> {
+            if (!EMAIL.ENABLED) {
+                return {};
+            }
+
+            for (const server of servers) {
+                try {
+                    const {transporter, config} = await transportFor(server);
+                    return await sendViaTransporter(transporter, mailOptions, config);
+                }
+                catch (err: any) {
+                    logger.warn(
+                        `Pooled SMTP server ${server._id} (sequence=${server.sequence}) failed for company ${companyKey}: ${err?.message ?? err}`,
+                    );
+                    // A broken pool must not be reused for the next recipient.
+                    const entry = transports.get(server._id.toString());
+                    if (entry) {
+                        try { entry.transporter.close(); } catch { /* already gone */ }
+                        transports.delete(server._id.toString());
+                    }
+                }
+            }
+
+            return sendViaEnvFallback(mailOptions);
+        },
+
+        async close(): Promise<void> {
+            for (const {transporter} of transports.values()) {
+                try { transporter.close(); } catch { /* already gone */ }
+            }
+            transports.clear();
+        },
+    };
 }
 
 type SmtpTestErrorLike = {
