@@ -167,7 +167,7 @@ export interface IUser extends Document, ILifeCyclePluginFields {
 
     // Methods
     addLoginHistory: (companyId: ObjectId, request: any, error: ActionException | null, session?: ClientSession) => Promise<void>,
-    sendActivationEmail: (emailAddress: string, languageCode: string, session?: ClientSession, logger?: serverLogger) => Promise<void>,
+    sendActivationEmail: (emailAddress: string, languageCode: string, session?: ClientSession, logger?: serverLogger, origin?: string) => Promise<void>,
     isMfaEnabled: () => boolean,
     verifyMfa: (companyId: ObjectId, mfaCode: string, languageCode?: string) => Promise<void>,
     verifyRequestMfa: (mfaCode: string) => boolean,
@@ -181,7 +181,7 @@ export interface IUser extends Document, ILifeCyclePluginFields {
     ) => Promise<{ session: IUserSession; isNewDevice: boolean }>,
     generateJWTToken: (companyId: ObjectId, audience: "client" | "panel", userSessionId: string, languageCode?: string) => Promise<{token: string, refreshToken: string}>,
     sendDisableMfaEmail: (languageCode: string, session?: ClientSession, logger?: serverLogger) => Promise<void>,
-    sendForgotPasswordEmail: (languageCode: string, session?: ClientSession, logger?: serverLogger) => Promise<void>,
+    sendForgotPasswordEmail: (languageCode: string, session?: ClientSession, logger?: serverLogger, origin?: string) => Promise<void>,
     sendInvitationEmail: (welcomeMessage: string, companyName: string, inviterName: string, languageCode: string, companyId: ObjectId, session?: ClientSession, logger?: serverLogger) => Promise<void>,
     checkPassword: (companyId: ObjectId, candidatePassword: string, languageCode: string) => Promise<void>,
     checkAccountAccessibility: (companyId: ObjectId, languageCode: string, session?: ClientSession, logger?: serverLogger) => Promise<void>,
@@ -1009,7 +1009,7 @@ UserSchema.methods.addLoginHistory = async function (companyId: ObjectId, req: a
     }
 }
 
-UserSchema.methods.sendActivationEmail = async function (emailAddress: string, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, session?: ClientSession, logger?: serverLogger): Promise<void> {
+UserSchema.methods.sendActivationEmail = async function (emailAddress: string, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, session?: ClientSession, logger?: serverLogger, origin?: string): Promise<void> {
 
     const now = new Date();
 
@@ -1071,6 +1071,7 @@ UserSchema.methods.sendActivationEmail = async function (emailAddress: string, l
         languageCode: languageCode,
         timestamp: Date.now(),
         companyId: activationCompanyId,
+        ...(origin ? {origin} : {}),
     }
 
     if (isKafkaConnected()) {
@@ -1351,7 +1352,7 @@ UserSchema.methods.sendDisableMfaEmail = async function (languageCode: string = 
 
 }
 
-UserSchema.methods.sendForgotPasswordEmail = async function (languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, session?: ClientSession, logger?: serverLogger){
+UserSchema.methods.sendForgotPasswordEmail = async function (languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, session?: ClientSession, logger?: serverLogger, origin?: string){
 
     const now = new Date();
 
@@ -1412,6 +1413,7 @@ UserSchema.methods.sendForgotPasswordEmail = async function (languageCode: strin
         languageCode: languageCode,
         timestamp: Date.now(),
         companyId: forgotPasswordCompanyId,
+        ...(origin ? {origin} : {}),
     }
 
     if (isKafkaConnected()) {

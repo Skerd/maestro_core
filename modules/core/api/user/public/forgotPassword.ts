@@ -86,7 +86,7 @@ router.post(
  */
 async function ForgotPassword(params: TransactionRequiredParams & ForgotPasswordFormType & NotAuthenticatedMWType): Promise<ForgotPasswordFormResponseType> {
 
-    let {email, languageCode, logger, session} = params;
+    let {email, languageCode, logger, session, origin} = params;
 
     logger.start(`Trying to create reset code for forgotten password for user with email [${email}]...`);
 
@@ -117,7 +117,7 @@ async function ForgotPassword(params: TransactionRequiredParams & ForgotPassword
     // Set auditUserId for self-action (user requesting password reset for their own account)
     user.$locals = user.$locals || {};
     user.$locals.auditUserId = user._id;
-    await user.sendForgotPasswordEmail(languageCode, session, logger);
+    await user.sendForgotPasswordEmail(languageCode, session, logger, origin);
 
     logger.finish(`Successfully created user reset password code for forgotten password for user with email / id: [${email} / ${user._id}]!`);
 

@@ -52,14 +52,15 @@ export async function AddToLoginHistory(data: LoginHistoryEvent, session?: Clien
 }
 
 export async function SendActivationEmail(data: ActivationEmailEvent, session?: ClientSession): Promise<void> {
-    const {email, fullName, languageCode, activationCode, userId, companyId} = data;
+    const {email, fullName, languageCode, activationCode, userId, companyId, origin} = data;
     const resolvedCompanyId = await resolveCompanyIdForEmail(userId, companyId);
     await sendSignUpMail(
         resolvedCompanyId,
         email,
         fullName,
         activationCode,
-        languageCode
+        languageCode,
+        origin,
     );
 
 }
@@ -78,7 +79,7 @@ export async function SendMfaDisableEmail(data: MFADisableEmailEvent, session?: 
 }
 
 export async function SendForgotPasswordEmail(data: ForgotPasswordEmailEvent, session?: ClientSession): Promise<void> {
-    const {email, fullName, expiresAfterOpening, languageCode, resetCode, userId, companyId} = data;
+    const {email, fullName, expiresAfterOpening, languageCode, resetCode, userId, companyId, origin} = data;
     const resolvedCompanyId = await resolveCompanyIdForEmail(userId, companyId);
     await sendForgetPasswordMail(
         resolvedCompanyId,
@@ -86,7 +87,8 @@ export async function SendForgotPasswordEmail(data: ForgotPasswordEmailEvent, se
         resetCode,
         fullName,
         expiresAfterOpening,
-        languageCode
+        languageCode,
+        origin,
     );
 }
 

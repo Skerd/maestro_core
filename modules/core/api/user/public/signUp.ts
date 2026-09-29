@@ -68,7 +68,7 @@ router.post(
  */
 async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType & SignUpFormType): Promise<SignupFormResponseType> {
 
-    const {email, password, name, surname, languageCode, session, logger} = params;
+    const {email, password, name, surname, languageCode, session, logger, origin} = params;
 
     logger.start(`Trying to sign user up ${email}...`);
 
@@ -126,7 +126,7 @@ async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType
     // Set auditUserId for self-action (new user requesting activation email for their own account)
     createdUser.$locals = createdUser.$locals || {};
     createdUser.$locals.auditUserId = createdUser._id;
-    await createdUser.sendActivationEmail(email, languageCode, session, logger);
+    await createdUser.sendActivationEmail(email, languageCode, session, logger, origin);
 
     // Give the new user their single AI-assistant channel with the default company bot.
     await ensureAiChannel({

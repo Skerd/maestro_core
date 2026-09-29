@@ -52,9 +52,11 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
         type: message.type,
         replyTo: message.replyTo ? {
             _id: message.replyTo._id.toString(),
-            message: (message.replyTo.status === "deleted" || !message.replyTo.status) ? "" : DecryptStringSafe(message.replyTo.text),
+            text: (message.replyTo.status === "deleted" || !message.replyTo.status) ? "" : DecryptStringSafe(message.replyTo.text),
             sender: mapPopulatedUserWithPhoto(message.replyTo.sender),
-            date: message.replyTo.createdAt,
+            createdAt: message.replyTo.createdAt instanceof Date
+                ? message.replyTo.createdAt.toISOString()
+                : String(message.replyTo.createdAt ?? ""),
             status: message.replyTo.status,
         } : undefined,
         reactions: message.reactions && message.reactions.length > 0 ? message.reactions.map((reaction) => {

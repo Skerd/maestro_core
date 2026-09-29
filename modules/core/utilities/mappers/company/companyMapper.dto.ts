@@ -1,6 +1,14 @@
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {Company} from "armonia/src/modules/core/api/company/private/company/company.dto";
-import {mapPopulatedRef, mapPopulatedSimpleCompany} from "@coreModule/utilities/mappers/common.mapper";
+import type {StateSimple} from "armonia/src/modules/core/dto/state.dto";
+import type {CitySimple} from "armonia/src/modules/core/dto/city.dto";
+import type {CountrySimple} from "armonia/src/modules/core/dto/country.dto";
+import type {CompanyBlank} from "armonia/src/modules/core/dto/company.dto";
+import {StateSimpleSnippet} from "@coreModule/database/schemas/state/state.snippets";
+import {CitySimpleSnippet} from "@coreModule/database/schemas/city/city.snippets";
+import {CountrySimpleSnippet} from "@coreModule/database/schemas/country/country.snippets";
+import {CompanyBlankSnippet} from "@coreModule/database/schemas/company/company.snippets";
+import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function companyToDTO(company: ICompany | null | undefined): Company | null {
@@ -18,9 +26,9 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
                 _id: address._id?.toString() || "",
                 street: address.street,
                 postalCode: address.postalCode,
-                city: mapPopulatedRef(address.city),
-                state: mapPopulatedRef(address.state),
-                country: mapPopulatedRef(address.country),
+                city: mapSnippet<CitySimple>()(address.city, CitySimpleSnippet),
+                state: mapSnippet<StateSimple>()(address.state, StateSimpleSnippet),
+                country: mapSnippet<CountrySimple>()(address.country, CountrySimpleSnippet),
                 latitude: address.latitude,
                 longitude: address.longitude
             }
@@ -32,7 +40,7 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
         instagram: company.instagram,
         facebook: company.facebook,
         vat: company.vat,
-        parentCompany: company.parentCompany ? mapPopulatedSimpleCompany(company.parentCompany) : undefined,
+        parentCompany: mapSnippet<CompanyBlank>()(company.parentCompany, CompanyBlankSnippet),
         allowedDomains: company.allowedDomains,
         publicAiChat: company.publicAiChat ? {
             enabled: company.publicAiChat.enabled,

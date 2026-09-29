@@ -3,7 +3,9 @@
  */
 
 import {Decimal128, ObjectId} from 'mongodb';
-import {MessageSenderType} from "armonia/src/modules/core/api/user/private/chats/messages/messages.form.response.type";
+import type {SimpleUser} from "armonia/src/modules/core/dto/user.dto";
+import type {CompanyBlank} from "armonia/src/modules/core/dto/company.dto";
+import type {CurrencySimple} from "armonia/src/modules/core/dto/currency.dto";
 import {IUser} from "@coreModule/database/schemas/user/user";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {ICurrency} from "@coreModule/database/schemas/currency/currency";
@@ -85,6 +87,90 @@ export function mapMedia(media: any) {
     };
 }
 
+function isSnippetBranch(spec: unknown): spec is {readonly keys: Readonly<Record<string, unknown>>} {
+    if (typeof spec !== "object" || spec === null || !("keys" in spec)) return false;
+    const keys = (spec as {keys?: unknown}).keys;
+    return typeof keys === "object" && keys !== null;
+}
+
+function isRawObjectId(value: object): boolean {
+    if (value instanceof ObjectId) return true;
+    if ("_id" in value) return false;
+    return /^[a-fA-F0-9]{24}$/.test(String(value));
+}
+
+function isDecimal128(value: object): boolean {
+    return value instanceof Decimal128 || (value as {_bsontype?: string})._bsontype === "Decimal128";
+}
+
+function mapSnippetLeaf(value: unknown): unknown {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+    if (typeof value !== "object" || value === null) return undefined;
+    if (isDecimal128(value)) return decimalToNumber(value);
+    if (isRawObjectId(value)) return objectIdHex(value);
+    return value;
+}
+
+function projectSnippet(
+    doc: object,
+    snippet: {readonly keys: Readonly<Record<string, unknown>>},
+): Record<string, unknown> | undefined {
+    const keys = snippet.keys;
+    if (isRawObjectId(doc)) {
+        if (!("_id" in keys)) return undefined;
+        const id = objectIdHex(doc);
+        return id ? {_id: id} : undefined;
+    }
+
+    const source = doc as Record<string, unknown>;
+    if ("_id" in keys) {
+        const id = objectIdHex(source._id);
+        if (!id) return undefined;
+    }
+
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(keys)) {
+        const mapped = mapSnippetValue(source[key], keys[key], key === "_id");
+        if (mapped !== undefined) out[key] = mapped;
+    }
+    return out;
+}
+
+function mapSnippetValue(value: unknown, spec: unknown, isIdKey: boolean): unknown {
+    if (value == null) return undefined;
+    if (isIdKey) return objectIdHex(value);
+    if (Array.isArray(value)) {
+        const items = value
+            .map((item) => mapSnippetValue(item, spec, false))
+            .filter((item) => item !== undefined);
+        return items;
+    }
+    if (isSnippetBranch(spec)) {
+        if (typeof value !== "object") return undefined;
+        return projectSnippet(value, spec);
+    }
+    return mapSnippetLeaf(value);
+}
+
+/**
+ * Projects a document onto a snippet allowlist into an Armonia wire type.
+ * A `{ keys }` value is projected again, and an array is projected per element.
+ * A leaf ObjectId becomes a hex string. `_id` is required only when the snippet lists it.
+ * The assertion holds when callers pass the matching Armonia wire type as the
+ * second type argument to `defineSnippet<IEntity, WireType>()`.
+ */
+export function mapSnippet<Wire extends object>() {
+    return <S extends { readonly keys: Readonly<Record<string, unknown>> }>(
+        doc: object | null | undefined,
+        snippet: S,
+    ): Wire | undefined => {
+        if (doc == null) return undefined;
+        const projected = projectSnippet(doc, snippet);
+        return projected as Wire | undefined;
+    };
+}
+
 export function mapPopulatedRef(ref: any): { _id: string; name: string } | undefined {
     if (!ref) return undefined;
     const id = objectIdHex(ref._id) ?? objectIdHex(ref);
@@ -95,7 +181,7 @@ export function mapPopulatedRef(ref: any): { _id: string; name: string } | undef
     };
 }
 
-export function mapPopulatedSimpleUser(ref: IUser): {_id: string, name: string, surname: string} | undefined {
+export function mapPopulatedSimpleUser(ref: IUser): SimpleUser | undefined {
     if (!ref) return undefined;
     const id = objectIdHex(ref._id) ?? objectIdHex(ref);
     if (!id) return undefined;
@@ -106,7 +192,7 @@ export function mapPopulatedSimpleUser(ref: IUser): {_id: string, name: string, 
     };
 }
 
-export function mapPopulatedUserWithPhoto(user: unknown): MessageSenderType | undefined {
+export function mapPopulatedUserWithPhoto(user: unknown): SimpleUser | undefined {
     if (!user || typeof user !== "object" || !("_id" in user)) {
         return undefined;
     }
@@ -130,7 +216,7 @@ export function mapPopulatedUserWithPhoto(user: unknown): MessageSenderType | un
     };
 }
 
-export function mapPopulatedSimpleCompany(ref: ICompany): {_id: string, name: string, vat: string} | undefined {
+export function mapPopulatedSimpleCompany(ref: ICompany): CompanyBlank | undefined {
     if (!ref) return undefined;
     const id = objectIdHex(ref._id) ?? objectIdHex(ref);
     if (!id) return undefined;
@@ -141,7 +227,7 @@ export function mapPopulatedSimpleCompany(ref: ICompany): {_id: string, name: st
     };
 }
 
-export function mapPopulatedSimpleCurrency(ref: ICurrency): {_id: string, name: string, symbol: string, abbreviation: string} | undefined {
+export function mapPopulatedSimpleCurrency(ref: ICurrency): CurrencySimple | undefined {
     if (!ref) return undefined;
     const id = objectIdHex(ref._id) ?? objectIdHex(ref);
     if (!id) return undefined;

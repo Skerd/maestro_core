@@ -4,7 +4,7 @@ import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelRead
 import {Channel} from "armonia/src/modules/core/api/user/private/chats/channels/channels.form.response.type";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
-import {ChannelUser} from "armonia/src/modules/core/types";
+import type {ChannelUser} from "armonia/src/modules/core/dto/channel.dto";
 import {UserContext} from "@coreModule/utilities/types/types";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {messageToDTO} from "@coreModule/utilities/mappers/message/messageMapper.dto";

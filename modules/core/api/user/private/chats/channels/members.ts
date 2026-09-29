@@ -33,7 +33,7 @@ import {IUser} from "@coreModule/database/schemas/user/user";
 import Channel from "@coreModule/database/schemas/channel/channel";
 import {IMessage} from "@coreModule/database/schemas/message/message";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
-import {ChannelUser} from "armonia/src/modules/core/types";
+import type {ChannelUser} from "armonia/src/modules/core/dto/channel.dto";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";

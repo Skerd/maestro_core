@@ -59,6 +59,8 @@ export interface ActivationEmailEvent {
     timestamp: number;
     /** Company whose SMTP servers are used; falls back to env when omitted. */
     companyId?: string;
+    /** Browser host that requested signup (no protocol). Routes activate link to public app when matching. */
+    origin?: string;
 }
 
 /**
@@ -111,6 +113,8 @@ export interface ForgotPasswordEmailEvent {
     languageCode: string;
     timestamp: number;
     companyId?: string;
+    /** Browser host that requested reset (no protocol). Routes reset link to public app when matching. */
+    origin?: string;
 }
 
 /**

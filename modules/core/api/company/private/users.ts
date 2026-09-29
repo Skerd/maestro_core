@@ -416,7 +416,7 @@ async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): 
  * @route POST /api/company/users/simple
  * @access Private
  * @body {SimpleUsersFormType} - offset, limit, name?, notUser?
- * @returns {Promise<SimpleUsersFormResponseType>} total and data (SimpleUserType[])
+ * @returns {Promise<SimpleUsersFormResponseType>} total and data (SimpleUser[])
  *
  * @remarks
  * - Rate limited: 80 requests per minute
@@ -434,7 +434,7 @@ router.post(
  * Lightweight list of active company users for simple UIs: id, name, surname, fullName, photo.
  *
  * @param params - company, offset, limit, optional name, notUser, auth context.
- * @returns Paginated list of SimpleUserType.
+ * @returns Paginated list of SimpleUser.
  * @remarks No schemaSanitizer — narrow projection; sanitize in handler
  */
 async function getCompanyUsersSimple(params: AuthenticatedMWType & SimpleUsersFormType): Promise<SimpleUsersFormResponseType> {

@@ -51,6 +51,32 @@ function currentYear(): string {
     return new Date().getFullYear().toString();
 }
 
+/** Host-only compare (authMW stores origin without protocol). */
+function hostOnly(value: string): string {
+    return value.replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Public signup/forgot-password emails should deep-link into the public app when
+ * the request origin matches `clientHostFor("public")`. Otherwise keep panel URLs.
+ */
+function resolveAuthLinkUrl(origin: string | undefined, publicPath: "activate" | "reset-password", code: string): string {
+    const publicHost = clientHostFor("public");
+    const publicHostOnly = hostOnly(publicHost);
+    const originHost = hostOnly(origin ?? "");
+    const coreHost = clientHostFor("core");
+
+    if (originHost && publicHostOnly && originHost === publicHostOnly) {
+        const base = publicHost || (origin?.includes("://") ? origin : `http://${originHost}`);
+        return `${base.replace(/\/+$/, "")}/${publicPath}/${code}`;
+    }
+
+    if (publicPath === "activate") {
+        return `${coreHost}/authenticate/activateAccount/${code}`;
+    }
+    return `${coreHost}/authenticate/resetPassword/${code}`;
+}
+
 async function deliverOrThrow(
     companyId: string | undefined,
     mailOptions: Parameters<typeof sendMail>[1],
@@ -126,6 +152,7 @@ export async function sendSignUpMail(
     username: string,
     activationCode: string,
     languageCode: string = CONSTANTS.DEFAULT_LANGUAGE ?? fallbackLanguageCode,
+    origin?: string,
 ): Promise<void> {
     if (!canSendEmails()) {
         return;
@@ -138,7 +165,7 @@ export async function sendSignUpMail(
 
     emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings));
 
-    const activationUrl = clientHostFor("core") + "/authenticate/activateAccount/" + activationCode;
+    const activationUrl = resolveAuthLinkUrl(origin, "activate", activationCode);
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, activationUrl);
 
     const values = {
@@ -169,6 +196,7 @@ export async function sendForgetPasswordMail(
     username: string,
     expiresAfterOpening: boolean,
     languageCode: string = CONSTANTS.DEFAULT_LANGUAGE ?? fallbackLanguageCode,
+    origin?: string,
 ): Promise<void> {
     if (!canSendEmails()) {
         return;
@@ -185,7 +213,7 @@ export async function sendForgetPasswordMail(
 
     emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings, securityReasons));
 
-    const resetUrl = clientHostFor("core") + "/authenticate/resetPassword/" + resetPasswordCode;
+    const resetUrl = resolveAuthLinkUrl(origin, "reset-password", resetPasswordCode);
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, resetUrl);
 
     const values = {
