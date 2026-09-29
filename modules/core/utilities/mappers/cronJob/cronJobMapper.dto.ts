@@ -3,21 +3,16 @@ import type {
     CronExecutionSummary,
     CronJob,
 } from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.dto";
+import type {CompanyBlank} from "armonia/src/modules/core/dto/company.dto";
 import type {ICronExecution} from "@coreModule/database/schemas/cronExecution/cronExecution";
 import type {ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
-import {mapPopulatedRef} from "@coreModule/utilities/mappers/common.mapper";
+import {CompanyBlankSnippet} from "@coreModule/database/schemas/company/company.snippets";
+import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 import {
     mapLifeCycleToDTO,
     mapOwnershipToDTO,
     mapSoftDeleteToDTO,
 } from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
-
-function mapCompanyRef(company: ICronJob["company"]): CronJob["company"] {
-    if (!company) return null;
-    const mapped = mapPopulatedRef(company);
-    if (mapped?._id) return mapped;
-    return {_id: company.toString()};
-}
 
 export function cronExecutionToSummary(doc: ICronExecution): CronExecutionSummary {
     return {
@@ -78,6 +73,7 @@ export function cronJobToDTO(doc: ICronJob, extras?: CronJobDtoExtras): CronJob 
         timeoutSeconds: doc.timeoutSeconds,
         priority: doc.priority,
         missedRunPolicy: doc.missedRunPolicy ?? "skip",
+        company: mapSnippet<CompanyBlank>()(doc.company, CompanyBlankSnippet) ?? null,
         ...mapSoftDeleteToDTO(doc),
         ...mapOwnershipToDTO(doc),
         ...mapLifeCycleToDTO(doc),

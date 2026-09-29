@@ -1,8 +1,10 @@
 import {IMessage} from "@coreModule/database/schemas/message/message";
 import {MessageType} from "armonia/src/modules/core/api/user/private/chats/messages/messages.form.response.type";
+import type {SimpleUser} from "armonia/src/modules/core/dto/user.dto";
 import {DecryptStringSafe} from "@coreModule/utilities/security/encryption";
 import {ObjectId} from "mongodb";
-import {mapMedia, mapPopulatedUserWithPhoto} from "@coreModule/utilities/mappers/common.mapper";
+import {SimpleUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
+import {mapMedia, mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 
 /**
  * Helper to convert ObjectId or string to string
@@ -41,8 +43,8 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
 
     return {
         _id: toIdString(message._id),
-        sender: mapPopulatedUserWithPhoto(message.sender),
-        receiver: mapPopulatedUserWithPhoto(message.receiver),
+        sender: mapSnippet<SimpleUser>()(message.sender, SimpleUserSnippet)!,
+        receiver: mapSnippet<SimpleUser>()(message.receiver, SimpleUserSnippet),
         message: isDeleted ? "" : DecryptStringSafe(message.text),
         forwardedMessage: (isDeleted || !message.forwardedText) ? "" : DecryptStringSafe(message.forwardedText),
         media: !!message.mediaIds ? message.mediaIds?.map((media) => {
@@ -53,7 +55,7 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
         replyTo: message.replyTo ? {
             _id: message.replyTo._id.toString(),
             text: (message.replyTo.status === "deleted" || !message.replyTo.status) ? "" : DecryptStringSafe(message.replyTo.text),
-            sender: mapPopulatedUserWithPhoto(message.replyTo.sender),
+            sender: mapSnippet<SimpleUser>()(message.replyTo.sender, SimpleUserSnippet),
             createdAt: message.replyTo.createdAt instanceof Date
                 ? message.replyTo.createdAt.toISOString()
                 : String(message.replyTo.createdAt ?? ""),
@@ -68,21 +70,25 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
                     _id: reaction._id.toString(),
                     emoji: reaction.emoji ? DecryptStringSafe(reaction.emoji) : undefined,
                     date: reaction.date,
-                    user: mapPopulatedUserWithPhoto(reaction.user)
+                    user: mapSnippet<SimpleUser>()(reaction.user, SimpleUserSnippet)
                 }
             )
         }).filter(Boolean) : undefined,
         pinned: message.pinned ? {
             date: message.pinned.date,
-            user: mapPopulatedUserWithPhoto(message.pinned.user)
+            user: mapSnippet<SimpleUser>()(message.pinned.user, SimpleUserSnippet)
         } : undefined,
-        mentionedUsers: message.mentionedUsers && message.mentionedUsers.length > 0 ? message.mentionedUsers.map(mapPopulatedUserWithPhoto).filter(Boolean) : undefined,
+        mentionedUsers: message.mentionedUsers && message.mentionedUsers.length > 0
+            ? message.mentionedUsers
+                .map((u) => mapSnippet<SimpleUser>()(u, SimpleUserSnippet))
+                .filter((u): u is SimpleUser => u != null)
+            : undefined,
         delivery: message.delivery && message.delivery.length > 0 ? message.delivery.map((delivery) => {
             return (
                 {
                     date: delivery.date,
                     readDate: delivery.readDate,
-                    user: mapPopulatedUserWithPhoto(delivery.user)
+                    user: mapSnippet<SimpleUser>()(delivery.user, SimpleUserSnippet)
                 }
             )
         }).filter(Boolean) : undefined,
@@ -104,4 +110,3 @@ export async function messagesToDTO(messages: (IMessage | any)[], currentUserId:
     }
     return returnThis.filter(x => !!x);
 }
-

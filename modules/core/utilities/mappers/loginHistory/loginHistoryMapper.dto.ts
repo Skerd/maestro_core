@@ -1,12 +1,14 @@
 import {LoginHistory} from "armonia/src/modules/core/api/user/private/loginHistory/loginHistory.dto";
+import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
 import {ILoginHistory} from "@coreModule/database/schemas/loginHistory/loginHistory";
+import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
-import {mapPopulatedSimpleUser} from "@coreModule/utilities/mappers/common.mapper";
+import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 
 export function loginHistoryToDTO(model: ILoginHistory): LoginHistory {
     return {
         _id: model._id.toString(),
-        user: model.user ? mapPopulatedSimpleUser(model.user) : undefined,
+        user: mapSnippet<SimpleBlankUser>()(model.user, SimpleBlankUserSnippet),
         time: model.time,
         status: model.status,
         mfa: model.mfa,

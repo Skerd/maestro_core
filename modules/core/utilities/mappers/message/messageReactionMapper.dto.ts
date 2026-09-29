@@ -3,7 +3,9 @@ import {DecryptStringSafe} from "@coreModule/utilities/security/encryption";
 import {
     AddReactionFormResponseType
 } from "armonia/src/modules/core/api/user/private/chats/messages/actions/addReaction.form.response.type";
-import {mapPopulatedUserWithPhoto} from "@coreModule/utilities/mappers/common.mapper";
+import type {SimpleUser} from "armonia/src/modules/core/dto/user.dto";
+import {SimpleUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
+import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 
 type MessageReactionSubdocument = NonNullable<IMessage["reactions"]>[number];
 
@@ -15,7 +17,7 @@ export function messageReactionToDTO(r: MessageReactionSubdocument): AddReaction
         _id: r._id.toString(),
         emoji: r.emoji ? DecryptStringSafe(r.emoji) : undefined,
         date: r.date,
-        user: mapPopulatedUserWithPhoto(r.user)
+        user: mapSnippet<SimpleUser>()(r.user, SimpleUserSnippet)
     };
 }
 

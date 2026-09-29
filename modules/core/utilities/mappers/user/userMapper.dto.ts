@@ -4,7 +4,11 @@
  */
 
 import type {IUser} from "@coreModule/database/schemas/user/user";
-import {mapPopulatedRef, mapPopulatedSimpleUser, objectIdToString} from "@coreModule/utilities/mappers/common.mapper";
+import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
+import type {RoleSimple} from "armonia/src/modules/core/dto/role.dto";
+import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
+import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets";
+import {mapSnippet, objectIdToString} from "@coreModule/utilities/mappers/common.mapper";
 import {
     CompanyUserRequestsType,
     CompanyUserType
@@ -48,7 +52,7 @@ function mapRequests(req: IUser["requests"]): CompanyUserRequestsType | undefine
             opened: req.invitation.opened,
             attempts: req.invitation.attempts,
             lockedUntil: toDate(req.invitation.lockedUntil),
-            invitedBy: mapPopulatedSimpleUser(ib),
+            invitedBy: mapSnippet<SimpleBlankUser>()(ib, SimpleBlankUserSnippet),
             invitedAt: toDate(req.invitation.invitedAt),
             invitationExpiresAt: toDate(req.invitation.invitationExpiresAt),
             accepted: req.invitation.accepted,
@@ -73,7 +77,11 @@ export function userToCompanyUserDTO(user: IUser | null | undefined): CompanyUse
         timezone: user.timezone,
         birthday: user.birthday ? toDate(user.birthday) : undefined,
         registerDate: user.registerDate ? toDate(user.registerDate) : undefined,
-        roles: role.roles ? role.roles.map(mapPopulatedRef) : [],
+        roles: role.roles
+            ? role.roles
+                .map((r) => mapSnippet<RoleSimple>()(r, RoleSimpleSnippet))
+                .filter((r): r is RoleSimple => r != null)
+            : [],
         status: role?.active ?? "inactive",
         verified: Boolean(user.isEmailVerified),
         unverifiedEmail: user.requests?.activation?.email,
@@ -81,7 +89,7 @@ export function userToCompanyUserDTO(user: IUser | null | undefined): CompanyUse
         online: Boolean(user.online),
         mfaStatus: user.mfaStatus,
         requests: user.requests ? mapRequests(user.requests) : undefined,
-        registeredFrom: mapPopulatedSimpleUser(user.registeredFrom),
+        registeredFrom: mapSnippet<SimpleBlankUser>()(user.registeredFrom, SimpleBlankUserSnippet),
         photo: user.photo?._id ? objectIdToString(user.photo?._id) : undefined,
         cover: user.cover?._id ? objectIdToString(user.cover?._id) : undefined,
         lastLogin: role?.lastLogin ? toDate(role.lastLogin) : undefined,

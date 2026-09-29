@@ -1,12 +1,14 @@
 import {UserSession} from "armonia/src/modules/core/api/user/private/userSession/userSession.dto";
+import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
 import {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
+import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
-import {mapPopulatedSimpleUser} from "@coreModule/utilities/mappers/common.mapper";
+import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 
 export function userSessionToDTO(model: IUserSession): UserSession {
     return {
         _id: model._id.toString(),
-        user: model.user ? mapPopulatedSimpleUser(model.user) : undefined,
+        user: mapSnippet<SimpleBlankUser>()(model.user, SimpleBlankUserSnippet),
         sessionId: model.sessionId,
         deviceId: model.deviceId,
         userAgent: model.userAgent,
