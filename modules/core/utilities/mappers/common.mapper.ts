@@ -3,12 +3,6 @@
  */
 
 import {Decimal128, ObjectId} from 'mongodb';
-import type {SimpleUser} from "armonia/src/modules/core/dto/user.dto";
-import type {CompanyBlank} from "armonia/src/modules/core/dto/company.dto";
-import type {CurrencySimple} from "armonia/src/modules/core/dto/currency.dto";
-import {IUser} from "@coreModule/database/schemas/user/user";
-import {ICompany} from "@coreModule/database/schemas/company/company";
-import {ICurrency} from "@coreModule/database/schemas/currency/currency";
 
 /**
  * Converts ObjectId to string safely
@@ -168,73 +162,5 @@ export function mapSnippet<Wire extends object>() {
         if (doc == null) return undefined;
         const projected = projectSnippet(doc, snippet);
         return projected as Wire | undefined;
-    };
-}
-
-export function mapPopulatedRef(ref: any): { _id: string; name: string } | undefined {
-    if (!ref) return undefined;
-    const id = objectIdHex(ref._id) ?? objectIdHex(ref);
-    if (!id) return undefined;
-    return {
-        _id: id,
-        name: typeof ref.name === "string" ? ref.name : "",
-    };
-}
-
-export function mapPopulatedSimpleUser(ref: IUser): SimpleUser | undefined {
-    if (!ref) return undefined;
-    const id = objectIdHex(ref._id) ?? objectIdHex(ref);
-    if (!id) return undefined;
-    return {
-        _id: id,
-        name: ref.name,
-        surname: ref.surname,
-    };
-}
-
-export function mapPopulatedUserWithPhoto(user: unknown): SimpleUser | undefined {
-    if (!user || typeof user !== "object" || !("_id" in user)) {
-        return undefined;
-    }
-    const u = user as IUser;
-    const photoRef = u.photo as {_id?: unknown} | string | null | undefined;
-    let photo: string | undefined;
-    if (photoRef != null) {
-        if (typeof photoRef === "object" && photoRef._id != null) {
-            photo = String(photoRef._id);
-        } else {
-            photo = String(photoRef);
-        }
-    }
-    const id = objectIdHex(u._id);
-    if (!id) return undefined;
-    return {
-        _id: id,
-        name: u.name,
-        surname: u.surname,
-        photo,
-    };
-}
-
-export function mapPopulatedSimpleCompany(ref: ICompany): CompanyBlank | undefined {
-    if (!ref) return undefined;
-    const id = objectIdHex(ref._id) ?? objectIdHex(ref);
-    if (!id) return undefined;
-    return {
-        _id: id,
-        name: ref.name,
-        vat: ref.vat,
-    };
-}
-
-export function mapPopulatedSimpleCurrency(ref: ICurrency): CurrencySimple | undefined {
-    if (!ref) return undefined;
-    const id = objectIdHex(ref._id) ?? objectIdHex(ref);
-    if (!id) return undefined;
-    return {
-        _id: id,
-        name: ref.name,
-        symbol: ref.symbol,
-        abbreviation: ref.abbreviation,
     };
 }
