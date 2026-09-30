@@ -43,12 +43,19 @@ function coerceObjectIdArray(v: unknown): ObjectId[] {
     return v.map(coerceObjectId).filter((id): id is ObjectId => id != null);
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 function coerceDate(v: unknown): Date | null {
     if (v == null) return null;
-    if (v instanceof Date) return v;
-    if (typeof v === "string" || typeof v === "number") {
+    if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+    if (typeof v === "number") {
         const d = new Date(v);
-        return isNaN(d.getTime()) ? null : d;
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof v === "string") {
+        const s = v.trim();
+        const d = DATE_ONLY.test(s) ? new Date(`${s}T00:00:00.000Z`) : new Date(s);
+        return Number.isNaN(d.getTime()) ? null : d;
     }
     return null;
 }

@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {model, Schema, SchemaTypes} from "mongoose";
-import {ARRAY_OPERATORS, COLUMN_TYPE, EXISTENCE_OPERATORS, NUMBER_OPERATORS} from "armonia/src/modules/core/database/filter/typeOperators";
+import {ARRAY_OPERATORS, COLUMN_TYPE, DATE_OPERATORS, EXISTENCE_OPERATORS, NUMBER_OPERATORS} from "armonia/src/modules/core/database/filter/typeOperators";
 import {buildTableColumnsFromSchema} from "../schemaToTableConfig";
 
 describe("buildTableColumnsFromSchema", () => {
@@ -146,5 +146,28 @@ describe("buildTableColumnsFromSchema", () => {
             operators: EXISTENCE_OPERATORS,
         });
         expect(byId.paymentReceipts!.filterConfig).toBeUndefined();
+    });
+
+    it("maps Date fields to DATE unless overridden as DATETIME", () => {
+        const DateSchema = new Schema({
+            dueDate: {type: SchemaTypes.Date},
+            scheduledAt: {
+                type: SchemaTypes.Date,
+                dynamicTableConfiguration: {cellType: COLUMN_TYPE.DATETIME},
+            },
+        });
+        const DateModel = model("SchemaToTableConfigDateProbe", DateSchema);
+        const columns = buildTableColumnsFromSchema(DateModel, new Set(["dueDate", "scheduledAt"]));
+        const byId = Object.fromEntries(columns.map((c) => [c.id, c]));
+        expect(byId.dueDate!.cellType).toBe(COLUMN_TYPE.DATE);
+        expect(byId.dueDate!.filterConfig).toEqual({
+            type: COLUMN_TYPE.DATE,
+            operators: DATE_OPERATORS,
+        });
+        expect(byId.scheduledAt!.cellType).toBe(COLUMN_TYPE.DATETIME);
+        expect(byId.scheduledAt!.filterConfig).toEqual({
+            type: COLUMN_TYPE.DATETIME,
+            operators: DATE_OPERATORS,
+        });
     });
 });

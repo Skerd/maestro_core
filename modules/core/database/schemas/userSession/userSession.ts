@@ -189,7 +189,7 @@ const UserSessionSchema = new Schema<IUserSession>(
         lastActiveAt: {
             type: SchemaTypes.Date,
             default: Date.now,
-            dynamicTableConfiguration: {},
+            dynamicTableConfiguration: {cellType: COLUMN_TYPE.DATETIME},
             permissions: {
                 self: {
                     publicRead: true,
@@ -203,7 +203,7 @@ const UserSessionSchema = new Schema<IUserSession>(
             index: {
                 expires: 0,
             },
-            dynamicTableConfiguration: {},
+            dynamicTableConfiguration: {cellType: COLUMN_TYPE.DATETIME},
             permissions: {
                 self: {
                     publicRead: true,

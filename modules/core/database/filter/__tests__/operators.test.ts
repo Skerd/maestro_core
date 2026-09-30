@@ -56,4 +56,17 @@ describe("OPERATOR_HANDLERS", () => {
             sharedSpaces: {$regex: "lobby", $options: "i"},
         });
     });
+
+    it("parses date-only filter values as UTC midnight", () => {
+        expect(OPERATOR_HANDLERS.equals("dueDate", "2026-03-15", field(COLUMN_TYPE.DATE))).toEqual({
+            dueDate: new Date("2026-03-15T00:00:00.000Z"),
+        });
+    });
+
+    it("parses ISO datetime filter values as instants", () => {
+        const iso = "2026-03-15T13:00:00.000Z";
+        expect(OPERATOR_HANDLERS.equals("scheduledAt", iso, field(COLUMN_TYPE.DATETIME))).toEqual({
+            scheduledAt: new Date(iso),
+        });
+    });
 });

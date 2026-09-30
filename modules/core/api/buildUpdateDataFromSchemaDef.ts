@@ -7,6 +7,17 @@ import type {FieldDef, SchemaDef} from "armonia/src/modules/core/helpers/schemaD
  */
 export type SchemaDefTransformMap = Record<string, (value: unknown) => unknown>;
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Date-only `YYYY-MM-DD` is UTC midnight; ISO datetimes (with `T` / `Z` / offset) parse as instants. */
+function parseSchemaDate(value: unknown): Date {
+    if (value instanceof Date) return value;
+    if (typeof value === "number") return new Date(value);
+    const s = String(value).trim();
+    if (DATE_ONLY.test(s)) return new Date(`${s}T00:00:00.000Z`);
+    return new Date(s);
+}
+
 // ── Shared value transformer ───────────────────────────────────────────────────
 
 function applyFieldTransform(
@@ -53,7 +64,7 @@ function applyFieldTransform(
             return (Array.isArray(value) ? value : value ? [value] : []).map((id: string) => new ObjectId(id));
 
         case "date":
-            return new Date(value as string);
+            return parseSchemaDate(value);
 
         case "embedded":
             return recurseEmbedded(fieldDef.items, value as Record<string, any>, fullKey);

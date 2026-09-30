@@ -86,7 +86,7 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
     // Date
     if (schemaType instanceof SchemaTypes.Date) {
         return {
-            type: cellTypeOverride === COLUMN_TYPE.DATE ? COLUMN_TYPE.DATE : COLUMN_TYPE.DATETIME,
+            type: cellTypeOverride === COLUMN_TYPE.DATETIME ? COLUMN_TYPE.DATETIME : COLUMN_TYPE.DATE,
             operators: DATE_OPERATORS,
         };
     }
@@ -175,7 +175,7 @@ function inferCellTypeFromSchemaType(schemaType: SchemaType): COLUMN_TYPE {
     }
     if (schemaType instanceof SchemaTypes.Number) return COLUMN_TYPE.NUMBER;
     if (schemaType.instance === "Decimal128") return COLUMN_TYPE.NUMBER;
-    if (schemaType instanceof SchemaTypes.Date) return COLUMN_TYPE.DATETIME;
+    if (schemaType instanceof SchemaTypes.Date) return COLUMN_TYPE.DATE;
     if (schemaType instanceof SchemaTypes.Boolean) return COLUMN_TYPE.BOOLEAN;
     if (schemaType instanceof SchemaTypes.ObjectId) return ref === "Media" ? COLUMN_TYPE.FILE : COLUMN_TYPE.OBJECT_ID;
     if (schemaType instanceof SchemaTypes.Mixed) return COLUMN_TYPE.MIXED;
