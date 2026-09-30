@@ -23,7 +23,7 @@ import {SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSan
  *
  * This module provides private endpoints for listing companies:
  * - POST "" — Paginated list of all accessible companies with full details
- * - GET /basicInfo — Basic info (name, description, logo) for all accessible companies
+ * - POST /basicInfo — Paginated basic info (name, description, logo) for accessible companies
  *
  * Scoped to userInfo.companies. All endpoints require authentication.
  *
@@ -104,39 +104,42 @@ async function getCompanies(params: GetCompaniesType): Promise<TableResponse<Com
 }
 
 /**
- * GET /api/companies/basicInfo
+ * POST /api/companies/basicInfo
  *
- * Returns basic information (name, description, logo) for all companies accessible to the user.
+ * Returns one page of basic information (name, description, logo) for companies accessible to the user.
  *
- * @route GET /api/companies/basicInfo
+ * @route POST /api/companies/basicInfo
  * @access Private
- * @returns {Promise<BasicCompanyInfoFormResponseType[]>} Array of basic company information
+ * @body {TableForm} - offset, limit
+ * @returns {Promise<TableResponse<BasicCompanyInfoFormResponseType>>} Page of basic company information and total
  *
  * @remarks
  * - For non-admin users: returns only companies where user has active, unlocked roles
- * - For admin users: returns all companies from userInfo.companies
+ * - For admin users: also includes companies where the user is admin
+ * - Ordered by created date, newest first, so each offset is a stable page
  */
-router.get(
+router.post(
     "/basicInfo",
     authMW("private"),
     rateLimiter({
         windowMs: 60000,
         max: 120
     }),
+    validateFormZod(validateTableForm),
     asyncHandler(getCompaniesBasicInfo)
 );
-type GetCompaniesBasicInfoType = AuthenticatedMWType;
+type GetCompaniesBasicInfoType = AuthenticatedMWType & TableForm;
 /**
- * Fetches basic information for all accessible companies with role-based filtering.
+ * Fetches one page of basic information for accessible companies with role-based filtering.
  *
- * @param params - Auth context
- * @returns Array of basic company information
+ * @param params - Auth context, offset, limit
+ * @returns Page of basic company information and the total number of accessible companies
  * @remarks Merges immediate (active/unlocked) and admin company ids; filters null results
  */
-async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise<BasicCompanyInfoFormResponseType[]> {
-    const { logger, languageCode, actionUserCtx, actionUserInfo } = params;
+async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise<TableResponse<BasicCompanyInfoFormResponseType>> {
+    const { logger, languageCode, actionUserCtx, actionUserInfo, offset, limit } = params;
 
-    logger.start(`Trying to get all companies basic info...`);
+    logger.start(`Trying to get companies basic info (offset ${offset}, limit ${limit})...`);
 
     const immediateCompanyIds: ObjectId[] = [];
     const adminCheckRoles: typeof actionUserInfo.roles = [];
@@ -165,7 +168,21 @@ async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise
         uniqueCompanyIds.set(companyId.toString(), companyId);
     }
 
-    const allCompanies = await Promise.all(Array.from(uniqueCompanyIds.values()).map(async (companyId) => {
+    const companyIds = Array.from(uniqueCompanyIds.values());
+    if (companyIds.length === 0) {
+        logger.finish(`Finished fetching companies basic info (0 of 0)!`);
+        return {data: [], total: 0};
+    }
+
+    const filter = {_id: {$in: companyIds}};
+    const opts = {logger, languageCode};
+    const [page, total] = await Promise.all([
+        companyService.find(filter, opts, undefined, "_id", {createdAt: 1, _id: -1}, limit, offset),
+        companyService.count(filter, opts),
+    ]);
+
+    const data = (await Promise.all(page.map(async (company) => {
+        const companyId = company._id;
         const permissions = companyId.toString() === actionUserCtx.orgId
             ? actionUserCtx.permissions
             : await actionUserInfo.getCompanyRolePermissions(companyId);
@@ -196,10 +213,11 @@ async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise
             description: companyData.description,
             logo: logoValue
         };
-    }));
-    logger.finish(`Finished fetching all companies basic info!`);
+    }))).filter((company): company is BasicCompanyInfoFormResponseType => !!company);
 
-    return allCompanies.filter((company): company is BasicCompanyInfoFormResponseType => !!company);
+    logger.finish(`Finished fetching companies basic info (${data.length} of ${total})!`);
+
+    return {data, total};
 }
 
 

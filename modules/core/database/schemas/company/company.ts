@@ -93,7 +93,7 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
         requireIdentification: boolean;
         humanHandoffEnabled: boolean;
     };
-    createBot: () => Promise<void>;
+    createBot: (session?: ClientSession | null) => Promise<void>;
     ensureAiChannels: (session?: ClientSession | null) => Promise<void>;
     seedCronJobs: (session?: ClientSession | null) => Promise<void>;
     getRobotId: (session?: ClientSession | null) => Promise<ObjectId | null>;
@@ -301,7 +301,7 @@ CompanySchema.post("save", async function (doc) {
         const session = doc.$session();
         await doc.createDefaultRoles(undefined, session ?? undefined);
         await doc.assignCreatorRoles(session);
-        await doc.createBot();
+        await doc.createBot(session);
         await doc.ensureAiChannels(session ?? undefined);
         await doc.seedCronJobs(session ?? undefined);
     }
@@ -490,15 +490,19 @@ CompanySchema.methods.addCompanyDemoData = async function (parentLogger?: server
     logger.finish(`Finished adding company demo data for company named '${this.name}' with VAT '${this.vat}'!`);
 }
 
-CompanySchema.methods.createBot = async function (){
-    let possibleBot = await User.findOne({
+CompanySchema.methods.createBot = async function (session?: ClientSession | null){
+    const existingQuery = User.findOne({
         companies: {$in: [this._id]},
         isBot: true
-    })
-    if( !!possibleBot ){
+    });
+    const possibleBot = session ? await existingQuery.session(session) : await existingQuery;
+    if( possibleBot ){
         return;
     }
-    let createdBotUser = await new User({
+    const botId = new ObjectId();
+    const createdBotUser = new User({
+        _id: botId,
+        registeredFrom: botId,
         username: `${this.name.replaceAll(" ", "")} AI Bot`,
         password: generateRandomString(64),
         isBot: true,
@@ -525,15 +529,13 @@ CompanySchema.methods.createBot = async function (){
                 company: this._id
             }
         ],
-        // ===================================
         currencyConfiguration: [],
         telegram: {
             runProtocols: false,
             chatId: null
         },
-    }).save();
-    await User.findByIdAndUpdate(createdBotUser._id, {registeredFrom: createdBotUser._id});
-
+    });
+    await createdBotUser.save(session ? {session} : undefined);
 }
 /**
  * Ensures every non-bot user with an active role in this company has their single
