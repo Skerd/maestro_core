@@ -54,7 +54,7 @@ const router = Router();
 router.post(
     "",
     authMW("public"),
-    rateLimiter({ windowMs: 60000, max: 10 }),
+    rateLimiter({ windowMs: 60000, max: 10, failClosed: true }),
     validateFormZod(signupFormSchema),
     transactionHandler(),
     asyncHandler(SignUp)

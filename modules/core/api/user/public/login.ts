@@ -121,32 +121,6 @@ async function Login(
 
         await user.checkAccountAccessibility(company._id, languageCode);
 
-        // if( !company ){
-        //     let companies = await companyService.find(
-        //         {
-        //             _id: { $in: companyIds },
-        //             allowedDomains: "*",
-        //             isActive: true
-        //         },
-        //         { session, logger, languageCode }
-        //     );
-        //
-        //     for( let currCompany of companies ){
-        //         try {
-        //             await user.checkAccountAccessibility(currCompany._id, languageCode);
-        //             company = currCompany;
-        //             break;
-        //         }
-        //         catch (e){}
-        //     }
-        // }
-
-        if( !company ){
-            throw apiValidationException("user_not_active", null, null, languageCode);
-        }
-        // Verify account accessibility
-
-        // Verify password
         await user.checkPassword(company._id, password, languageCode);
 
         // Handle MFA

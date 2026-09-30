@@ -1,13 +1,8 @@
 /**
- * Authentication Middleware (Convenience Wrapper)
- * 
- * This is a convenience wrapper that chains together focused middleware:
- * - validateTokenMW: Token validation
- * - validateCompanyMW: Company validation
- * - validateRolesMW: Role and permission context
- * - handleImpersonationMW: User impersonation
- * 
- * For more granular control, use the individual middleware directly.
+ * Private-route authentication: JWT, company, session, and role context.
+ *
+ * Impersonation is not applied here. User-scoped routers mount `impersonateUserMW`
+ * after this middleware. The `specificUser` form field is ignored everywhere.
  */
 
 import {IUser} from "@coreModule/database/schemas/user/user";
@@ -29,7 +24,6 @@ export type NotAuthenticatedMWType = {
     actionInitializer: string,
     origin: string,
     logger: serverLogger,
-    // session: ClientSession;
     deviceId: string,
     userAgent: string,
     requestIp: string,
@@ -47,6 +41,13 @@ export type Authenticated = {
     company: ICompany,
 }
 
+/**
+ * Auth context after `authMW("private")`. Keep this separate from the Zod form type.
+ *
+ * Convention for **new** handlers only: `params: AuthenticatedMWType & SomeFormType`
+ * (canonical: `maestro/modules/propertyManagement/api/realEstate/private/dashboard.ts`).
+ * Do not fold form fields into this type. Do not rewrite `createCrudRouter`.
+ */
 export type AuthenticatedMWType = NotAuthenticatedMWType & Authenticated;
 
 export default (type: "public" | "private") => async (req: any, res: any, next: any) => {
@@ -62,7 +63,8 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
     let logger: serverLogger = getLogger(req.originalUrl);
     const session = req.session;
 
-    const origin = (req.headers['x-forwarded-host'] || req.hostname || req.get("Origin") || req.get("Referer") || "").replace(/^https?:\/\//, "")?.split("/")?.shift();
+    const originHeader = (req.get("Origin") || req.get("Referer") || "").replace(/^https?:\/\//, "")?.split("/")?.shift();
+    const origin = originHeader || (req.app?.get("trust proxy") ? req.hostname : "") || "";
 
     let actionInitializer = "anonymous";
     req.body.apiCode = req.originalUrl;
@@ -92,13 +94,11 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         req.body.actionInitializer = actionInitializer;
         req.body.singleCompanyId = userFromToken.company._id;
 
-        // validate user access
         let user = await userService.findByIdOrThrow(userFromToken.id, {session, languageCode});
         req.body.userInfo = user;
         req.body.actionUserInfo = user;
 
-        // validate company domain
-        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "allowedDomains name isActive");
+        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive");
         req.body.company = company;
         const {isAdmin, permissions} = await user.getCompanyAccess(company._id);
 
@@ -110,15 +110,10 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
 
         await user.checkAccountAccessibility(company._id, languageCode);
 
-        // if (!company.allowedDomains.includes("*") && !company.allowedDomains.includes(origin)) {
-        //     throw apiActionValidationException("user_does_not_exist", null, null, languageCode);
-        // }
-
         if (! (await user?.hasAtLeastOneRole(company._id)) ) {
             throw apiValidationException("user_must_have_at_least_one_role", "roles", null, languageCode);
         }
 
-        // lets provide context for user and actioUser, at this point they may be the same
         req.body.actionUserCtx = {
             userId: user._id.toString(),
             orgId: company._id.toString(),
@@ -127,69 +122,13 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
             isSelf: true
         };
 
-
-        const specificUser = req.body.specificUser || req.header('specificUser');
-        // console.log(specificUser, userFromToken.id);
-        if (specificUser && specificUser !== "" && specificUser !== "undefined" && specificUser !== userFromToken.id) {
-
-            if( !specificUser || specificUser === "" || specificUser.length !== 24 ){
-                throw apiValidationException("cant_access_this_user", "specificUser", null, languageCode);
-            }
-
-            // if (!user.registeredFrom && user.username !== "echo") {
-            //     throw apiActionValidationException("user_not_registered_from_anybody", null, null, languageCode);
-            // }
-
-            // if (user.registeredFrom?.toString() !== user._id.toString()) {
-                let foundUserInCompany = await userService.findOne({_id: specificUser, companies: company._id});
-
-                if (!foundUserInCompany) {
-                    throw apiValidationException("cant_access_this_user", "specificUser", null, languageCode);
-                }
-                // if (! (await foundUserInCompany?.hasAtLeastOneRole(company._id) )) {
-                //     throw apiValidationException("user_to_access_must_have_at_least_one_role", null, null, languageCode);
-                // }
-
-                // TODO does it make sense to not update userInfo at all? since the infra is chaning, no need to do it. the schemaGuard does it for us
-                req.body.userInfo = foundUserInCompany;
-                req.body.actionUserCtx.isSelf = false;
-                // if we go here, it means that
-
-                //  const [currentUserClearance, specificUserClearance] = await Promise.all([
-                //      user.getMaxClearanceLevel(new ObjectId(userFromToken.company?._id)),
-                //      user.getMaxClearanceLevel(new ObjectId(userFromToken.company?._id))
-                //  ]);
-                //  if (currentUserClearance <= specificUserClearance) {
-                //      throw apiActionValidationException("user_clearance_not_sufficient", null, null, languageCode);
-                //  }
-
-                //we now switch places, parentBypass is actually action user, and user is the one we are impersonating
-                req.body.parentBypass = userFromToken;
-                req.body.user = {
-                    id: foundUserInCompany._id,
-                    company: {
-                        _id: company._id,
-                        name: company.name
-                    },
-                    username: foundUserInCompany.username,
-                }
-                actionInitializer += ` -> ${foundUserInCompany._id.toString()}: ${foundUserInCompany.username}`;
-            // }
-        }
-
         logger.updateActionInitializer(actionInitializer);
         req.body.logger = logger;
 
-        // Run rest of request in context so soft-delete plugin and populate refs see actionUserCtx
         return requestContext.run({ actionUserCtx: req.body.actionUserCtx }, () => next());
     } catch (error: any) {
         logger.start()
         logger.fail(error);
-        return res.status(error.status || 400).json({
-            error: error.message,
-            error_code: error.error_code,
-            extraMessage: error.extra_message,
-            content: error.content
-        });
+        return next(error);
     }
 };

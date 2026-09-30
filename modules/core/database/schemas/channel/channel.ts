@@ -9,9 +9,6 @@ import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import {IOwnershipPluginFields} from "@coreModule/database/types/plugin-fields";
 import {addModelData} from "@coreModule/database/collections";
 import {SimpleUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
-import {ILead} from "@propertyManagement/database/schemas/lead/lead";
-import {IProject} from "@propertyManagement/database/schemas/project/project";
-import {IUnit} from "@propertyManagement/database/schemas/unit/unit";
 
 /**
  * Lifecycle of a public visitor chat.
@@ -24,11 +21,26 @@ export type PublicChatStatus = "bot" | "requested_human" | "human" | "closed";
 
 export const PUBLIC_CHAT_STATUS_VALUES: PublicChatStatus[] = ["bot", "requested_human", "human", "closed"];
 
-/** Visitor metadata and handoff state carried by a public chat channel. */
+/**
+ * Opaque ObjectId bag written by the caller (a feature module) plus `tag`
+ * from {@link registerPublicChatContext}. Core does not name feature keys.
+ * Existing documents keep whatever keys were stored.
+ */
+export type PublicChatContextBag = {
+    tag?: string;
+} & Record<string, ObjectId | string | undefined>;
+
+/**
+ * Visitor metadata and handoff state carried by a public chat channel.
+ *
+ * `lead` is an opaque ObjectId (no mongoose `ref`) written by a feature
+ * module that owns CRM. Core only tests presence (retention).
+ * `context` is {@link PublicChatContextBag} (Mixed).
+ */
 export interface IPublicChatMeta {
     status: PublicChatStatus,
     assignedTo?: IUser,
-    lead?: ILead,
+    lead?: ObjectId,
     visitor: {
         displayName?: string,
         email?: string,
@@ -38,10 +50,7 @@ export interface IPublicChatMeta {
         entryUrl?: string,
         referrer?: string,
     },
-    context?: {
-        project?: IProject,
-        unit?: IUnit,
-    },
+    context?: PublicChatContextBag,
     lastVisitorActivity: Date,
     handoffRequestedAt?: Date,
     closedAt?: Date,
@@ -210,18 +219,7 @@ export const ChannelSchema = new mongoose.Schema<IChannel>(
                     },
                 },
                 context: {
-                    type: {
-                        project: {
-                            type: SchemaTypes.ObjectId,
-                            ref: "Project",
-                            required: false
-                        },
-                        unit: {
-                            type: SchemaTypes.ObjectId,
-                            ref: "Unit",
-                            required: false
-                        }
-                    },
+                    type: SchemaTypes.Mixed,
                     required: false
                 },
                 lastVisitorActivity: {

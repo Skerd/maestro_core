@@ -47,9 +47,6 @@ export function applyChannelIndexes(ChannelSchema: Schema): void {
     // For pinned messages queries
     ChannelSchema.index({ pinnedMessages: 1 });
 
-    // For order-scoped channels (eCommerce)
-    ChannelSchema.index({ "metadata.orderId": 1 });
-
     // Additional indexes for common query patterns
     ChannelSchema.index({ company: 1, deleted: 1, lastAction: -1 });        // Company channels sorted by activity
     ChannelSchema.index({ owner: 1, deleted: 1 });                        // Owner's channels

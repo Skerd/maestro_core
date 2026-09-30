@@ -5,7 +5,6 @@
  * 
  * This server provides:
  * - RESTful API endpoints with automatic route discovery
- * - CORS configuration with configurable allowed origins
  * - Request body parsing with size limits
  * - Request IP extraction middleware
  * - Request ID generation for tracing
@@ -16,7 +15,7 @@
  * 
  * Server Lifecycle:
  * 1. Validates environment configuration
- * 2. Sets up CORS, body parser, and request middleware
+ * 2. Sets up body parser and request middleware
  * 3. Starts listening on configured port
  * 4. Connects to MongoDB, Redis, Kafka, and WebSocket
  * 5. Registers all API routes automatically
@@ -58,10 +57,13 @@ import {createRolePermissions} from "@coreModule/database/schemas/rolePermission
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {startApiHeartbeat, stopApiHeartbeat} from "@coreModule/api/health/apiServerHealth";
 import {syncAllCompanyDefaultRoles} from "@coreModule/database/schemas/company/company.defaults";
+import {loadOptionalModuleBootstraps} from "@initializer";
 
 /** Express application instance */
 const application: Application = express();
 mongoose.set('strictQuery', true);
+/** One hop (nginx). Makes `req.hostname` / `req.ip` honour X-Forwarded-* from the proxy. */
+application.set("trust proxy", 1);
 
 /** Global server name identifier for logging and service identification */
 global.ServerName = `EndPointServer{${SERVER.NODE_SIGNATURE}}`;
@@ -71,47 +73,11 @@ global.ServerName = `EndPointServer{${SERVER.NODE_SIGNATURE}}`;
 // ============================================================================
 
 /**
- * Configures CORS (Cross-Origin Resource Sharing) settings for the Express application
- * 
- * Sets up CORS middleware with:
- * - Configurable allowed origins (from SERVER.ALLOWED_ORIGINS or '*' for all)
- * - Support for credentials (cookies, authorization headers)
- * - Allowed HTTP methods (GET, POST, PUT, DELETE, PATCH, OPTIONS)
- * - Custom headers (Content-Type, Authorization, x-auth-token, x-company-id, x-device-id, language, source)
- * - Exposed response headers (rate limit headers, request ID)
- * 
- * @param parentLogger - Optional parent logger instance for hierarchical logging
+ * Browser traffic is same-origin through nginx (`solfeggio/clusters/nginx/conf/gateway.conf`:
+ * `/` → Sinfonia, `/api/` → this process). This Express app does not apply CORS middleware.
+ * `SERVER.ALLOWED_ORIGINS` is unused here.
  */
-function updateServerCorsSettings(parentLogger?: serverLogger){
-    let logger = getLogger("serverCorsSettingsUpdater", parentLogger);
-    logger.start("Setting up application cors...");
-    
-    const allowedOrigins = SERVER.ALLOWED_ORIGINS ? SERVER.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()) : ['*'];
-    
-    // application.use(cors({
-    //     origin: (origin, callback) => {
-    //         // Allow requests with no origin (mobile apps, Postman, etc.)
-    //         if (!origin) {
-    //             return callback(null, true);
-    //         }
-    //         // Allow all origins if configured
-    //         if (allowedOrigins.includes('*')) {
-    //             return callback(null, true);
-    //         }
-    //         // Check if origin is allowed
-    //         if (allowedOrigins.includes(origin)) {
-    //             return callback(null, true);
-    //         }
-    //         callback(new Error('Not allowed by CORS'));
-    //     },
-    //     credentials: true,
-    //     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    //     allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-company-id', 'x-device-id', 'language', 'source'],
-    //     exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-Request-ID']
-    // }));
-    
-    logger.finish("Finished setting up application cors!");
-}
+
 /**
  * Configures request IP extraction middleware
  * 
@@ -434,10 +400,6 @@ catch (error: any) {
     process.exit(1);
 }
 
-logger.debug("Updating server cors settings...");
-updateServerCorsSettings(logger);
-logger.debug("Finished updating server cors settings!");
-
 logger.debug("Updating server request ip middleware...");
 updateServerRequestIpMiddleware(logger);
 logger.debug("Finished updating server request ip middleware!");
@@ -469,7 +431,7 @@ logger.debug(`Opening server port to listen to: [${SERVER.PORT}]`);
  * 
  * Server startup sequence:
  * 1. Validates environment configuration
- * 2. Configures CORS, body parser, and middleware
+ * 2. Configures body parser and middleware
  * 3. Starts listening on SERVER.PORT
  * 4. Connects to MongoDB (with retry logic)
  * 5. Connects to Redis (with retry logic)
@@ -491,6 +453,10 @@ application.listen(SERVER.PORT, async () => {
     await connectToMongoDb(logger, true);
     logger.debug(`Connected to mongoDB instance!`);
 
+    logger.debug("Loading enabled module bootstraps...");
+    await loadOptionalModuleBootstraps(logger);
+    logger.debug("Finished loading enabled module bootstraps!");
+
     logger.debug(`Starting redis connection supervisor...`);
     await connectToRedis(logger);
     logger.debug(`Redis connection supervisor started!`);
@@ -511,9 +477,9 @@ application.listen(SERVER.PORT, async () => {
     await connectToKafka(logger);
     logger.debug(`Kafka connection supervisor started!`);
 
-    // logger.debug(`Starting websocket connection supervisor...`);
-    // await connectToWebSocketServer(logger);
-    // logger.debug(`Websocket connection supervisor started!`);
+    logger.debug(`Starting websocket connection supervisor...`);
+    await connectToWebSocketServer(logger);
+    logger.debug(`Websocket connection supervisor started!`);
 
     logger.debug("Registering all notification handlers...");
     await registerAllNotificationHandlers(logger);

@@ -3,6 +3,7 @@ import {Router} from "express";
 import speakeasy from "speakeasy";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
@@ -59,6 +60,7 @@ const router = Router();
 router.get(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     asyncHandler(MFAStatus)
 );
@@ -96,6 +98,7 @@ async function MFAStatus(params: AuthenticatedMWType): Promise<MfaStatusFormResp
 router.post(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 10 }),
     transactionHandler(),
     asyncHandler(generateMFAQrCode)
@@ -174,6 +177,7 @@ async function generateMFAQrCode(params: TransactionRequiredParams & Authenticat
 router.put(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 10}),
     validateFormZod(enableMfaFormSchema),
     transactionHandler(),
@@ -256,6 +260,7 @@ async function enableMFA(params: TransactionRequiredParams & EnableMfaFormType &
 router.delete(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({
         windowMs: 60000,
         max: 10

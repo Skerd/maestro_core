@@ -1,6 +1,10 @@
 import {Model, Schema, Types} from "mongoose";
 import AuditLog, {AuditAction, AuditDiffEntry} from "@coreModule/database/schemas/auditLog/auditLog";
 import {ObjectId} from "mongodb";
+import {getLogger} from "@coreModule/loggers/serverLog";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+
+const auditLogger = getLogger("audit_plugin");
 
 type LeanDoc = Record<string, any> | null | undefined;
 
@@ -69,6 +73,14 @@ export const auditPlugin = (schema: Schema): void => {
         }
 
         try {
+            const orgId = requestContext.getStore()?.actionUserCtx?.orgId;
+            const companyId = doc.company ?? (orgId ? new ObjectId(orgId) : null);
+            if (!companyId) {
+                auditLogger.warn(
+                    `Skipping audit log for ${doc.collection?.name} ${doc._id}: no company on document`,
+                );
+                return;
+            }
             await AuditLog.create({
                 documentId: doc._id as Types.ObjectId,
                 collectionName: doc.collection.name,
@@ -76,12 +88,12 @@ export const auditPlugin = (schema: Schema): void => {
                 actorId: doc.$locals?.auditUserId,
                 action: auditAction,
                 diff: auditDiff,
-                //TODO - fix this, not correct for production
-                company: doc.company ?? new ObjectId("000000000000000000000000")
+                company: companyId,
             });
         } catch (err) {
-            // Auditing should never block the main operation
-            console.error("Failed to write audit log", err);
+            auditLogger.err(
+                `Failed to write audit log: ${err instanceof Error ? err.message : String(err)}`,
+            );
         }
     });
 };

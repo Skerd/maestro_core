@@ -201,7 +201,9 @@ async function pinMessage(params: TransactionRequired & PinMessageFormType & Aut
             populate.select
         );
         returnThis = messagePinToDTO(modifiedMessage) ?? null;
-    }catch (e){}
+    }catch (e){
+        logger.debug(`Pinned message DTO mapping failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     try {
         const userIds = (messageChannel.users).map((u) => u._id.toString()).filter((id) => id !== actionUserInfo._id.toString());

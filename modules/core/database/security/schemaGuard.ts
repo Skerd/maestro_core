@@ -85,10 +85,6 @@ export class SchemaGuard {
         for (const [field, config] of Object.entries(fields)) {
             if (field === "_id") continue;
 
-            if( field === "roles" ){
-                let a = 5;
-            }
-
             const schemaType = schema.path(field);
             if (!schemaType) continue;
 
@@ -149,10 +145,6 @@ export class SchemaGuard {
 
         for (const [field, config] of Object.entries(fields)) {
             if(field === "_id") continue;
-
-            if( field === "roles"){
-                let a = 5;
-            }
 
             const schemaType = model.schema.path(field);
             if (!schemaType) continue;

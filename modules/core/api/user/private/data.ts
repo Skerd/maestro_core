@@ -5,6 +5,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import {ChangePasswordFormType} from "armonia/src/modules/core/api/user/private/data/changePassword.form.type";
 import {
     ChangePasswordFormResponseType
@@ -143,6 +144,7 @@ const router = Router();
 router.get(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60,}),
     schemaSanitizer({model: "users", requiredModes: ["read"]}),
     asyncHandler(GetUser)
@@ -200,6 +202,7 @@ async function GetUser(params: AuthenticatedMWType & SchemaSanitizerMWType): Pro
 router.get(
     "/username",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     asyncHandler(GetUserUsername)
 );
@@ -247,6 +250,7 @@ async function GetUserUsername(params: AuthenticatedMWType): Promise<EmailPrefer
 router.patch(
     "/username",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(updateEmailPreferenceFormSchema),
     transactionHandler(),
@@ -322,6 +326,7 @@ async function UpdateUserUsername(params: TransactionRequiredParams & UpdateEmai
 router.get(
     "/name",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     asyncHandler(GetUserName)
 );
@@ -361,6 +366,7 @@ async function GetUserName(params: AuthenticatedMWType): Promise<UserProfileName
 router.patch(
     "/name",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(updateUserProfileNameFormSchema),
     transactionHandler(),
@@ -403,6 +409,7 @@ async function UpdateUserName(params: TransactionRequiredParams & UpdateUserProf
 router.get(
     "/surname",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     asyncHandler(GetUserSurname)
 );
@@ -442,6 +449,7 @@ async function GetUserSurname(params: AuthenticatedMWType): Promise<UserProfileS
 router.patch(
     "/surname",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(updateUserProfileSurnameFormSchema),
     transactionHandler(),
@@ -484,6 +492,7 @@ async function UpdateUserSurname(params: TransactionRequiredParams & UpdateUserP
 router.get(
     "/phoneNumber",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     asyncHandler(getPhoneNumber)
 );
@@ -523,6 +532,7 @@ async function getPhoneNumber(params: AuthenticatedMWType): Promise<PhoneNumberF
 router.patch(
     "/phoneNumber",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(updatePhoneNumberFormSchema),
     transactionHandler(),
@@ -567,6 +577,7 @@ async function UpdatePhoneNumber(params: TransactionRequiredParams & UpdatePhone
 router.get(
     "/timezone",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 6000, max: 20}),
     asyncHandler(GetUserTimezonePreferences)
 );
@@ -606,6 +617,7 @@ async function GetUserTimezonePreferences(params: AuthenticatedMWType): Promise<
 router.patch(
     "/timezone",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(updateUserProfileTimezoneFormSchema),
     transactionHandler(),
@@ -651,6 +663,7 @@ async function UpdateUserTimezonePreferences(params: TransactionRequiredParams &
 router.get(
     "/profilePhoto",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     transactionHandler(),
     asyncHandler(getProfilePhoto)
@@ -721,6 +734,7 @@ async function getProfilePhoto(params: TransactionRequiredParams & Authenticated
 router.patch(
     "/profilePhoto",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     transactionHandler(),
     mediaUploadMW({maxFiles: 1, maxFileSize: 1024 * 1024 * 5}),
@@ -778,6 +792,7 @@ async function profilePhotoUpdate(params: TransactionRequiredParams & MediaUploa
 router.delete(
     "/profilePhoto",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     transactionHandler(),
     asyncHandler(profilePhotoDelete)
@@ -832,6 +847,7 @@ async function profilePhotoDelete(params: TransactionRequiredParams & Authentica
 router.get(
     "/coverPhoto",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     transactionHandler(),
     asyncHandler(getCoverPhoto)
@@ -902,6 +918,7 @@ async function getCoverPhoto(params: TransactionRequiredParams & AuthenticatedMW
 router.patch(
     "/coverPhoto",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     transactionHandler(),
     mediaUploadMW({maxFiles: 1, maxFileSize: 1024 * 1024 * 5}),
@@ -960,6 +977,7 @@ async function coverPhotoUpdate(params: TransactionRequiredParams & MediaUploade
 router.delete(
     "/coverPhoto",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     transactionHandler(),
     asyncHandler(coverPhotoDelete)
@@ -1018,6 +1036,7 @@ async function coverPhotoDelete(params: TransactionRequiredParams & Authenticate
 router.patch(
     "/password",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(changePasswordFormSchema),
     transactionHandler(),

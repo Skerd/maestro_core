@@ -149,10 +149,12 @@ export interface InvitationEmailEvent {
 }
 
 /**
- * API access event - tracks HTTP API requests for audit and analytics
+ * API access event - tracks HTTP API requests for audit and analytics.
  *
- * Published when an API endpoint is called. Used for audit logging,
- * usage analytics, performance monitoring, and security tracking.
+ * PII boundary: identity and network fields (`actionUser`, `user`, `company`,
+ * `deviceId`, `userAgent`, `requestIp`) are stored by the persistence consumer.
+ * The metrics consumer must only use method, endpoint, duration, statusCode,
+ * and timestamp.
  *
  * @property eventType - Always 'api_access'
  * @property endpoint - API path/route that was called

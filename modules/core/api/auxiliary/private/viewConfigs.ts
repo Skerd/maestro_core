@@ -24,7 +24,7 @@ router.get(
 type ViewConfigParams = AuthenticatedMWType;
 
 async function getAllViewConfigs(params: ViewConfigParams): Promise<ViewConfiguration> {
-    const { actionUserCtx, languageCode } = params;
+    const { actionUserCtx, languageCode, logger } = params;
     const result: ViewConfiguration = {};
 
     for (const [collectionName, entry] of Object.entries(COLLECTED_DATA)) {
@@ -39,7 +39,9 @@ async function getAllViewConfigs(params: ViewConfigParams): Promise<ViewConfigur
             if( !!writeFields ){
                 try{
                     sanitizedWrite = SchemaGuard.sanitizeFields(model, writeFields, "write", actionUserCtx, languageCode);
-                }catch (e){}
+                }catch (e){
+                    logger.debug(`Write-field sanitize skipped for ${collectionName}: ${e instanceof Error ? e.message : String(e)}`);
+                }
             }
 
             const filteredViews: Record<string, ViewConfig> = {};
@@ -52,7 +54,7 @@ async function getAllViewConfigs(params: ViewConfigParams): Promise<ViewConfigur
                 result[collectionName] = filteredViews;
             }
         } catch (err) {
-            console.error(`[viewConfigs] Error processing ${collectionName}:`, err);
+            logger.err(`[viewConfigs] Error processing ${collectionName}: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 

@@ -5,6 +5,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {MessagesFormType} from "armonia/src/modules/core/api/user/private/chats/messages/messages.form.type";
@@ -633,6 +634,7 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
 router.delete(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(deleteMessageFormSchema),
     transactionHandler(),

@@ -36,6 +36,20 @@ export async function createCountries(parentLogger: serverLogger, company: IComp
             logger.debug("All countries already exist.");
         }
 
+        const missingPhoneCode = await Country.find({
+            company: company,
+            $or: [{phoneCode: {$exists: false}}, {phoneCode: ""}, {phoneCode: null}],
+        });
+        if (missingPhoneCode.length > 0) {
+            const byIso = new Map(CountryList.getAllCountries().map((c) => [c.isoCode, c.phonecode]));
+            for (const doc of missingPhoneCode) {
+                const fromCsc = byIso.get(doc.code);
+                doc.phoneCode = fromCsc && String(fromCsc).trim() !== "" ? String(fromCsc) : doc.code;
+            }
+            await Country.bulkSave(missingPhoneCode);
+            logger.debug(`Backfilled phoneCode on ${missingPhoneCode.length} countries.`);
+        }
+
         logger.finish("Finished creating countries!");
     } catch (err: any) {
         logger.err(`Error while creating countries: ${err.message}`);

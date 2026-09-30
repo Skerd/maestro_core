@@ -173,7 +173,7 @@ type StartSessionParams = NotAuthenticatedMWType & StartPublicChatSessionFormTyp
 async function startPublicChatSession(
     params: StartSessionParams,
 ): Promise<StartPublicChatSessionFormResponseType> {
-    const {origin, languageCode, logger, requestIp, userAgent, visitorToken, entryUrl, referrer, projectId, unitId} = params;
+    const {origin, languageCode, logger, requestIp, userAgent, visitorToken, entryUrl, referrer, context} = params;
     logger.start("Opening public chat session...");
 
     const company = await resolveCompanyByOrigin(origin, languageCode);
@@ -207,10 +207,7 @@ async function startPublicChatSession(
             languageCode,
             logger,
             visitor: {ip: requestIp, userAgent, entryUrl, referrer},
-            context: {
-                ...(projectId ? {project: new ObjectId(projectId)} : {}),
-                ...(unitId ? {unit: new ObjectId(unitId)} : {}),
-            },
+            context: objectIdRefsFromForm(context),
         });
         channel = created.channel;
         visitor = created.visitor;
@@ -466,6 +463,23 @@ async function deletePublicChatData(params: CloseChatParams): Promise<ActionMess
 // -------------------------------------------------------------------------
 // Shared helpers
 // -------------------------------------------------------------------------
+
+/** Convert the start-form ObjectId hex map. Feature modules choose the keys. */
+function objectIdRefsFromForm(
+    context: Record<string, string> | undefined,
+): Record<string, ObjectId> | undefined {
+    if (!context) {
+        return undefined;
+    }
+    const refs: Record<string, ObjectId> = {};
+    for (const [key, value] of Object.entries(context)) {
+        if (key === "tag") {
+            continue;
+        }
+        refs[key] = new ObjectId(value);
+    }
+    return Object.keys(refs).length > 0 ? refs : undefined;
+}
 
 /** The tenant must have switched the widget on. */
 function assertPublicChatEnabled(company: ICompany, languageCode: string): void {

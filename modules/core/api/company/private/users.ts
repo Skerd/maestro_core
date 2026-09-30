@@ -20,6 +20,7 @@ import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import User, {IUser} from "@coreModule/database/schemas/user/user";
 import {
     companyUsersSimpleDataFormSchema,
@@ -746,6 +747,7 @@ async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<
 router.patch(
     "/unlockActivation",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 30 }),
     validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
@@ -807,6 +809,7 @@ async function unlockActivation(body: any): Promise<ActionMessage> {
 router.patch(
     "/unlockPasswordReset",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 30 }),
     validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
@@ -867,6 +870,7 @@ async function unlockPasswordReset(body: any): Promise<ActionMessage> {
 router.patch(
     "/unlockMfaDeactivation",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 30 }),
     validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
@@ -926,6 +930,7 @@ async function unlockMfaDeactivation(body: any): Promise<ActionMessage> {
 router.patch(
     "/unlockInvitation",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 30 }),
     validateFormZod(unlockUserRequestFormSchema),
     transactionHandler(),
@@ -1009,6 +1014,7 @@ async function unlockInvitation(body: AuthenticatedMWType & TransactionRequired 
 router.patch(
     "/resendActivationEmail",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 30 }),
     transactionHandler(),
     asyncHandler(resendActivationEmail)
@@ -1071,6 +1077,7 @@ async function resendActivationEmail(body: AuthenticatedMWType & TransactionRequ
 router.patch(
     "/resendInvitationEmail",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 30 }),
     transactionHandler(),
     asyncHandler(resendInvitationEmail)

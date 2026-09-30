@@ -17,6 +17,7 @@ import {Router} from "express";
 import {generateRandomString} from "@coreModule/utilities/helpers";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import {
@@ -53,6 +54,7 @@ const router = Router();
 router.get(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     asyncHandler(TelegramStatus)
 );
@@ -94,6 +96,7 @@ async function TelegramStatus(params: AuthenticatedMWType): Promise<TelegramStat
 router.post(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 60 }),
     transactionHandler(),
     asyncHandler(generateTelegramQrCode)
@@ -160,6 +163,7 @@ async function generateTelegramQrCode(params: TransactionRequiredParams & Authen
 router.delete(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     transactionHandler(),
     asyncHandler(disableTelegram)

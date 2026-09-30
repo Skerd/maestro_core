@@ -16,6 +16,7 @@
 import {Router} from "express";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import {DisableAccountFormType} from "armonia/src/modules/core/api/user/private/status/disableAccount.form.type";
@@ -64,6 +65,7 @@ const router = Router();
 router.get(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 60}),
     asyncHandler(userStatus)
 );
@@ -123,6 +125,7 @@ async function userStatus(params: AuthenticatedMWType): Promise<UserStatusFormRe
 router.delete(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 10}),
     validateFormZod(disableAccountFormSchema),
     transactionHandler(),
@@ -199,6 +202,7 @@ async function disableSelfUserAccount(params: TransactionRequiredParams & Disabl
 router.put(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({windowMs: 60000, max: 10}),
     validateFormZod(updateAccountStatusFormSchema),
     transactionHandler(),

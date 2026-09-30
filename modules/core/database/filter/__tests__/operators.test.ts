@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
-import {OPERATOR_HANDLERS} from "armonia/src/modules/core/database/filter/operators";
+import {OPERATOR_HANDLERS} from "../operators";
 import type {FilterFieldConfig} from "armonia/src/modules/core/database/filter/fieldRegistry.types";
 
 function field(type: COLUMN_TYPE): FilterFieldConfig {

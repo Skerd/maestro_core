@@ -1,8 +1,14 @@
 /**
  * Rate Limiting Middleware
- * 
- * Provides Redis-based rate limiting for different endpoint categories.
- * Critical for preventing abuse and ensuring fair resource usage.
+ *
+ * Redis-backed fixed window. `INCR` is atomic; `EXPIRE` runs only on the first
+ * increment so the window is not reset on every request.
+ *
+ * Redis down:
+ * - Public auth (`failClosed: true`) rejects the request — better to block signup
+ *   / password reset than to run unbounded.
+ * - Private CRUD (`failClosed` omitted / false) is fail-open so an outage of Redis
+ *   does not take the panel down. List `limit` is capped separately.
  */
 
 import {NextFunction, Request, Response} from 'express';
@@ -11,16 +17,14 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {CONSTANTS} from "@coreModule/environment";
 
 export interface RateLimitOptions {
-    windowMs: number;                   // Time window in milliseconds
-    max: number;                        // Maximum requests per window
-    skipSuccessfulRequests?: boolean;   // Don't count successful requests
-    skipFailedRequests?: boolean;       // Don't count failed requests
+    windowMs: number;
+    max: number;
+    skipSuccessfulRequests?: boolean;
+    skipFailedRequests?: boolean;
+    /** When Redis is unavailable, reject instead of skipping the limit. */
+    failClosed?: boolean;
 }
 
-/**
- * Derives a rate limit key name from the request path.
- * Combines baseUrl + path and normalizes to a Redis-safe string (slashes → colons).
- */
 function getRateLimitNameFromRequest(req: Request): string {
     const fullPath = req.method + "[" + req.baseUrl + (req.path === "/" ? "" : req.path) + "]";
     return fullPath
@@ -29,50 +33,44 @@ function getRateLimitNameFromRequest(req: Request): string {
         .trim() || "root";
 }
 
-/**
- * Create a rate limiter middleware
- * 
- * @param options - Rate limiting options
- * @returns Express middleware function
- * 
- * @example
- * ```typescript
- * const financeLimiter = createRateLimiter({
- *     windowMs: 60000,  // 1 minute
- *     max: 100,         // 100 requests per minute
- * });
- * 
- * router.post("/transfer", financeLimiter, ...);
- * ```
- */
 export function rateLimiter(options: RateLimitOptions) {
     const {
         windowMs,
         max,
         skipSuccessfulRequests = false,
-        skipFailedRequests = false
+        skipFailedRequests = false,
+        failClosed = false,
     } = options;
 
     return async (req: Request, res: Response, next: NextFunction) => {
-        // Skip rate limiting if Redis is not connected
+        const languageCode = req.header("language") || CONSTANTS.DEFAULT_LANGUAGE;
+
         if (!isRedisConnected()) {
+            if (failClosed) {
+                return next(apiValidationException("rate_limit_exceeded", null, null, languageCode));
+            }
             return next();
         }
 
         try {
-            const languageCode = req.header("language") || CONSTANTS.DEFAULT_LANGUAGE;
             const limitName = getRateLimitNameFromRequest(req);
 
             const userId = req.body?.userInfo?._id?.toString();
             const ip = req.body?.requestIp || req.ip || req.socket.remoteAddress || 'unknown';
             const redisKey = userId ? `rate_limit:${limitName}:user:${userId}` : `rate_limit:${limitName}:ip:${ip}`;
-            // Get current count
-            const current = await getRedisClient().get(redisKey);
-            const count = current ? parseInt(current, 10) : 0;
+            const windowSeconds = Math.ceil(windowMs / 1000);
+
+            const count = await getRedisClient().incr(redisKey);
+            if (count === 1) {
+                await getRedisClient().expire(redisKey, windowSeconds);
+            }
 
             let expiresInSeconds = await getRedisClient().ttl(redisKey);
+            if (expiresInSeconds < 0) {
+                expiresInSeconds = windowSeconds;
+            }
 
-            if (count >= max) {
+            if (count > max) {
                 throw apiValidationException(
                     "rate_limit_exceeded",
                     null,
@@ -83,23 +81,16 @@ export function rateLimiter(options: RateLimitOptions) {
                 );
             }
 
-            // Increment counter
-            await getRedisClient().incr(redisKey);
-            await getRedisClient().expire(redisKey, Math.ceil(windowMs / 1000));
-
-            // Store rate limit info in response headers
             res.setHeader('X-RateLimit-Limit', max.toString());
-            res.setHeader('X-RateLimit-Remaining', Math.max(0, max - count - 1).toString());
-            res.setHeader('X-RateLimit-Reset', new Date(Date.now() + windowMs).toISOString());
+            res.setHeader('X-RateLimit-Remaining', Math.max(0, max - count).toString());
+            res.setHeader('X-RateLimit-Reset', new Date(Date.now() + expiresInSeconds * 1000).toISOString());
 
-            // Track response status for skip options
             const originalSend = res.send;
             res.send = function(body: any) {
                 const statusCode = res.statusCode;
                 const isSuccess = statusCode >= 200 && statusCode < 300;
                 const isFailure = statusCode >= 400;
 
-                // Decrement if we should skip this request
                 if ((skipSuccessfulRequests && isSuccess) || (skipFailedRequests && isFailure)) {
                     getRedisClient().decr(redisKey).catch(() => {
                         // Ignore errors

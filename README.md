@@ -6,7 +6,7 @@ Shared types and validators live in **armonia** (`../armonia`). Maestro imports 
 
 ## Responsibilities
 
-- **Express API** with automatic route discovery under `modules/*/api/`
+- **Express API** with automatic route discovery under `modules/*/api/` (same-origin behind nginx — see `solfeggio/clusters/nginx/conf/gateway.conf`; this process does not apply CORS middleware)
 - **Mongoose** models, services, indexes, and view configs
 - **Authentication**, permissions, rate limiting, and request validation middleware
 - **CRUD router factory** for standard list/select/create/edit/delete/restore endpoints
@@ -126,3 +126,24 @@ npm run build             # compile TypeScript
 ```
 
 Database initialization is controlled by `MONGO_DB.INIT` in environment config. See `initializer/index.ts` for core seed data and optional module model registration.
+
+## TypeScript (do not flip global `strict`)
+
+`maestro/tsconfig.json` leaves `strict`, `noImplicitAny`, and `strictNullChecks` **off**. Turning them on for the whole package is out of scope: Core factories still use `form: any`, `asyncHandler`, and `createCrudRouter` config `any`. New core files still follow those flags as coding discipline (see `.cursor/rules/arpeggio-typescript.mdc`). There is no Maestro ESLint config; Sinfonia's `eslint.config.js` is the workspace TS lint and is React-oriented — do not copy it here.
+
+## New non-CRUD handlers: `AuthenticatedMWType` vs Zod form
+
+For **new** routes only, type the handler as `AuthenticatedMWType & SomeFormType` after `authMW("private")` + `validateFormZod`. Canonical: `modules/propertyManagement/api/realEstate/private/dashboard.ts`. Do not fold form fields into `AuthenticatedMWType`. Do not rewrite `createCrudRouter`.
+
+## MongoDB driver
+
+Maestro stays on `mongodb` ^4 (Mongoose 6). Filter **types** live in Armonia; Mongo query handlers (`OPERATOR_HANDLERS`) live in `modules/core/database/filter/operators.ts` so they use this package's driver. Do not bump Maestro's `mongodb` major without a Mongoose upgrade.
+
+## Dates (new code)
+
+New Maestro code uses **dayjs**. Do not introduce a second date library. View-engine display dates are a Sinfonia concern (`dateTime.ts` / view-engine `date-fns`) and are not rewritten from here.
+
+## Token refresh
+
+Login issues `JWT_EXPIRES_IN` (access) and `REFRESH_TOKEN_EXPIRES_IN` (refresh). `SESSION_EXPIRES_IN` is the server session/cookie TTL. There is no refresh HTTP route. The panel stores the refresh token and, on 401, shows relogin (`markSessionExpired`). Adding silent refresh needs a product check against those TTLs.
+

@@ -8,7 +8,7 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import {IRole} from "@coreModule/database/schemas/role/role";
 import {IMedia} from "@coreModule/database/schemas/media/media";
 import {ClientSession, ObjectId} from "mongodb";
-import {serverLogger} from "@coreModule/loggers/serverLog";
+import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {ActionException} from "armonia/src/modules/core/types";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
@@ -1004,7 +1004,9 @@ UserSchema.methods.addLoginHistory = async function (companyId: ObjectId, req: a
         try{
             await AddToLoginHistory(loginEvent, session);
         }catch (e){
-            // Login history must not block authentication.
+            getLogger("login_history").warn(
+                `Failed to persist login history: ${e instanceof Error ? e.message : String(e)}`,
+            );
         }
     }
 }
@@ -1155,7 +1157,11 @@ UserSchema.methods.createOrUpdateSession = async function (companyId: ObjectId, 
                 time: now
             };
         }
-    } catch (error) {}
+    } catch (error) {
+        getLogger("user_session").debug(
+            `IP geolocation lookup failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
 
     if( userSession ){
         // Update existing session

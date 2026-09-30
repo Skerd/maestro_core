@@ -54,9 +54,6 @@ export const coreDefaultRoles: DefaultRoleDefinition[] = [
     },
 ];
 
-/** @deprecated Use `getDefaultRoles()`. Alias of core defaults only (no module packs). */
-export const defaultRoles: DefaultRoleDefinition[] = coreDefaultRoles;
-
 const registeredPacks: DefaultRoleDefinition[] = [];
 const registeredSlugs = new Set<string>();
 

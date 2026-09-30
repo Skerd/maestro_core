@@ -19,6 +19,7 @@ import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {ChangeUserRolesFormType} from "armonia/src/modules/core/api/user/private/permissions/changeUserRoles.form.type";
 import {
@@ -105,6 +106,7 @@ const router = Router();
 router.post(
     "/accessible/roles/select",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 120 }),
     validateFormZod(accessibleRolesFormSchema),
     asyncHandler(GetAccessibleRoles)
@@ -185,6 +187,7 @@ async function GetAccessibleRoles(params: AuthenticatedMWType & AccessibleRolesF
 router.put(
     '/roles',
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 20 }),
     validateFormZod(changeUserRolesFormSchema),
     transactionHandler(),
@@ -354,6 +357,7 @@ async function UpdateUserRoles(params: TransactionRequiredParams & ChangeUserRol
 router.post(
     "/access",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 300 }),
     validateFormZod(accessFormSchema),
     asyncHandler(AccessResource)
@@ -447,6 +451,7 @@ async function AccessResource(
 router.post(
     "/access/all",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 60 }),
     validateFormZod(accessAllFormSchema),
     asyncHandler(AccessAllResources)

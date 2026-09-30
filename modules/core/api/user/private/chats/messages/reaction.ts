@@ -218,7 +218,9 @@ async function addMessageReaction(params: TransactionRequired & AddReactionFormT
             (r) => r.user && typeof r.user === "object" && "_id" in r.user && r.user._id.equals(userInfo._id)
         );
         returnThis = reaction ? messageReactionToDTO(reaction) : null;
-    }catch(e){}
+    }catch(e){
+        logger.debug(`Reaction DTO mapping failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     try {
         const userIds = (messageChannel.users).map((u) => u._id.toString()).filter((id) => id !== userInfo._id.toString());

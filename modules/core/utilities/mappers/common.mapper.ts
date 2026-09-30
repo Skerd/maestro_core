@@ -67,6 +67,7 @@ function objectIdHex(value: unknown): string | undefined {
     return undefined;
 }
 
+/** Maps an `IMedia` document to the resource DTO `Media` (`armonia/.../types`). Not `MediaSimple`. */
 export function mapMedia(media: any) {
     const id = objectIdHex(media?._id) ?? objectIdHex(media);
     if (!id) return undefined;

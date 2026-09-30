@@ -50,7 +50,8 @@ production. Two things are stubbed: mail delivery, and the GridFS contract looku
 Inline images are attached by CID, which a browser cannot resolve, so each `cid:`
 reference is rewritten to a data URI before screenshotting.
 
-Sample payloads live in `emailPreviewCases.ts`. They deliberately populate every
+Sample payloads live in `maestro/scripts/emails/emailPreviewCases.ts`. The renderer
+is `maestro/scripts/emails/renderEmailPreviews.ts` (`npm run preview:emails`). They deliberately populate every
 optional field a template can show — a preview is most useful when it exposes the
 longest layout a recipient could get. **Add a case there whenever you add an email
 kind**, otherwise it silently drops out of the sweep.

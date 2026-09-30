@@ -6,7 +6,7 @@
 import type {FilterQuery} from "mongoose";
 import type {FilterGroup, FilterRule} from "armonia/src/modules/core/database/filter/filter.types";
 import type {FieldRegistry} from "armonia/src/modules/core/database/filter/fieldRegistry.types";
-import {OPERATOR_HANDLERS} from "armonia/src/modules/core/database/filter/operators";
+import {OPERATOR_HANDLERS} from "./operators";
 
 const FORBIDDEN_FIELD_PATTERNS = /^(__proto__|constructor|prototype)$/;
 const INVALID_FIELD_PREFIX = /^[$.]/;

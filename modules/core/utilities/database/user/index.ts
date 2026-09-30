@@ -16,6 +16,7 @@ import {
     sendSignUpMail
 } from "@coreModule/utilities/emails/notifiers";
 import {resolveCompanyIdForEmail} from "@coreModule/utilities/emails/mailDeliveryService";
+import {getLogger} from "@coreModule/loggers/serverLog";
 
 const UAParser = require('ua-parser-js');
 
@@ -32,7 +33,11 @@ export async function AddToLoginHistory(data: LoginHistoryEvent, session?: Clien
             const response = await axios.get(`https://ipinfo.io/${requestIP}/json?token=${IP_INFO.TOKEN}`);
             geolocation = response.data;
         }
-    } catch (error) {}
+    } catch (error) {
+        getLogger("user_login_history").debug(
+            `IP geolocation lookup failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
 
     await new LoginHistory({
         user: new ObjectId(userId),

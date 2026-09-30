@@ -127,19 +127,12 @@ function buildAllowlist(schema: Schema, options: SchemaToFieldAllowlistOptions, 
     schema.eachPath((path, schemaType) => {
         if (path === "_id" || path === "__v" || excludeSet.has(path)) return;
 
-        if( path === "pinned" ){
-            let a = 5;
-        }
-
         if (isExcludedByPermission(schemaType)) return;
 
         const schemaRefAllowlist = (
             (schemaType as any).options?.refAllowlist ??
             (schemaType as any)?.caster?.options?.refAllowlist
         ) as UnSanitizedFields | undefined;
-        if( path === "roles" && schemaRefAllowlist){
-            let a = 5;
-        }
         if (schemaRefAllowlist !== undefined && options.permission !== "write") {
             const nestedSchema = resolveNestedSchema(schemaType);
             if (nestedSchema) {

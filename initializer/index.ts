@@ -35,7 +35,6 @@ import {
 } from "@coreModule/database/schemas/role/role.defaults";
 
 export {defaultCompaniesValues} from "@coreModule/database/schemas/company/company.defaults";
-export {defaultRoles} from "@coreModule/database/schemas/role/role.defaults";
 export {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 
 type ModuleBootstrap = {
@@ -70,7 +69,7 @@ const coreModels: Model<any>[] = [
  * Each file should export `moduleBootstrap: { models?, dropModuleCollections? }`.
  * Core never hardcodes feature-module bootstrap loaders.
  */
-async function loadOptionalModuleBootstraps(parentLogger?: serverLogger): Promise<ModuleBootstrap[]> {
+export async function loadOptionalModuleBootstraps(parentLogger?: serverLogger): Promise<ModuleBootstrap[]> {
     const logger = getLogger("module_bootstrap", parentLogger);
     const modulesPath = path.resolve(__dirname, "../modules");
     if (!fs.existsSync(modulesPath)) {

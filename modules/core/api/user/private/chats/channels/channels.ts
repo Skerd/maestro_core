@@ -26,6 +26,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/chats/channels/createChannel.form.validator";
 import {IUser} from "@coreModule/database/schemas/user/user";
 import Channel, {IChannel} from "@coreModule/database/schemas/channel/channel";
+import {withPublicChatPopulate} from "@coreModule/database/schemas/channel/publicChatContext";
 import {IMessage} from "@coreModule/database/schemas/message/message";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
 import {AllChannelsFormType} from "armonia/src/modules/core/api/user/private/chats/channels/allChannels.form.type";
@@ -145,7 +146,7 @@ async function userChannels(params: UserChannelsType & AllChannelsFormType): Pro
     logger.start(`Fetching channels for user ${userInfo._id.toString()} in company ${company._id.toString()} (offset ${offset}, limit ${limit})...`);
     logger.debug(`Filter name: ${name || 'none'}`);
 
-    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema);
+    const populate = withPublicChatPopulate(SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema));
 
     // Build base match query - optimized to use indexes
     const baseMatch: any = {
@@ -270,7 +271,7 @@ async function getChannelSingle(params: GetChannelSingleType & GetChannelSingleF
 
     logger.start(`Fetching single channel ${id} for user ${userInfo._id.toString()}...`);
 
-    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema);
+    const populate = withPublicChatPopulate(SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema));
 
     const channel = await channelService.findOne(
         {
@@ -362,7 +363,7 @@ async function getOrCreateAiChannel(params: GetOrCreateAiChannelType): Promise<G
         throw apiValidationException("ai_channel_unavailable", null, null, languageCode);
     }
 
-    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema);
+    const populate = withPublicChatPopulate(SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema));
     const channel = await channelService.findOne(
         { _id: aiChannel._id, company: company._id },
         { logger, languageCode },
@@ -481,7 +482,7 @@ async function createUserChannel(params: CreateUserChannelType & CreateChannelFo
         channelName = "";
     }
 
-    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema);
+    const populate = withPublicChatPopulate(SchemaGuard.generatePopulate(sanitizedReadFields, Channel.schema));
 
     // The AI bot must never be a normal DM/group member - that would spawn a
     // second chat alongside the dedicated AI-assistant channel. Intercept here.

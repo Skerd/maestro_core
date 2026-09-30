@@ -163,10 +163,6 @@ export const KAFKA = {
         MFA_DISABLE_EMAIL: process.env.KAFKA_TOPIC_MFA_DISABLE_EMAIL,
         FORGOT_PASSWORD_EMAIL: process.env.KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL,
         INVITATION_EMAIL: process.env.KAFKA_TOPIC_INVITATION_EMAIL,
-        RESERVATION_CLIENT_EMAIL: process.env.KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL,
-        SALE_CLIENT_EMAIL: process.env.KAFKA_TOPIC_SALE_CLIENT_EMAIL,
-        MANAGER_PIN_RESET_EMAIL: process.env.KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL,
-        PRODUCT_ORDER_CLIENT_EMAIL: process.env.KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL,
         API_ACCESS: process.env.KAFKA_TOPIC_API_ACCESS,
         AI_CHANNEL_MESSAGE: process.env.KAFKA_TOPIC_AI_CHANNEL_MESSAGE,
         CRON_EXECUTE: process.env.KAFKA_TOPIC_CRON_EXECUTE,
@@ -178,10 +174,6 @@ export const KAFKA = {
         MFA_DISABLE_EMAIL: process.env.KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL,
         FORGOT_PASSWORD_EMAIL: process.env.KAFKA_CONSUMER_GROUP_FORGOT_PASSWORD_EMAIL,
         INVITATION_EMAIL: process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL,
-        RESERVATION_CLIENT_EMAIL: process.env.KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL,
-        SALE_CLIENT_EMAIL: process.env.KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL,
-        MANAGER_PIN_RESET_EMAIL: process.env.KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL,
-        PRODUCT_ORDER_CLIENT_EMAIL: process.env.KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL,
         API_ACCESS: process.env.KAFKA_CONSUMER_GROUP_API_ACCESS,
         AI_CHANNEL_MESSAGE: process.env.KAFKA_CONSUMER_GROUP_AI_CHANNEL_MESSAGE,
         CRON_EXECUTE: process.env.KAFKA_CONSUMER_GROUP_CRON_EXECUTE,
@@ -239,31 +231,6 @@ export function clientHostFor(appId: string = "core"): string {
     const host = mapped || CLIENT_SIDE.HOST || "";
     return host.replace(/\/+$/, "");
 }
-
-/**
- * Payment gateway configuration (eCommerce checkout + marketplace escrow).
- * The secret key never leaves maestro; sinfonia only ever receives the
- * publishable key / client secrets produced per PaymentIntent.
- */
-export const PAYMENTS = {
-    STRIPE_ENABLED: process.env.STRIPE_ENABLED === 'true',
-    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
-    STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY || '',
-    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET || '',
-    // Marketplace Connect Express onboarding redirect targets (provider browser flows)
-    STRIPE_CONNECT_RETURN_URL: process.env.STRIPE_CONNECT_RETURN_URL || '',
-    STRIPE_CONNECT_REFRESH_URL: process.env.STRIPE_CONNECT_REFRESH_URL || '',
-};
-
-/**
- * Commerce calculation providers. "internal" uses the zone engines
- * (taxZones / shippingZones collections); external adapters (Avalara,
- * TaxJar, EasyPost, Shippo) register themselves under their own name.
- */
-export const COMMERCE_PROVIDERS = {
-    TAX_PROVIDER: process.env.TAX_PROVIDER || 'internal',
-    SHIPPING_PROVIDER: process.env.SHIPPING_PROVIDER || 'internal',
-};
 
 export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 

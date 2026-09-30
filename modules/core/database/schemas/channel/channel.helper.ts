@@ -18,10 +18,11 @@ import {ClientSession, UpdateQuery} from "mongoose";
 import {serverLogger} from "@coreModule/loggers/serverLog";
 import User, {IUser} from "@coreModule/database/schemas/user/user";
 import Message from "@coreModule/database/schemas/message/message";
-import Channel, {IChannel, PublicChatStatus} from "@coreModule/database/schemas/channel/channel";
+import Channel, {IChannel, PublicChatContextBag, PublicChatStatus} from "@coreModule/database/schemas/channel/channel";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import Company from "@coreModule/database/schemas/company/company";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import {getPublicChatContextTag} from "@coreModule/database/schemas/channel/publicChatContext";
 
 /** Domain used for generated visitor usernames. Never receives mail. */
 const VISITOR_USERNAME_DOMAIN = "visitors.local";
@@ -152,10 +153,8 @@ export interface CreatePublicChatParams {
         entryUrl?: string;
         referrer?: string;
     };
-    context?: {
-        project?: ObjectId;
-        unit?: ObjectId;
-    };
+    /** Opaque ObjectId refs from the caller. Feature modules choose the keys. */
+    context?: Record<string, ObjectId>;
 }
 
 /**
@@ -210,6 +209,8 @@ export async function createPublicChat(params: CreatePublicChatParams): Promise<
 
     const visitor = await createVisitorUser({companyId, languageCode, logger, session});
 
+    const resolvedContext = toPublicChatContextDocument(context, getPublicChatContextTag());
+
     const channel = await channelService.create(
         {
             users: [visitor._id, botId],
@@ -228,7 +229,7 @@ export async function createPublicChat(params: CreatePublicChatParams): Promise<
                     entryUrl: visitorMeta?.entryUrl,
                     referrer: visitorMeta?.referrer,
                 },
-                ...(context?.project || context?.unit ? {context} : {}),
+                ...(resolvedContext ? {context: resolvedContext} : {}),
                 lastVisitorActivity: new Date(),
             },
             adminUsers: [],
@@ -238,6 +239,26 @@ export async function createPublicChat(params: CreatePublicChatParams): Promise<
 
     logger?.debug(`Opened public chat ${channel._id.toString()} for visitor ${visitor._id.toString()}`);
     return {channel, visitor};
+}
+
+/** Persist caller ObjectIds as-is; `tag` always comes from the registry, never the client. */
+function toPublicChatContextDocument(
+    refs: Record<string, ObjectId> | undefined,
+    tag: string | undefined,
+): PublicChatContextBag | undefined {
+    const bag: PublicChatContextBag = {};
+    if (refs) {
+        for (const [key, id] of Object.entries(refs)) {
+            if (key === "tag") {
+                continue;
+            }
+            bag[key] = id;
+        }
+    }
+    if (tag) {
+        bag.tag = tag;
+    }
+    return Object.keys(bag).length > 0 ? bag : undefined;
 }
 
 /**

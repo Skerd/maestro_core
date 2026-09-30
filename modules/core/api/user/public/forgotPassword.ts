@@ -73,7 +73,7 @@ const router = Router();
 router.post(
     "",
     authMW("public"),
-    rateLimiter({ windowMs: 60000, max: 5 }),
+    rateLimiter({ windowMs: 60000, max: 5, failClosed: true }),
     validateFormZod(forgotPasswordFormSchema),
     transactionHandler(),
     asyncHandler(ForgotPassword)
@@ -147,7 +147,7 @@ async function ForgotPassword(params: TransactionRequiredParams & ForgotPassword
 router.post(
     "/openLink",
     authMW("public"),
-    rateLimiter({ windowMs: 60000, max: 10 }),
+    rateLimiter({ windowMs: 60000, max: 10, failClosed: true }),
     validateFormZod(openForgotPasswordLinkFormSchema),
     transactionHandler(),
     asyncHandler(ForgotPasswordOpenLink)
@@ -221,7 +221,7 @@ async function ForgotPasswordOpenLink(params: TransactionRequiredParams & OpenFo
 router.post(
     "/changePassword",
     authMW("public"),
-    rateLimiter({ windowMs: 60000, max: 2 }),
+    rateLimiter({ windowMs: 60000, max: 2, failClosed: true }),
     validateFormZod(changeForgottenPasswordFormSchema),
     transactionHandler(),
     asyncHandler(ForgotPasswordChangePassword)

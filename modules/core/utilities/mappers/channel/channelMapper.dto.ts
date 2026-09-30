@@ -9,6 +9,9 @@ import {UserContext} from "@coreModule/utilities/types/types";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {messageToDTO} from "@coreModule/utilities/mappers/message/messageMapper.dto";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
+import {getLogger} from "@coreModule/loggers/serverLog";
+
+const channelMapperLogger = getLogger("channel_mapper");
 
 export async function channelToDTO(channel: IChannel, actionUserId: string, actionUserCtx: UserContext): Promise<Channel | null> {
 
@@ -84,7 +87,9 @@ export async function channelToDTO(channel: IChannel, actionUserId: string, acti
                 populate.populate,
                 (populate.select || ""),
             ).then((message) => messageToDTO(message, actionUserId));
-        }catch (e){}
+        }catch (e){
+            channelMapperLogger.debug(`Failed to load last message for channel ${channel._id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
     }
 
     const userMap = new Map<string, ChannelUser>();
@@ -198,11 +203,14 @@ export async function channelToDTO(channel: IChannel, actionUserId: string, acti
         if( lastMessagePromise ){
             try{
                 returnThis.metaData["lastMessage"] = await lastMessagePromise;
-            }catch (e){}
+            }catch (e){
+                channelMapperLogger.debug(`Failed to map last message for channel ${channel._id}: ${e instanceof Error ? e.message : String(e)}`);
+            }
         }
         return returnThis;
     }
     catch(error){
+        channelMapperLogger.debug(`Failed to map channel ${channel._id}: ${error instanceof Error ? error.message : String(error)}`);
         return null;
     }
 

@@ -1,9 +1,11 @@
 /**
  * Configuration Validator
- * 
+ *
  * Validates all environment variables on startup.
  * Fails fast with clear error messages if configuration is invalid.
  */
+
+import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 
 interface ValidationError {
     key: string;
@@ -160,10 +162,6 @@ export function validateConfiguration(): void {
             validateString('KAFKA_TOPIC_MFA_DISABLE_EMAIL', process.env.KAFKA_TOPIC_MFA_DISABLE_EMAIL, true),
             validateString('KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL', process.env.KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL, true),
             validateString('KAFKA_TOPIC_INVITATION_EMAIL', process.env.KAFKA_TOPIC_INVITATION_EMAIL, true),
-            validateString('KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL, true),
-            validateString('KAFKA_TOPIC_SALE_CLIENT_EMAIL', process.env.KAFKA_TOPIC_SALE_CLIENT_EMAIL, true),
-            validateString('KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL, true),
-            validateString('KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL, true),
             validateString('KAFKA_TOPIC_API_ACCESS', process.env.KAFKA_TOPIC_API_ACCESS, true),
             validateString('KAFKA_TOPIC_CRON_EXECUTE', process.env.KAFKA_TOPIC_CRON_EXECUTE, true),
             validateString('KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE, false),
@@ -173,13 +171,27 @@ export function validateConfiguration(): void {
             validateString('KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_FORGOT_PASSWORD_EMAIL', process.env.KAFKA_CONSUMER_GROUP_FORGOT_PASSWORD_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_INVITATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL, true),
-            validateString('KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL, true),
-            validateString('KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL, true),
-            validateString('KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL, true),
-            validateString('KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_API_ACCESS', process.env.KAFKA_CONSUMER_GROUP_API_ACCESS, true),
             validateString('KAFKA_CONSUMER_GROUP_CRON_EXECUTE', process.env.KAFKA_CONSUMER_GROUP_CRON_EXECUTE, true),
         ].filter((e): e is ValidationError => e !== null));
+
+        if (isModuleEnabled("propertyManagement")) {
+            errors.push(...[
+                validateString('KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL, true),
+                validateString('KAFKA_TOPIC_SALE_CLIENT_EMAIL', process.env.KAFKA_TOPIC_SALE_CLIENT_EMAIL, true),
+                validateString('KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL, true),
+                validateString('KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL, true),
+            ].filter((e): e is ValidationError => e !== null));
+        }
+
+        if (isModuleEnabled("eCommerce")) {
+            errors.push(...[
+                validateString('KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL, true),
+                validateString('KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL, true),
+                validateString('KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL, true),
+                validateString('KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL, true),
+            ].filter((e): e is ValidationError => e !== null));
+        }
 
         if (!['PLAINTEXT', 'SSL', 'SASL_PLAINTEXT', 'SASL_SSL'].includes(kafkaSecurityProtocol)) {
             errors.push({

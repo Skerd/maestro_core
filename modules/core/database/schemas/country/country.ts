@@ -24,7 +24,7 @@ import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 export interface ICountry extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     code: string;
-    phoneCode?: string;
+    phoneCode: string;
 }
 
 const CountrySchema = new Schema<ICountry>(
@@ -58,6 +58,7 @@ const CountrySchema = new Schema<ICountry>(
         },
         phoneCode: {
             type: SchemaTypes.String,
+            required: true,
             trim: true,
             maxlength: COUNTRY_PHONE_CODE_MAX,
             dynamicTableConfiguration: {},

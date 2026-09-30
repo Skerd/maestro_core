@@ -172,6 +172,7 @@ async function processApiEvent(event: ApiAccessEvent): Promise<void> {
 
 async function processApiMetricsEvent(event: ApiAccessEvent): Promise<void> {
     try {
+        // Identity/network fields on ApiAccessEvent are PII — do not aggregate them.
         metricsAggregator.addSample({
             method: event.method || "UNKNOWN",
             endpoint: event.endpoint || "unknown",

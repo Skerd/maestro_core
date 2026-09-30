@@ -14,6 +14,7 @@ import {
     mapOwnershipToDTO,
     mapSoftDeleteToDTO,
 } from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {getLogger} from "@coreModule/loggers/serverLog";
 import {
     CompanyRole,
     CompanyRolePermission,
@@ -121,7 +122,11 @@ export function rolesToDTO(roles: IRole[], allPermissions: PermissionProjection[
     for (const role of roles) {
         try {
             data.push(roleToDTO(role, allPermissions));
-        } catch (error) {}
+        } catch (error) {
+            getLogger("role_mapper").warn(
+                `Skipping role DTO mapping: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
     }
     return data;
 }

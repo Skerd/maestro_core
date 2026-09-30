@@ -196,10 +196,6 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
 
     for (const path of allowedPaths) {
 
-        if( path === "roles" ){
-            let a = 5;
-        }
-
         if (path === "_id" || path === "__v") {
             continue;
         }

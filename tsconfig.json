@@ -34,7 +34,6 @@
     "paths": /* Specify a set of entries that re-map imports to additional lookup locations. */
     {
       "@coreModule/*": ["./modules/core/*"],
-      "@realEstateModule/*": ["./modules/realEstate/*"],
       "@propertyManagement/*": ["./modules/propertyManagement/*"],
       "@propertyDevelopmentModule/*": ["./modules/propertyDevelopment/*"],
       "@musicIndustry/*": ["./modules/musicIndustry/*"],
@@ -93,7 +92,12 @@
 
     /* Ensure that casing is correct in imports. */
 
-    /* Type Checking */
+    /* Type Checking
+     * Do not enable `strict`, `noImplicitAny`, or `strictNullChecks` globally.
+     * Factory `any` (`createCrudRouter`, `asyncHandler`, Zod `form: any`) and Mongoose 6
+     * would fail the package. New core files still follow those rules as coding discipline
+     * — see maestro/README.md. Incremental enablement is per-file, not tsconfig.
+     */
     //    "strict": true,                                      /* Enable all strict type-checking options. */
     // "noImplicitAny": true,                            /* Enable error reporting for expressions and declarations with an implied 'any' type. */
     // "strictNullChecks": true,                         /* When type checking, take into account 'null' and 'undefined'. */
