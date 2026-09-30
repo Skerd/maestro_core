@@ -266,6 +266,9 @@ async function UpdateUserUsername(params: TransactionRequiredParams & UpdateEmai
     const { languageCode, newEmail, logger, userInfo, session, actionUserCtx } = params;
 
     logger.start(`Trying to update user username...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
 
     SchemaGuard.sanitizeFields(User, {username: {}}, "write", actionUserCtx, languageCode);
 
@@ -548,6 +551,9 @@ async function UpdatePhoneNumber(params: TransactionRequiredParams & UpdatePhone
     const { languageCode, phoneNumber, logger, userInfo, session, actionUserCtx } = params;
 
     logger.start(`Trying to update user phone number...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
     SchemaGuard.sanitizeFields(User, {phoneNumber: {}}, "write", actionUserCtx, languageCode);
 
     userInfo.phoneNumber = phoneNumber;
@@ -633,6 +639,9 @@ async function UpdateUserTimezonePreferences(params: TransactionRequiredParams &
     const { newTimezone, logger, userInfo, session, languageCode, actionUserCtx } = params;
 
     logger.start(`Trying to update user timezone...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
     SchemaGuard.sanitizeFields(User, {timezone: {}}, "write", actionUserCtx, languageCode);
 
     userInfo.timezone = newTimezone;
@@ -1052,6 +1061,9 @@ async function passwordUpdate(params: TransactionRequiredParams & ChangePassword
     const { newPassword, currentPassword, parentBypass, languageCode, logger, userInfo, session, company, actionUserCtx } = params;
 
     logger.start(`Trying to change password...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
     SchemaGuard.sanitizeFields(User, {password: {}}, "write", actionUserCtx, languageCode);
 
     if (!parentBypass) {

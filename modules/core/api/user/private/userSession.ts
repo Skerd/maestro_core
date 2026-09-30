@@ -11,7 +11,7 @@ import {userSessionFormSchema} from "armonia/src/modules/core/api/user/private/u
 import {userSessionsSelectFormSchema} from "armonia/src/modules/core/api/user/private/userSession/userSessions.select.form.validator";
 import {getTokenSessionId} from "@coreModule/utilities/security/sessionValidator";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
-
+import {userService} from "@coreModule/database/schemas/user/user.service";
 export const basePath = "/api/user/userSession";
 
 function userSessionExtraFilter(params: Record<string, any>) {
@@ -41,10 +41,15 @@ export const {router} = createCrudRouter({
     defaultSort: {lastActiveAt: -1},
     extraListFilter: userSessionExtraFilter,
     extraSelectFilter: userSessionExtraFilter,
-    beforeDelete: async (params, _doc) => {
-        const {languageCode, user, _id} = params;
+    beforeDelete: async (params, doc) => {
+        const {languageCode, user, _id, session} = params;
         if (getTokenSessionId(user) === _id) {
             throw apiValidationException("current_session_cannot_be_deleted", "sessionId", null, languageCode);
+        }
+        const ownerId = String((doc.user as {_id?: unknown})?._id ?? doc.user);
+        const owner = await userService.findById(ownerId, {session, languageCode}, undefined, "isBot");
+        if (owner?.isBot) {
+            throw apiValidationException("bot_user_not_editable", null, null, languageCode);
         }
     },
     overrideSelectHandler: async (params) => {

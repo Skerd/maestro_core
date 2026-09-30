@@ -113,6 +113,9 @@ async function generateMFAQrCode(params: TransactionRequiredParams & Authenticat
     const { logger, userInfo, session, languageCode, actionUserCtx } = params;
 
     logger.start(`Trying to generate mfa qr code...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
     SchemaGuard.sanitizeFields(User, {mfaStatus: {}}, "write", actionUserCtx, languageCode);
     // Check if MFA is already enabled
     if (userInfo.isMfaEnabled()) {
@@ -193,6 +196,9 @@ async function enableMFA(params: TransactionRequiredParams & EnableMfaFormType &
     const { token, secret, languageCode, logger, userInfo, session, parentBypass, company, actionUserCtx } = params;
 
     logger.start(`Trying to enable mfa...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
     SchemaGuard.sanitizeFields(User, {mfaStatus: {}}, "write", actionUserCtx, languageCode);
 
     // Check if MFA is already enabled
@@ -279,6 +285,9 @@ async function disableMFA(params: TransactionRequiredParams & DeactivateMfaFormT
     const { mfaCode, sendEmail, languageCode, logger, userInfo, session, parentBypass, company, actionUserCtx } = params;
 
     logger.start(`Trying to disable account mfa...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
 
     // Parental bypass path
     if (parentBypass) {

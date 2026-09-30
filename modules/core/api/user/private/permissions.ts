@@ -207,6 +207,9 @@ async function UpdateUserRoles(params: TransactionRequiredParams & ChangeUserRol
     const opts = { session, logger, languageCode };
 
     logger.start(`Updating user roles...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
 
     if (!parentBypass) {
         throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);

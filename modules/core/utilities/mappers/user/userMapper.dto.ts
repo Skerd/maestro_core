@@ -87,6 +87,7 @@ export function userToCompanyUserDTO(user: IUser | null | undefined): CompanyUse
         unverifiedEmail: user.requests?.activation?.email,
         emailVerifiedAt: user.emailVerifiedAt ? toDate(user.emailVerifiedAt) : undefined,
         online: Boolean(user.online),
+        isBot: Boolean(user.isBot),
         mfaStatus: user.mfaStatus,
         requests: user.requests ? mapRequests(user.requests) : undefined,
         registeredFrom: mapSnippet<SimpleBlankUser>()(user.registeredFrom, SimpleBlankUserSnippet),

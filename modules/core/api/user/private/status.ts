@@ -142,6 +142,9 @@ async function disableSelfUserAccount(params: TransactionRequiredParams & Disabl
     const { password, languageCode, logger, userInfo, session, company, actionUserCtx, parentBypass} = params;
 
     logger.start(`Deactivating account...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
 
     if( !!parentBypass ){
         throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);
@@ -219,6 +222,9 @@ async function updateUserAccountStatus(params: TransactionRequiredParams & Updat
     const { status, logger, userInfo, session, languageCode, company, actionUserCtx, actionUserInfo, parentBypass } = params;
 
     logger.start(`Trying to update account status...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
 
     if( !parentBypass ){
         throw apiValidationException("user_permissions_not_sufficient", null, null, languageCode);

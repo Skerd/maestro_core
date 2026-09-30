@@ -6,7 +6,7 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {validateSingleForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
 import UserSession from "@coreModule/database/schemas/userSession/userSession";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
-
+import {userService} from "@coreModule/database/schemas/user/user.service";
 export class UserSessionActions {
     @action({
         auth: "private",
@@ -55,6 +55,11 @@ export class UserSessionActions {
             {_id: new ObjectId(_id), company: company._id},
             {session, logger, languageCode},
         );
+        const ownerId = String((existing.user as {_id?: unknown})?._id ?? existing.user);
+        const owner = await userService.findById(ownerId, {session, languageCode}, undefined, "isBot");
+        if (owner?.isBot) {
+            throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+        }
 
         await userSessionService.updateById(
             existing._id,
