@@ -12,6 +12,8 @@ import Company from "@coreModule/database/schemas/company/company";
 import Country from "@coreModule/database/schemas/country/country";
 import State from "@coreModule/database/schemas/state/state";
 import City from "@coreModule/database/schemas/city/city";
+import BlogCategory from "@coreModule/database/schemas/blogCategory/blogCategory";
+import BlogPost from "@coreModule/database/schemas/blogPost/blogPost";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
 import {MONGO_DB} from "@coreModule/environment";
 import UserSession from "@coreModule/database/schemas/userSession/userSession";
@@ -61,6 +63,8 @@ const coreModels: Model<any>[] = [
     Country,
     State,
     City,
+    BlogCategory,
+    BlogPost,
     MessagingProvider,
 ];
 
