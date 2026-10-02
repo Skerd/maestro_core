@@ -312,11 +312,29 @@ export function validateConfiguration(): void {
     }
 
     // CLIENT SIDE CONFIG
+    const isDevEnv = process.env.SERVER_NODE_ENV === 'development';
     errors.push(...[
         validateString('CLIENT_HOST', process.env.CLIENT_HOST, true),
         validateString('CLIENT_NAME', process.env.CLIENT_NAME, true),
-        validateString('SINFONIA_CLIENT_URLS', process.env.SINFONIA_CLIENT_URLS, false),
+        validateString('SINFONIA_CLIENT_URLS', process.env.SINFONIA_CLIENT_URLS, !isDevEnv),
+        validateString('AD_CAMPAIGN_API_BASE_URL', process.env.AD_CAMPAIGN_API_BASE_URL, !isDevEnv),
+        validateString('AD_CAMPAIGN_REDIRECT_ALL_TO', process.env.AD_CAMPAIGN_REDIRECT_ALL_TO, false),
+        validateBoolean('AD_CAMPAIGN_ALLOW_NONPROD_SEND', process.env.AD_CAMPAIGN_ALLOW_NONPROD_SEND, false),
+        validateNumber('AD_CAMPAIGN_SEND_CONCURRENCY', process.env.AD_CAMPAIGN_SEND_CONCURRENCY, false, 1),
+        validateNumber('AD_CAMPAIGN_STUCK_AFTER_MINUTES', process.env.AD_CAMPAIGN_STUCK_AFTER_MINUTES, false, 1),
     ].filter((e): e is ValidationError => e !== null));
+    if (!isDevEnv && process.env.SINFONIA_CLIENT_URLS) {
+        const hasPublicOrigin = process.env.SINFONIA_CLIENT_URLS.split(',').some((entry) => {
+            const trimmed = entry.trim();
+            return trimmed.startsWith('public=') && trimmed.length > 'public='.length;
+        });
+        if (!hasPublicOrigin) {
+            errors.push({
+                key: 'SINFONIA_CLIENT_URLS',
+                message: 'SINFONIA_CLIENT_URLS must include public=<origin> outside development so campaign CTAs are not empty',
+            });
+        }
+    }
 
     // ENCRYPTION
     errors.push(...[
