@@ -5,8 +5,8 @@ import {ICompany} from "@coreModule/database/schemas/company/company";
 const currencyCodes = require("currency-codes");
 const getSymbolFromCurrency = require("currency-symbol-map");
 
-const SEED_CURRENCY_CODES = ["EUR", "CHF"];
-const FALLBACK_SYMBOLS: Record<string, string> = {EUR: "€", CHF: "CHF"};
+const SEED_CURRENCY_CODES = ["EUR", "CHF", "ALL"];
+const FALLBACK_SYMBOLS: Record<string, string> = {EUR: "€", CHF: "CHF", ALL: "L"};
 
 export async function createCurrencies(parentLogger: serverLogger, company: ICompany) {
     const logger = getLogger("mongoDbInitialization-createCurrencies", parentLogger);
