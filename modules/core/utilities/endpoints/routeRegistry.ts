@@ -95,7 +95,7 @@ export class RouteRegistry {
                     : file.name;
 
                 if (file.isDirectory()) {
-                    if (file.name !== "middleware") {
+                    if (!this._isSkippedDirectory(file.name)) {
                         await this._discoverRoutesRecursive(fullPath, basePath, newRelativePath);
                     }
                 } else if (this._isRouteFile(file.name)) {
@@ -108,9 +108,20 @@ export class RouteRegistry {
     }
 
     /**
+     * Directories under `modules/<name>/api` that are not route modules.
+     * `__tests__` must be skipped: importing a Vitest file from the CJS server fails.
+     */
+    private _isSkippedDirectory(name: string): boolean {
+        return name === "middleware" || name === "__tests__" || name === "__mocks__";
+    }
+
+    /**
      * Check if the file is a route file
      */
     private _isRouteFile(filename: string): boolean {
+        if (filename.endsWith(".test.ts") || filename.endsWith(".spec.ts")) {
+            return false;
+        }
         return filename === 'index.ts' || 
                filename.endsWith('.route.ts') ||
                (filename.endsWith('.ts') && !filename.endsWith('.d.ts'));

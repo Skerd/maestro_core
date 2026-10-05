@@ -69,6 +69,15 @@ function getFileExtension(filename: string): string {
     return ext || '';
 }
 
+/** Browsers often send an empty or generic type for .p12 / .pfx. */
+function certificateMime(mimeType: string, filename: string): string {
+    const extension = getFileExtension(filename);
+    if ((extension === ".p12" || extension === ".pfx") && (!mimeType || mimeType === "application/octet-stream")) {
+        return "application/x-pkcs12";
+    }
+    return mimeType;
+}
+
 /**
  * Determines file type based on MIME type
  */
@@ -480,6 +489,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         
         try {
             // Never trust client MIME type - validate it
+            file.mimetype = certificateMime(file.mimetype, file.originalname);
             validateFileType(file.mimetype, file.originalname, languageCode);
             const allowedForField = fieldMimeTypes?.[file.fieldname];
             if (allowedForField?.length && !allowedForField.includes(file.mimetype)) {

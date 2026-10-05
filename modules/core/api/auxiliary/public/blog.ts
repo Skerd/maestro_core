@@ -178,7 +178,7 @@ async function publicBlogSingle(params: PublicBlogSingleParams): Promise<PublicB
     );
 
     if (!post) {
-        throw apiValidationException("blog_post_not_found", "slug", slug, languageCode);
+        throw apiValidationException("blog_post_not_found", "slug", [slug], languageCode);
     }
 
     logger.finish(`Loaded public blog post ${slug}`);
