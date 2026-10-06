@@ -4,9 +4,26 @@ import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {getTokenSessionId} from "@coreModule/utilities/security/sessionValidator";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {validateSingleForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import {WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import UserSession from "@coreModule/database/schemas/userSession/userSession";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
+import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import type {serverLogger} from "@coreModule/loggers/serverLog";
+
+function notifySessionRevoked(userId: string, sessionId: string, logger: serverLogger) {
+    try {
+        pushWebsocketMessage({
+            code: WebSocketMessageCodes.SESSION_REVOKED,
+            payload: {sessionId},
+            userIds: [userId],
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.err(`Failed to notify revoked session ${sessionId}: ${message}`);
+    }
+}
+
 export class UserSessionActions {
     @action({
         auth: "private",
@@ -34,6 +51,7 @@ export class UserSessionActions {
             {$set: {isActive: false}},
             {session, logger, languageCode, auditUserId: actionUserCtx.userId, returnNew: true},
         );
+        notifySessionRevoked(actionUserCtx.userId, existing._id.toString(), logger);
 
         logger.finish("Successfully revoked current user session");
         return {message: "Current user session access revoked"};
@@ -66,6 +84,7 @@ export class UserSessionActions {
             {$set: {isActive: false}},
             {session, logger, languageCode, auditUserId: actionUserCtx.userId, returnNew: true},
         );
+        notifySessionRevoked(ownerId, existing._id.toString(), logger);
 
         logger.finish(`Successfully revoked user session: ${_id}`);
         return {message: "User session access revoked"};

@@ -1,9 +1,9 @@
 import {ObjectId} from "mongodb";
-import {ClientSession} from "mongoose";
+import type {ClientSession} from "mongoose";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
-import {JWTTokenType} from "armonia/src/modules/core/api/user/public/login/login.form.response.type";
-import {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
+import type {JWTTokenType} from "armonia/src/modules/core/api/user/public/login/login.form.response.type";
+import type {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
 import {CONSTANTS} from "@coreModule/environment";
 
 type SessionToken = JWTTokenType & {
@@ -31,7 +31,7 @@ export async function validateActiveUserSession(
         throw apiValidationException("session_not_found", "sessionId", null, languageCode);
     }
 
-    return userSessionService.findOne(
+    const activeSession = await userSessionService.findOne(
         {
             _id: new ObjectId(tokenSessionId),
             user: userId,
@@ -43,5 +43,11 @@ export async function validateActiveUserSession(
             session: options.session,
             languageCode,
         }
-    ) as Promise<IUserSession>;
+    );
+
+    if (!activeSession) {
+        throw apiValidationException("session_not_found", "sessionId", null, languageCode);
+    }
+
+    return activeSession;
 }
