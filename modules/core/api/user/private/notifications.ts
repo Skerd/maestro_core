@@ -19,6 +19,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {impersonateUserMW} from "@coreModule/utilities/middlewares/impersonation";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {notificationService} from "@coreModule/database/schemas/notification/notification.service";
 import {notificationsToDTO} from "@coreModule/utilities/mappers/notification/notificationMapper.dto";
@@ -72,6 +73,7 @@ const router = Router();
 router.post(
     "",
     authMW("private"),
+    impersonateUserMW,
     rateLimiter({ windowMs: 60000, max: 120 }),
     validateFormZod(listNotificationsFormSchema),
     schemaSanitizer({ model: "notifications", requiredModes: ["read"] }),
