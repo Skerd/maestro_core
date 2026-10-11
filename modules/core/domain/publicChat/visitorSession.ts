@@ -57,8 +57,7 @@ export async function resolveVisitorSession(params: {
     const visitorUser = await userService.findOne({
         _id: new ObjectId(payload.visitorId),
         isVisitor: true,
-        deletedAt: null,
-    }, {languageCode});
+    }, {withDeleted: false, languageCode});
     if (!visitorUser) {
         throw apiValidationException("visitor_session_not_found", "token", null, languageCode);
     }

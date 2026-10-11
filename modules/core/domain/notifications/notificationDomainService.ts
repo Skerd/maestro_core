@@ -67,11 +67,8 @@ export async function createAndPushNotification(
 
     const doc = await notificationService.create(
         {
-            //@ts-expect-error
             receiver,
-            //@ts-expect-error
             sender: sender ?? company,
-            //@ts-expect-error
             company,
             code,
             description,

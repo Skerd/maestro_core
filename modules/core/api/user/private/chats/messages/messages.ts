@@ -126,7 +126,6 @@ async function ensureLastReadMessageTimestamp(params: {
         await lastChannelReadMessageService.create(
             {
                 user,
-                //@ts-expect-error
                 channel: channelId,
                 time
             },

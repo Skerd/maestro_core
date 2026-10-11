@@ -181,9 +181,9 @@ export class CronJobActions {
         const opts = {logger: params.logger, languageCode: params.languageCode};
         const [totalJobs, activeJobs, pausedJobs, runningExecutions, failedLast24h, successLast24h, agg] =
             await Promise.all([
-                cronJobService.count({...companyFilter, deletedAt: null}, opts),
-                cronJobService.count({...companyFilter, active: true, pausedAt: null, deletedAt: null}, opts),
-                cronJobService.count({...companyFilter, pausedAt: {$exists: true}, deletedAt: null}, opts),
+                cronJobService.count({...companyFilter}, {...opts, withDeleted: false}),
+                cronJobService.count({...companyFilter, active: true, pausedAt: null}, {...opts, withDeleted: false}),
+                cronJobService.count({...companyFilter, pausedAt: {$exists: true}}, {...opts, withDeleted: false}),
                 cronExecutionService.count({...executionCompany, status: "running"}, opts),
                 cronExecutionService.count({...executionCompany, status: "failed", startedAt: {$gte: since}}, opts),
                 cronExecutionService.count({...executionCompany, status: "success", startedAt: {$gte: since}}, opts),

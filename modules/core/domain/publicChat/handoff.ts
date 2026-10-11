@@ -125,7 +125,6 @@ export async function resolvePublicChatAgentIds(
             companies: companyId,
             isBot: {$ne: true},
             isVisitor: {$ne: true},
-            deletedAt: null,
             roles: {
                 $elemMatch: {
                     company: companyId,
@@ -133,7 +132,7 @@ export async function resolvePublicChatAgentIds(
                     roles: {$in: roleIds},
                 },
             },
-        }).select("_id");
+        }).noDeleted().select("_id");
 
         return agents.map((agent) => agent._id.toString());
     }

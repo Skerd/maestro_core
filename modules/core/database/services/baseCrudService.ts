@@ -44,8 +44,20 @@ export interface PaginationOptions {
 }
 
 /**
- * Paginated result
+ * Insert payload for a document `T`.
+ * Fields typed as populated documents are refs: a write may pass the stored ObjectId.
  */
+export type CreateInput<T> = {
+    [K in keyof T]?: CreateInputValue<T[K]>;
+};
+
+type CreateInputValue<V> =
+    [V] extends [ObjectId] ? V :
+    [NonNullable<V>] extends [readonly (infer E)[]] ? CreateInputValue<E>[] :
+    [NonNullable<V>] extends [Document] ? ObjectId | NonNullable<V> :
+    V;
+
+/** Paginated result */
 export interface PaginatedResult<T> {
     data: T[];
     total: number;
@@ -132,7 +144,7 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
      * ```
      */
     async create(
-        data: Partial<T>,
+        data: CreateInput<T>,
         options: CrudOptions = {}
     ): Promise<T> {
         const { session, logger, languageCode, timeOperations = true, auditUserId } = options;
@@ -189,7 +201,7 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
      * @returns Array of created documents
      */
     async createMany(
-        dataArray: Partial<T>[],
+        dataArray: CreateInput<T>[],
         options: CrudOptions = {}
     ): Promise<T[]> {
         const { session, logger, timeOperations = true, auditUserId } = options;
@@ -722,7 +734,13 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
                 updateOptions.session = session;
             }
 
-            const result = await this.model.updateOne(query, update, updateOptions).exec();
+            let mongooseQuery: any = this.model.updateOne(query, update, updateOptions);
+            if (options.withDeleted === true && typeof mongooseQuery.withDeleted === "function") {
+                mongooseQuery = mongooseQuery.withDeleted();
+            } else if (options.withDeleted === false && typeof mongooseQuery.noDeleted === "function") {
+                mongooseQuery = mongooseQuery.noDeleted();
+            }
+            const result = await mongooseQuery.exec();
             return {
                 matchedCount: result.matchedCount,
                 modifiedCount: result.modifiedCount
@@ -762,7 +780,13 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
                 updateOptions.session = session;
             }
 
-            const result = await this.model.updateMany(query, update, updateOptions).exec();
+            let mongooseQuery: any = this.model.updateMany(query, update, updateOptions);
+            if (options.withDeleted === true && typeof mongooseQuery.withDeleted === "function") {
+                mongooseQuery = mongooseQuery.withDeleted();
+            } else if (options.withDeleted === false && typeof mongooseQuery.noDeleted === "function") {
+                mongooseQuery = mongooseQuery.noDeleted();
+            }
+            const result = await mongooseQuery.exec();
             return {
                 matchedCount: result.matchedCount,
                 modifiedCount: result.modifiedCount
@@ -1232,10 +1256,15 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
         pipeline: any[],
         options: CrudOptions = {}
     ): Promise<any[]> {
-        const { session, logger, timeOperations = true } = options;
+        const { session, logger, timeOperations = true, withDeleted } = options;
 
         const operation = async () => {
-            let aggregation = this.model.aggregate(pipeline);
+            // Soft-delete query middleware does not run on aggregation pipelines.
+            // withDeleted: false is the same force-exclude as Query.noDeleted().
+            const stages = withDeleted === false
+                ? [{ $match: { deletedAt: null } }, ...pipeline]
+                : pipeline;
+            let aggregation = this.model.aggregate(stages);
             
             if (session) {
                 aggregation = aggregation.session(session);

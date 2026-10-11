@@ -50,6 +50,20 @@ export function dateToISOString(date: Date | string | null | undefined): string 
     return date.toISOString();
 }
 
+/**
+ * Stored ObjectId or a populated document → the ObjectId.
+ * Returns undefined when the value is missing or not an id.
+ */
+export function nestedEntityToRef(value: unknown): ObjectId | undefined {
+    if (value instanceof ObjectId) return value;
+    if (value != null && typeof value === "object" && "_id" in value) {
+        const nested = (value as {_id?: unknown})._id;
+        if (nested != null && nested !== value) return nestedEntityToRef(nested);
+    }
+    const hex = objectIdHex(value);
+    return hex ? new ObjectId(hex) : undefined;
+}
+
 function objectIdHex(value: unknown): string | undefined {
     if (value == null) return undefined;
     if (typeof value === "string") {

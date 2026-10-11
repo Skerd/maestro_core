@@ -120,8 +120,7 @@ async function loadActiveServers(companyId: ObjectId | string): Promise<ISmtpSer
     const servers = await SmtpServer.find({
         company: new ObjectId(key),
         active: true,
-        deletedAt: null,
-    })
+    }).noDeleted()
         .sort({sequence: 1, name: 1})
         .lean<ISmtpServer[]>();
 

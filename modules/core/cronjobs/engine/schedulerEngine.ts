@@ -81,9 +81,8 @@ export class SchedulerEngine {
         const dueJobs = await CronJobModel.find({
             active: true,
             pausedAt: null,
-            deletedAt: null,
             nextRunAt: {$lte: now},
-        })
+        }).noDeleted()
             .sort({priority: -1, nextRunAt: 1})
             .limit(CRON.SCHEDULER_BATCH_SIZE)
             .lean<ICronJob[]>();
@@ -149,9 +148,8 @@ export class SchedulerEngine {
 
         const orphaned = await CronJobModel.find({
             active: true,
-            deletedAt: null,
             $or: [{nextRunAt: null}, {nextRunAt: {$exists: false}}],
-        }).limit(50);
+        }).noDeleted().limit(50);
 
         for (const job of orphaned) {
             const next = computeNextRunAt(job, new Date());

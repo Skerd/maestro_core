@@ -13,7 +13,7 @@ import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/ds
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collections";
-import {BaseCrudService} from "@coreModule/database/services/baseCrudService";
+import {BaseCrudService, type CreateInput} from "@coreModule/database/services/baseCrudService";
 import {assertCanDelete} from "@coreModule/database/relationsRegistry";
 import {escapeRegex} from "@coreModule/utilities/helpers";
 import {DeletedDataReadFields, SanitizedFields, UnSanitizedFields} from "armonia/src/modules/core/types";
@@ -140,7 +140,6 @@ export interface CrudRouterConfig<
 
     /**
      * Maps documents to `{ value, label }` pairs for dropdown selects.
-     * The select route filters documents by `selectSearchField` (default "name").
      */
     toSelect: (docs: T[]) => ApiSelectDatum[];
 
@@ -166,7 +165,8 @@ export interface CrudRouterConfig<
     ) => Record<string, any> | Promise<Record<string, any>>;
 
     /**
-     * Field name searched in the select route (case-insensitive regex).
+     * Document field matched by the select search query (case-insensitive regex).
+     * The query string itself always comes from body `name` (ApiSelect / validateSelectForm).
      * @default "name"
      */
     selectSearchField?: string;
@@ -407,7 +407,10 @@ export function createCrudRouter<
             }
 
             const {logger, languageCode, actionUserCtx, company, dslFilterQuery} = params;
-            const name: string | undefined = params[selectSearchField];
+            // Canonical search key is body `name` (validateSelectForm + ApiSelect). Apply it to
+            // `selectSearchField` on the document — do not read params[selectSearchField], or
+            // entities with title/sku/orderNumber never filter when the client posts `name`.
+            const name: string | undefined = params.name;
 
             logger.start(`Fetching ${entityName} for select...`);
 
@@ -534,7 +537,7 @@ export function createCrudRouter<
                 ? createData
                 : {...createData, company};
             const created = await service.create(
-                createPayload as unknown as Partial<T>,
+                createPayload as unknown as CreateInput<T>,
                 {session, logger, languageCode, auditUserId: actionUserCtx.userId},
             );
 

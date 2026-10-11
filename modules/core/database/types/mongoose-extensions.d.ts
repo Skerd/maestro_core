@@ -140,5 +140,15 @@ declare module "mongoose" {
             permissions?: FieldPermissions;
         };
     }
+
+    /**
+     * Query helpers added by softDeletePlugin.
+     * `noDeleted()` is what `withDeleted: false` calls on BaseCrudService.
+     */
+    interface Query<ResultType, DocType, THelpers = {}, RawDocType = DocType> {
+        noDeleted(): this;
+        withDeleted(): this;
+        onlyDeleted(): this;
+    }
 }
 
