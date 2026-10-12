@@ -5,7 +5,7 @@
  * Supports transactions, timing, and consistent error handling.
  */
 
-import {ClientSession, Document, FilterQuery, Model, QueryOptions, UpdateQuery} from 'mongoose';
+import {ClientSession, Document, Error as MongooseError, FilterQuery, Model, QueryOptions, UpdateQuery} from 'mongoose';
 import {ObjectId} from 'mongodb';
 import {performance} from 'perf_hooks';
 import {serverLogger} from '@coreModule/loggers/serverLog';
@@ -13,6 +13,7 @@ import {timeFunction} from '@coreModule/utilities/timing/functionTimer';
 import {apiValidationException} from 'armonia/src/modules/core/helpers/exceptions';
 import {CONSTANTS} from "@coreModule/environment";
 import {ActionException} from "armonia/src/modules/core/types";
+import {auditOperatorUpdate} from "@coreModule/database/plugins/auditPlugin";
 
 /**
  * CRUD options
@@ -163,16 +164,7 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
                 }
                 return await doc.save({session});
             } catch (error: any) {
-                if (error.code === 11000) {
-                    // Duplicate key error
-                    throw apiValidationException(
-                        `${lowerFirst(this.modelName)}_already_exists`,
-                        null,
-                        null,
-                        languageCode || this.defaultLanguageCode
-                    );
-                }
-                throw error;
+                throw this.toWriteError(error, languageCode);
             }
         };
 
@@ -608,6 +600,23 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
     }
 
     /**
+     * Duplicate keys and values the schema rejects become 400s the client can
+     * show (`<model>_already_exists`, `field_value_invalid` naming the field)
+     * instead of 500s. Anything else passes through.
+     */
+    private toWriteError(error: unknown, languageCode?: string): unknown {
+        const lang = languageCode || this.defaultLanguageCode;
+        if ((error as {code?: number})?.code === 11000) {
+            return apiValidationException(`${lowerFirst(this.modelName)}_already_exists`, null, null, lang);
+        }
+        if (error instanceof MongooseError.ValidationError || error instanceof MongooseError.CastError) {
+            const path = error instanceof MongooseError.CastError ? error.path : Object.keys(error.errors)[0] ?? "";
+            return apiValidationException("field_value_invalid", null, null, lang, [path]);
+        }
+        return error;
+    }
+
+    /**
      * Update a document by ID
      * 
      * @param id - Document ID
@@ -623,6 +632,14 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
         const { session, logger, returnNew = true, timeOperations = true, auditUserId } = options;
 
         const operation = async () => {
+            try {
+                return await write();
+            } catch (error: any) {
+                throw this.toWriteError(error, options.languageCode);
+            }
+        };
+
+        const write = async () => {
             // If auditUserId is provided, use find + save to trigger audit plugin
             // Otherwise use findByIdAndUpdate for better performance
             if (auditUserId) {
@@ -633,27 +650,24 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
                 // Check if update contains MongoDB operators (e.g., $set, $addToSet, $push)
                 const hasOperators = Object.keys(update).some(key => key.startsWith('$'));
                 if (hasOperators) {
-                    // LIMITATION: MongoDB operators ($addToSet, $push, etc.) cannot be easily
-                    // applied to document instances for audit logging. We use updateOne which
-                    // bypasses Mongoose middleware (including audit plugin).
-                    // For full audit support with operators, consider using direct field updates
-                    // or manually creating audit log entries after the update.
-                    if (logger) {
-                        logger.warn?.(
-                            `updateById with operators and auditUserId: Audit logging is limited for operator-based updates. ` +
-                            `Consider using direct field updates for full audit support.`
-                        );
-                    }
-                    // Use updateOne for operators (bypasses audit, but necessary for operators)
-                    // Extract arrayFilters from options if present
-                    const updateOptions: any = { session };
+                    // Operators can't be applied to a document instance, so the update goes
+                    // through updateOne: with update validators (they check only the changed
+                    // paths) and an audit entry diffed from the document loaded above.
+                    const updateOptions: Record<string, unknown> = { session, runValidators: true };
                     if ((options as any).arrayFilters) {
                         updateOptions.arrayFilters = (options as any).arrayFilters;
                     }
+                    const before = doc.toObject({ depopulate: true });
                     await this.model.updateOne({ _id: id }, update, updateOptions);
-                    // Reload document to return updated state
                     const updatedDoc = await this.model.findById(id).session(session || null);
-                    return returnNew ? updatedDoc : await this.model.findById(id).session(session || null);
+                    await auditOperatorUpdate(
+                        this.model,
+                        before,
+                        updatedDoc?.toObject({ depopulate: true }),
+                        typeof auditUserId === 'string' ? new ObjectId(auditUserId) : auditUserId,
+                        session,
+                    );
+                    return returnNew ? updatedDoc : doc;
                 } else {
                     // Apply update to document directly (no operators) - full audit support
                     Object.assign(doc, update);
@@ -664,7 +678,7 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
                     return returnNew ? doc : await this.model.findById(id).session(session || null);
                 }
             } else {
-                const queryOptions: QueryOptions = { new: returnNew, ...options };
+                const queryOptions: QueryOptions = { new: returnNew, runValidators: true, ...options };
                 if (session) {
                     queryOptions.session = session;
                 }

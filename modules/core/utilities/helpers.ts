@@ -54,3 +54,10 @@ export function isPlainObject(v: any): v is Record<string, any> {
 export function escapeRegex(str: string): string {
     return str.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }
+
+/** Visible label prefix for seeded demo entity names/titles. */
+export const DEMO_NAME_PREFIX = "[DEMO]";
+
+export function demoName(name: string): string {
+    return `${name} ${DEMO_NAME_PREFIX}`;
+}

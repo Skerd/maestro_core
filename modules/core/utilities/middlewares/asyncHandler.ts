@@ -2,13 +2,39 @@ import {NextFunction, Request, Response} from 'express';
 import {ClientSession} from 'mongoose';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {getGridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
+import {flushAfterCommitTasks} from '@coreModule/utilities/middlewares/transactionUtils';
+
+/** Attempts per request before a transient transaction error is passed on. */
+const MAX_TRANSACTION_ATTEMPTS = 3;
+
+/** MongoDB labels errors that are safe to retry (write conflicts, unknown commit outcomes). */
+function hasErrorLabel(error: unknown, label: "TransientTransactionError" | "UnknownTransactionCommitResult"): boolean {
+    const labelled = error as {hasErrorLabel?: (label: string) => boolean} | null;
+    return typeof labelled?.hasErrorLabel === "function" && labelled.hasErrorLabel(label);
+}
+
+/** Commits, retrying while the server can't say whether the commit happened (committing twice is safe). */
+async function commitWithRetry(session: ClientSession): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+        try {
+            await session.commitTransaction();
+            return;
+        } catch (error) {
+            if (attempt >= MAX_TRANSACTION_ATTEMPTS || !hasErrorLabel(error, "UnknownTransactionCommitResult")) throw error;
+        }
+    }
+}
 
 /**
  * Async Handler Middleware
  * 
  * Wraps async route handlers with error handling and transaction support.
  * If a transaction session exists (from transactionHandler), it will automatically
- * commit on success or abort on error.
+ * commit on success or abort on error. A transient transaction error (e.g. a
+ * write conflict with a concurrent request) re-runs the handler in a fresh
+ * transaction, up to MAX_TRANSACTION_ATTEMPTS times; work queued with
+ * `runAfterCommit` by a failed attempt is dropped. Handlers must therefore be
+ * safe to replay: gateway calls inside them carry idempotency keys.
  * 
  * @param fn - The async handler function
  * @param notify - Optional notification flag (reserved for future use)
@@ -22,15 +48,31 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
 
         try {
 
-            // Execute the handler function
-            let returnThis: any = await fn(req.body, req.params, req, res);
+            // Execute the handler function, replaying it after a transient transaction error
+            let returnThis: any;
+            for (let attempt = 1; ; attempt++) {
+                try {
+                    returnThis = await fn(req.body, req.params, req, res);
+                    break;
+                } catch (error) {
+                    if (!session?.inTransaction() || res.headersSent || attempt >= MAX_TRANSACTION_ATTEMPTS
+                        || !hasErrorLabel(error, "TransientTransactionError")) {
+                        throw error;
+                    }
+                    logger.warn(`Transient transaction error, retrying (attempt ${attempt + 1}/${MAX_TRANSACTION_ATTEMPTS})`);
+                    await session.abortTransaction();
+                    await flushAfterCommitTasks(session, false, () => undefined);
+                    session.startTransaction();
+                }
+            }
 
             // If a transaction exists and is still active, commit it
             if (session && session.inTransaction()) {
                 try {
                     // logger.debug("Committing transaction...");
-                    await session.commitTransaction();
+                    await commitWithRetry(session);
                     // logger.debug("Transaction committed successfully");
+                    await flushAfterCommitTasks(session, true, error => logger.err("After-commit task failed", error));
                 } catch (commitError: any) {
                     logger.err("Error committing transaction", commitError);
                     // If the commit fails: clean up GridFS then abort
@@ -51,6 +93,7 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
                     } catch (abortError: any) {
                         logger.err("Error aborting transaction after commit failure", abortError);
                     }
+                    await flushAfterCommitTasks(session, false, () => undefined);
                     throw commitError;
                 }
             }
@@ -87,6 +130,7 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
                 } catch (abortError: any) {
                     logger.err("Error aborting transaction", abortError);
                 }
+                await flushAfterCommitTasks(session, false, () => undefined);
             }
 
             // Pass error to error handler

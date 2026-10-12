@@ -7,51 +7,18 @@ export const defaultSysUsers: any[] = [
         username: "echo@echo.com",
         surname: "silence",
         name: "echo",
-        password: "EchoPronix@10",
+        password: "echo",
         timezone: "Europe/Berlin",
         isMainUser: true
     },
     {
-        username: "almir@leka.com",
-        surname: "Leka",
-        name: "Almir",
+        username: "user@test.com",
+        surname: "Test",
+        name: "User",
         password: "1234",
         timezone: "Europe/Berlin",
         phoneNumber: "+470000000000"
-    },
-    {
-        username: "skerd@xhafa.com",
-        surname: "Xhafa",
-        name: "Skerd",
-        password: "1234",
-        timezone: "Europe/Berlin",
-        phoneNumber: "+355699991919"
-    },
-    {
-        username: "gerald.habilaj@pronix.com",
-        surname: "Habilaj",
-        name: "Gerald",
-        password: "1234",
-        timezone: "Europe/Berlin",
-        phoneNumber: "+355695667885"
-    },
-    {
-        username: "eniada.halebi@pronix.com",
-        surname: "Halebi",
-        name: "Eniada",
-        password: "1234",
-        timezone: "Europe/Berlin",
-        phoneNumber: "+41764370490"
-    },
-    {
-        username: "geraldo.cucaj@pronix.com",
-        surname: "Cucaj",
-        name: "Geraldo",
-        password: "1234",
-        timezone: "Europe/Berlin",
-        phoneNumber: "+355692866216"
-    },
-
+    }
 ];
 
 export async function createUsers(parentLogger?: serverLogger): Promise<void>{

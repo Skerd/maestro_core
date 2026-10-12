@@ -639,9 +639,11 @@ export function createCrudRouter<
             logger.start(`Deleting ${entityName} ${_id}...`);
             SchemaGuard.checkModelPermission(model, "delete", actionUserCtx, languageCode);
 
+            // Live rows only, admins included: deleting an already-deleted row would
+            // rewrite deletedAt / deletedBy and run afterDelete side effects again
             const doc = await service.findOneOrThrow(
                 await docFilterForId(params, _id),
-                {session, logger, languageCode},
+                {session, logger, languageCode, withDeleted: false},
             );
 
             if (config.beforeDelete) {

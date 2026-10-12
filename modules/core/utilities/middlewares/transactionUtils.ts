@@ -274,3 +274,47 @@ export function getTransactionState(params: TransactionEnabledParams): {
     };
 }
 
+/** Work waiting for a session's transaction to commit (see {@link runAfterCommit}). */
+const commitTasks = new WeakMap<ClientSession, (() => Promise<void>)[]>();
+
+/**
+ * Runs `task` only once the session's transaction has committed, or right away
+ * when there is no transaction. Use it for side effects that must not happen
+ * for rolled-back work, such as emails and push notifications.
+ *
+ * Whoever commits flushes the queue with {@link flushAfterCommitTasks}:
+ * `asyncHandler` does so for routes using `transactionHandler`; code that runs
+ * its own `withTransaction` must do the same (dropping at the start of each
+ * attempt, running after it resolves).
+ */
+export async function runAfterCommit(session: ClientSession | null | undefined, task: () => Promise<void>): Promise<void> {
+    if (!session?.inTransaction()) {
+        await task();
+        return;
+    }
+    const tasks = commitTasks.get(session) ?? [];
+    tasks.push(task);
+    commitTasks.set(session, tasks);
+}
+
+/**
+ * Runs (after a commit) or drops (after an abort, or before a retry) the tasks
+ * queued with {@link runAfterCommit}. A failing task is logged, never thrown:
+ * the transaction is already settled.
+ */
+export async function flushAfterCommitTasks(
+    session: ClientSession,
+    committed: boolean,
+    onError: (error: unknown) => void,
+): Promise<void> {
+    const tasks = commitTasks.get(session) ?? [];
+    commitTasks.delete(session);
+    if (!committed) return;
+    for (const task of tasks) {
+        try {
+            await task();
+        } catch (error) {
+            onError(error);
+        }
+    }
+}

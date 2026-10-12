@@ -112,8 +112,10 @@ export async function assertCanDelete(
     for (const rel of relations) {
         if (!rel.required) continue;
 
+        // Only live references block, whoever asks (the soft-delete plugin would let admins count deleted ones)
+        const liveOnly = rel.refModel.schema.path("deletedAt") ? {deletedAt: null} : {};
         const count: number = await rel.refModel
-            .countDocuments({[rel.field]: id})
+            .countDocuments({[rel.field]: id, ...liveOnly})
             .session(session ?? null);
 
         if (count > 0) {

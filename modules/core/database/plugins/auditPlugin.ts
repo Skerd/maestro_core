@@ -1,4 +1,4 @@
-import {Model, Schema, Types} from "mongoose";
+import {ClientSession, Model, Schema, Types} from "mongoose";
 import AuditLog, {AuditAction, AuditDiffEntry} from "@coreModule/database/schemas/auditLog/auditLog";
 import {ObjectId} from "mongodb";
 import {getLogger} from "@coreModule/loggers/serverLog";
@@ -40,7 +40,42 @@ const buildDiff = (previous: LeanDoc, current: LeanDoc): Record<string, AuditDif
     return diff;
 };
 
+const auditedSchemas = new WeakSet<Schema>();
+
+/**
+ * Audit entry for an update that bypassed `save` (operator updates in
+ * `BaseCrudService.updateById`): the same UPDATE diff the save hook records,
+ * written in the caller's transaction. No-op for models without this plugin.
+ */
+export async function auditOperatorUpdate(
+    model: Model<any>,
+    previous: LeanDoc,
+    current: LeanDoc,
+    actorId: ObjectId | undefined,
+    session?: ClientSession | null,
+): Promise<void> {
+    if (!auditedSchemas.has(model.schema) || !current) return;
+    const diff = buildDiff(previous, current);
+    // `updatedAt` always moves; on its own it isn't a change worth an entry
+    if (Object.keys(diff).every(key => key === "updatedAt")) return;
+    const companyId = current.company ?? previous?.company;
+    if (!companyId) {
+        auditLogger.warn(`Skipping audit log for ${model.collection.name} ${current._id}: no company on document`);
+        return;
+    }
+    await AuditLog.create([{
+        documentId: current._id as Types.ObjectId,
+        collectionName: model.collection.name,
+        organizationId: current.organizationId,
+        actorId,
+        action: "UPDATE" as AuditAction,
+        diff,
+        company: companyId,
+    }], {session: session ?? undefined});
+}
+
 export const auditPlugin = (schema: Schema): void => {
+    auditedSchemas.add(schema);
     schema.set("timestamps", true);
 
     schema.pre("save", async function (next) {

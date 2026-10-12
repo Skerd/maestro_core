@@ -71,11 +71,21 @@ export async function requireCompanyAdmin(ctx: AssistantToolContext): Promise<Ac
     }
 }
 
+/**
+ * Admins, or callers holding `permissionTag` (e.g. "productorders[read:grandTotal]"),
+ * may proceed — the same read permission the panel requires for that data.
+ * Fails closed exactly like {@link requireCompanyAdmin}.
+ */
+export async function requirePermission(ctx: AssistantToolContext, permissionTag: string): Promise<AccessDecision> {
+    const decision = await requireCompanyAdmin(ctx);
+    return {...decision, allowed: decision.isAdmin || decision.permissions.includes(permissionTag)};
+}
+
 /** Build the standard refusal payload for a tool the caller may not use. */
 export function accessDenied(what: string): AccessDeniedResult {
     return {
         permissionDenied: true,
-        message: `You need administrator access in this company to see ${what}. ` +
+        message: `You don't have access to ${what} in this company. ` +
             `Ask a company administrator if you need this information.`
     };
 }
