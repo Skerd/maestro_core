@@ -43,7 +43,7 @@ import {MACHINE_TO_MACHINE_SECRET, WEBSOCKET} from "@coreModule/environment";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {addUserConnection, removeUserConnection,} from "./redisConnectionManager";
-import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
+import {WebSocketMessage, WebSocketMessageCodes, WebSocketPush} from "armonia/src/modules/core/websocket/types";
 import {applyMessageReceipts} from "@coreModule/domain/messages/applyMessageReceipts";
 import {validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
 import {webSocketCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
@@ -475,9 +475,11 @@ async function webSocketOnMessage<T>(message: string, ws: ClientWebSocket){
                 const receivedMessage: WebSocketMessage<{machineName: string}> = JSON.parse(message.toString());
                 logger.debug(`[${receivedMessage.payload.machineName}] pinged and is alive`);
             }
-            else if( Object.values(WebSocketMessageCodes).includes(code)  ){
-                const receivedMessage: WebSocketMessage<T> = JSON.parse(message.toString());
+            else {
+                // Trusted machine: forward core codes and feature-module codes.
+                const receivedMessage: WebSocketPush<T> = JSON.parse(message.toString());
                 const {code, payload, userIds} = receivedMessage;
+                if (!Array.isArray(userIds)) return;
                 for( let userId of userIds ){
                     let userWebSockets = AllUsersWebSockets[userId] ?? [];
                     for( let userWebSocket of userWebSockets ){
