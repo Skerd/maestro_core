@@ -363,11 +363,9 @@ const UserSchema = new Schema<IUser>(
             default: false,
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }

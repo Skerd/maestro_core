@@ -64,11 +64,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             },
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -84,11 +82,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             },
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -99,11 +95,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -114,11 +108,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -133,11 +125,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             },
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -152,11 +142,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             },
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -167,11 +155,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -183,11 +169,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -205,11 +189,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
                 },},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -220,11 +202,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -236,11 +216,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -258,11 +236,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             },
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }
@@ -277,11 +253,9 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             },
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {
-                    publicRead: true,
                     write: "no-permission"
                 }
             }

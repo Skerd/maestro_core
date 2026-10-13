@@ -12,6 +12,8 @@
  */
 
 import mongoose, {Schema, SchemaTypes} from "mongoose";
+import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
+import {addModelData} from "@coreModule/database/collections";
 
 /** TTL: 365 days for daily rollups. */
 const TTL_SECONDS = 365 * 24 * 60 * 60;
@@ -70,4 +72,6 @@ const ServerPerformance1d = mongoose.model<IServerPerformance1d>(
     ServerPerformance1dSchema,
     "serverPerformance1d"
 );
+normalizeSchemaPermissions(ServerPerformance1d);
+addModelData(ServerPerformance1d);
 export default ServerPerformance1d;

@@ -15,7 +15,10 @@
  * @module endpoints/auxiliary/private/stats
  */
 
-import {Request, Response, Router} from "express";
+import {NextFunction, Request, Response, Router} from "express";
+import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import SchemaGuard from "@coreModule/database/security/schemaGuard";
+import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {AllRoomsUsers, AllUsersWebSockets} from "@coreModule/websocket/webSocket";
 import {getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
@@ -39,28 +42,44 @@ const TOP_N = 20;
 
 type HistoricalWindow = "1h" | "24h" | "7d" | "30d";
 
-router.get("", async (req: Request, res: Response): Promise<void> => {
+function assertCanReadServerPerformance(req: Request, model: typeof ServerPerformance1m | typeof ServerPerformance1h | typeof ServerPerformance1d): void {
+    const {actionUserCtx, languageCode} = req.body as AuthenticatedMWType;
+    SchemaGuard.sanitizeFields(model, {count: {}}, "read", actionUserCtx, languageCode);
+}
+
+function modelForWindow(window: HistoricalWindow): typeof ServerPerformance1h | typeof ServerPerformance1d {
+    return window === "7d" || window === "30d" ? ServerPerformance1d : ServerPerformance1h;
+}
+
+router.get("", authMW("private"), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
         const window = parseWindow(req.query.window);
         const page = clampInt(req.query.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE);
         const limit = clampInt(req.query.limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
-
         const webSocketStats = computeWebSocketStats();
 
         if (window === "live") {
+            assertCanReadServerPerformance(req, ServerPerformance1m);
             const live = await readLiveSnapshot();
             if (live) {
                 res.status(200).json(buildResponse(live, webSocketStats, page, limit));
                 return;
             }
-            // Snapshot key absent (WS process restarting?) — fall through to historical 1h aggregate as a safe alternative.
+            // Snapshot key absent (WS process restarting?) — fall through to the hourly rollup.
         }
 
-        const aggregated = await readHistoricalAggregate(window === "live" ? "1h" : window);
+        const historicalWindow = window === "live" ? "1h" : window;
+        assertCanReadServerPerformance(req, modelForWindow(historicalWindow));
+        const aggregated = await readHistoricalAggregate(historicalWindow);
         res.status(200).json(buildResponse(aggregated, webSocketStats, page, limit));
-    }
-    catch (error: any) {
-        logger.err(`Failed to get stats: ${error?.message}`, { error: error?.message, stack: error?.stack });
+    } catch (error: unknown) {
+        const status = error && typeof error === "object" && "status" in error ? error.status : undefined;
+        if (typeof status === "number" && status < 500) {
+            next(error);
+            return;
+        }
+        const message = error instanceof Error ? error.message : "Failed to retrieve stats";
+        logger.err(`Failed to get stats: ${message}`, { error: message });
         res.status(500).json({
             error: "Failed to retrieve stats",
             message: "An error occurred while collecting statistics. Please try again later."

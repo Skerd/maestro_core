@@ -59,22 +59,12 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 dtoPath: "user",
                 refDisplayKey: ["name", "surname"],
             },
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         time: {
             type: SchemaTypes.Date,
             required: true,
             default: () => new Date(),
             dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         status: {
             type: SchemaTypes.String,
@@ -84,10 +74,6 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                 enumTones: {
                     success:   "success",
                     failure:   "danger",
-                },},
-            permissions: {
-                self: {
-                    publicRead: true,
                 },
             },
         },
@@ -95,78 +81,36 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
             type: SchemaTypes.Boolean,
             required: true,
             default: false,
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         reason: {
             type: SchemaTypes.String,
             required: false,
             default: null,
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         device: {
             type: SchemaTypes.String,
             required: true,
             default: "",
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         os: {
             type: SchemaTypes.String,
             required: true,
             default: "",
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         browser: {
             type: SchemaTypes.String,
             required: true,
             default: "",
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         userAgent: {
             type: SchemaTypes.String,
             required: true,
             default: "",
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         ip: {
             type: SchemaTypes.String,
             required: true,
             default: "",
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
         geolocation: {
             type: {
@@ -174,100 +118,50 @@ const LoginHistorySchema = new Schema<ILoginHistory>(
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 hostname: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 city: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 region: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 country: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 loc: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 org: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 postal: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
                 timezone: {
                     type: SchemaTypes.String,
                     default: "",
                     dynamicTableConfiguration: geoItemConfig,
-                    permissions: {
-                        self: {
-                            publicRead: true,
-                        },
-                    },
                 },
             },
             default: {},
             dynamicTableConfiguration: geoColumnConfig,
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
     },
     {

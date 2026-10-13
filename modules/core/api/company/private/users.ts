@@ -14,7 +14,7 @@
  * @module f_endpoints/core/company/private/users
  */
 
-import {Router} from "express";
+import {NextFunction, Request, Response, Router} from "express";
 import {FilterQuery} from "mongoose";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
@@ -207,6 +207,14 @@ function buildNewCompanyUserPayload(params: {
 
 const router = Router();
 
+/** The company user directory is other people's records. Sanitizers after this must use the others grant. */
+function companyUsersListAsOthers(req: Request, _res: Response, next: NextFunction) {
+    if (req.body?.actionUserCtx) {
+        req.body.actionUserCtx.isSelf = false;
+    }
+    next();
+}
+
 /**
  * POST /api/company/users/select
  *
@@ -337,6 +345,7 @@ router.post(
     authMW("private"),
     rateLimiter({ windowMs: 60000, max: 80 }),
     validateFormZod(getAllUsersFormSchema),
+    companyUsersListAsOthers,
     schemaSanitizer({ model: "users", requiredModes: ["read"] }),
     dslFilterMW({ model: "users" }),
     asyncHandler(getCompanyUsers)
@@ -350,10 +359,9 @@ type GetCompanyUsersType = AuthenticatedMWType & SchemaSanitizerMWType & DslFilt
  * @remarks Uses params.sanitizedReadFields from schemaSanitizer; merges params.dslFilterQuery into base filter
  */
 async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): Promise<TableResponse<CompanyUserType>> {
-    const { offset, limit, sortBy, sortOrder, administration, sanitizedReadFields, dslFilterQuery, logger, userInfo, company, languageCode, actionUserCtx } = params;
+    const { offset, limit, sortBy, sortOrder, administration, sanitizedReadFields, dslFilterQuery, logger, userInfo, company, languageCode } = params;
 
     logger.start(`Trying to get company users`);
-    actionUserCtx.isSelf = false;
 
     const populate = SchemaGuard.generatePopulate(sanitizedReadFields, User.schema);
 

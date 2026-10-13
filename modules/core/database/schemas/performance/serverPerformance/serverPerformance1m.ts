@@ -16,6 +16,8 @@
  */
 
 import mongoose, {Schema, SchemaTypes} from "mongoose";
+import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
+import {addModelData} from "@coreModule/database/collections";
 
 /** TTL: 7 days for raw 1-minute rollups. */
 const TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -75,4 +77,6 @@ const ServerPerformance1m = mongoose.model<IServerPerformance1m>(
     ServerPerformance1mSchema,
     "serverPerformance1m"
 );
+normalizeSchemaPermissions(ServerPerformance1m);
+addModelData(ServerPerformance1m);
 export default ServerPerformance1m;

@@ -52,61 +52,51 @@ const geolocationItemSchema = {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     hostname: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     city: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     region: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     country: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     loc: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     org: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     postal: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     timezone: {
         type: SchemaTypes.String,
         default: "",
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
     time: {
         type: SchemaTypes.Number,
         default: null,
         dynamicTableConfiguration: geoItemConfig,
-        permissions: {self: {publicRead: true}},
     },
 };
 
@@ -123,7 +113,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             },
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -135,7 +124,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -146,7 +134,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -158,7 +145,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -170,7 +156,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             dynamicTableConfiguration: {},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -181,7 +166,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             dynamicTableConfiguration: geoColumnConfig,
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -192,7 +176,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             dynamicTableConfiguration: {cellType: COLUMN_TYPE.DATETIME},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -206,7 +189,6 @@ const UserSessionSchema = new Schema<IUserSession>(
             dynamicTableConfiguration: {cellType: COLUMN_TYPE.DATETIME},
             permissions: {
                 self: {
-                    publicRead: true,
                     write: "no-permission"
                 },
             },
@@ -214,12 +196,6 @@ const UserSessionSchema = new Schema<IUserSession>(
         isActive: {
             type: SchemaTypes.Boolean,
             default: true,
-            dynamicTableConfiguration: {},
-            permissions: {
-                self: {
-                    publicRead: true,
-                },
-            },
         },
     },
     {

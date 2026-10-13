@@ -153,7 +153,9 @@ router.get(
  * @returns { count } — number of unread notifications
  */
 async function getUnreadCount(params: AuthenticatedMWType): Promise<UnreadNotificationsFormResponseType> {
-    const { logger, userInfo, company, languageCode } = params;
+    const { logger, userInfo, company, languageCode, actionUserCtx } = params;
+
+    SchemaGuard.sanitizeFields(Notification, {status: {}}, "read", actionUserCtx, languageCode);
 
     const unreadNotifications = await notificationService.count(
         {
@@ -203,6 +205,8 @@ async function markNotificationsRead(params: MarkNotificationsReadType & MarkNot
     const { logger, userInfo, company, languageCode, ids, all, actionUserCtx, session } = params;
 
     logger.start(`Marking notifications as read for user ${userInfo._id.toString()}...`);
+
+    SchemaGuard.sanitizeFields(Notification, {readOn: {}}, "write", actionUserCtx, languageCode);
 
     const filter: Record<string, unknown> = {
         receiver: userInfo._id,

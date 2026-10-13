@@ -12,7 +12,10 @@
  * @module endpoints/auxiliary/private/health
  */
 
-import {Request, Response, Router} from "express";
+import {NextFunction, Request, Response, Router} from "express";
+import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import SchemaGuard from "@coreModule/database/security/schemaGuard";
+import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
 import {SERVER} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {getMongoDbHealth} from "@coreModule/connections/connectToMongoDb";
@@ -46,7 +49,18 @@ const logger = getLogger("health_endpoint");
  */
 const LOCAL_FALLBACK_TTL_SECONDS = 1;
 
-router.get("", async (_req: Request, res: Response): Promise<void> => {
+function assertCanReadServerPerformance(req: Request): void {
+    const {actionUserCtx, languageCode} = req.body as AuthenticatedMWType;
+    SchemaGuard.sanitizeFields(ServerPerformance1m, {count: {}}, "read", actionUserCtx, languageCode);
+}
+
+router.get("", authMW("private"), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        assertCanReadServerPerformance(req);
+    } catch (error) {
+        next(error);
+        return;
+    }
     try {
         const cached = await safeGetCachedHealth();
         if (cached) {
@@ -198,7 +212,13 @@ const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "ka
  *  - `from`, `to`: ISO timestamps bounding the query window.
  *  - `series`: one entry per service, each with an array of bucket points.
  */
-router.get("/history", async (req: Request, res: Response): Promise<void> => {
+router.get("/history", authMW("private"), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        assertCanReadServerPerformance(req);
+    } catch (error) {
+        next(error);
+        return;
+    }
     try {
         const windowParam = String(req.query.window || "60m").toLowerCase();
         const definition = HISTORY_WINDOW_DEFINITIONS[windowParam] || HISTORY_WINDOW_DEFINITIONS["60m"];
