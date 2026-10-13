@@ -30,7 +30,9 @@ import {companyService} from "@coreModule/database/schemas/company/company.servi
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ICompany} from "@coreModule/database/schemas/company/company";
+import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import {ServerError} from "armonia/src/modules/core/types";
 import axios from "axios";
 import generator from "generate-password";
 import {thirdPartyLoginFormSchema} from "armonia/src/modules/core/api/user/public/login/thirdPartyLogin.form.validator";
@@ -42,7 +44,6 @@ import {
     ThirdPartyLoginFormResponseType
 } from "armonia/src/modules/core/api/user/public/login/thirdPartyLogin.form.response.type";
 import {AUTHENTICATION} from "@coreModule/environment";
-import qs from "qs";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import path from "path";
@@ -50,6 +51,9 @@ import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
+
+/** Default timezone for new third-party users (aligned with signup). */
+const DEFAULT_NEW_USER_TIMEZONE = "Europe/Tirane";
 
 const router = Router();
 
@@ -432,16 +436,17 @@ async function authenticateWithGoogle(
         throw apiValidationException("google_oauth_config_missing", null, null, languageCode);
     }
 
-    // Exchange authorization code for an access token
+    // Exchange authorization code for an access token. The JSON body already has the
+    // decoded code — decodeURIComponent here throws on a literal "%" in Google's code.
     const tokenResponse = await axios.post(
-        'https://oauth2.googleapis.com/token',
-        qs.stringify({
+        "https://oauth2.googleapis.com/token",
+        new URLSearchParams({
             client_id: CLIENT_ID,
             client_secret: CLIENT_SECRET,
-            code: decodeURIComponent(code),
+            code,
             redirect_uri: REDIRECT_URL,
             grant_type: "authorization_code"
-        }),
+        }).toString(),
         {
             headers: { "Content-Type": "application/x-www-form-urlencoded" }
         }
@@ -472,7 +477,7 @@ async function authenticateWithGoogle(
  */
 async function authenticateWithApple(
     code: string,
-    appleUserData: AppleUserData,
+    appleUserData: AppleUserData | undefined,
     languageCode: string
 ): Promise<{ email: string; name: string; surname: string; sub: string }> {
 
@@ -532,8 +537,8 @@ async function authenticateWithApple(
     const sub = payload.sub;
 
     // Apple ONLY gives name/surname on the first login (frontend must send it)
-    const name = payload.name?.firstName || appleUserData.name.firstName || "";
-    const surname = payload.name?.lastName || appleUserData.name.lastName || "";
+    const name = payload.name?.firstName || appleUserData?.name.firstName || "";
+    const surname = payload.name?.lastName || appleUserData?.name.lastName || "";
 
     return { email, name, surname, sub };
 }
@@ -576,23 +581,18 @@ async function createThirdPartyUser(
         throw apiValidationException("default_sign_up_company_role_not_found", null, null, languageCode);
     }
 
-    // Company role will be embedded in user document
-
-    // Generate user ID first so we can use it for audit logging
     const newUserId = new ObjectId();
 
-    // Create embedded company role object
     const companyRoleData = {
         active: "active",
         unsuccessfulLogins: 0,
         lockedOutUntil: null,
         lastLogin: null,
+        rolesCount: 1,
         roles: [defaultRole._id],
         company: company._id
     };
 
-    // Create user account (active immediately for third-party auth)
-    // Use new user's own ID as actor for audit logging (self-action for account creation)
     const newUser = await userService.create(
         {
             _id: newUserId,
@@ -602,19 +602,26 @@ async function createThirdPartyUser(
             online: false,
             isEmailVerified: true,
             emailVerifiedAt: new Date(),
-
             name: userData.name,
             surname: userData.surname,
-            email: userData.email,
-            verifiedEmail: true,
-            timezone: "Europe/Berlin",
+            fullName: `${userData.name} ${userData.surname}`,
+            timezone: DEFAULT_NEW_USER_TIMEZONE,
             birthday: new Date(),
-            phoneNumber: "+000000000000",
+            phoneNumber: "",
             companies: [company._id],
             roles: [companyRoleData]
         } as any,
         { session, logger, languageCode, auditUserId: newUserId.toString() }
     );
+
+    await ensureAiChannel({
+        userId: newUser._id,
+        companyId: company._id,
+        session,
+        logger,
+        languageCode,
+        auditUserId: newUser._id,
+    });
 
     return newUser;
 }
