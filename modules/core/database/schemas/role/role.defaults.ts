@@ -43,15 +43,6 @@ export const coreDefaultRoles: DefaultRoleDefinition[] = [
         canEdit: true,
         canDelete: false,
     },
-    {
-        name: "Agent",
-        slug: "agent",
-        description: "Legacy placeholder with no permissions. Prefer Sales Agent for the sales pipeline.",
-        isAdmin: false,
-        isSignupDefault: false,
-        canEdit: true,
-        canDelete: false,
-    },
 ];
 
 const registeredPacks: DefaultRoleDefinition[] = [];
