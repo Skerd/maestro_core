@@ -56,19 +56,40 @@ function hostOnly(value: string): string {
     return value.replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
 }
 
+function originBaseUrl(origin: string | undefined, mappedHost: string): string {
+    if (mappedHost) {
+        return mappedHost.replace(/\/+$/, "");
+    }
+    if (!origin) {
+        return "";
+    }
+    if (origin.includes("://")) {
+        return origin.replace(/\/+$/, "");
+    }
+    const host = hostOnly(origin);
+    const scheme = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https";
+    return `${scheme}://${host}`;
+}
+
 /**
- * Public signup/forgot-password emails should deep-link into the public app when
- * the request origin matches `clientHostFor("public")`. Otherwise keep panel URLs.
+ * Public signup/forgot-password emails should deep-link into the SPA that
+ * originated the request: the public app, another client (shop), or the panel.
  */
 function resolveAuthLinkUrl(origin: string | undefined, publicPath: "activate" | "reset-password", code: string): string {
     const publicHost = clientHostFor("public");
     const publicHostOnly = hostOnly(publicHost);
     const originHost = hostOnly(origin ?? "");
     const coreHost = clientHostFor("core");
+    const coreHostOnly = hostOnly(coreHost);
 
     if (originHost && publicHostOnly && originHost === publicHostOnly) {
-        const base = publicHost || (origin?.includes("://") ? origin : `http://${originHost}`);
-        return `${base.replace(/\/+$/, "")}/${publicPath}/${code}`;
+        return `${originBaseUrl(origin, publicHost)}/${publicPath}/${code}`;
+    }
+
+    if (originHost && originHost !== coreHostOnly) {
+        const shopHost = clientHostFor("shop");
+        const mapped = hostOnly(shopHost) === originHost ? shopHost : "";
+        return `${originBaseUrl(origin, mapped)}/${publicPath}/${code}`;
     }
 
     if (publicPath === "activate") {

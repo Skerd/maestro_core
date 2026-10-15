@@ -12,9 +12,11 @@
  * @module resolveCompanyByOrigin
  */
 
+import type {ClientSession} from "mongoose";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import type {serverLogger} from "@coreModule/loggers/serverLog";
 
 /**
  * Resolve the tenant company from a public request's origin.
@@ -50,4 +52,27 @@ export async function resolveCompanyByOrigin(
     }
 
     throw apiValidationException("company_not_found_for_origin", "origin", [normalizedOrigin || origin], languageCode);
+}
+
+/**
+ * Company a public signup should join: the origin tenant when one exists,
+ * otherwise the company flagged `isDefaultForSignUp`.
+ */
+export async function resolveSignupCompany(
+    origin: string,
+    languageCode: string,
+    options: {session?: ClientSession | null; logger?: serverLogger} = {},
+): Promise<ICompany> {
+    try {
+        return await resolveCompanyByOrigin(origin, languageCode);
+    } catch {
+        const company = await companyService.findOne(
+            {isDefaultForSignUp: true},
+            {session: options.session, logger: options.logger, languageCode},
+        );
+        if (!company) {
+            throw apiValidationException("default_sign_up_company_not_found", null, null, languageCode);
+        }
+        return company;
+    }
 }

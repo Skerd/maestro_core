@@ -1,9 +1,10 @@
 /**
- * User signup API – public endpoint for creating new user accounts with default company and role.
+ * User signup API – public endpoint for creating new user accounts with the origin company and role.
  *
  * Mounted under the user public routes (e.g. `/api/user/signup`). Public (no authentication
- * required). Creates user with default company (isDefaultForSignUp) and default role (isSignupDefault),
- * and sends activation email; user must activate before logging in.
+ * required). Creates user on the company resolved from the request origin (fallback:
+ * isDefaultForSignUp) with that company's isSignupDefault role, and sends activation email;
+ * user must activate before logging in.
  * All changes are audited with the new user's own ID (self-action).
  *
  * **Routes:**
@@ -18,8 +19,8 @@ import authMW, {NotAuthenticatedMWType} from "@coreModule/utilities/middlewares/
 import {signupFormSchema} from "armonia/src/modules/core/api/user/public/signUp/signup.form.validator";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {SignUpFormType} from "armonia/src/modules/core/api/user/public/signUp/signup.form.type";
-import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
+import {resolveSignupCompany} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
@@ -76,10 +77,7 @@ async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType
         throw apiValidationException("user_with_same_username_already_exists", null, null, languageCode);
     }
 
-    let company = await companyService.findOne({isDefaultForSignUp: true}, {session, logger, languageCode});
-    if( !company ){
-        throw apiValidationException("default_sign_up_company_not_found", null, null, languageCode);
-    }
+    const company = await resolveSignupCompany(origin, languageCode, {session, logger});
 
     let defaultRole = await roleService.findOne({company: company._id, isSignupDefault: true}, {session, logger, languageCode});
     if( !defaultRole ){

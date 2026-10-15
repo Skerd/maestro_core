@@ -28,6 +28,7 @@ import {
 } from "armonia/src/modules/core/api/user/public/login/login.form.response.type";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
+import {resolveSignupCompany} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
@@ -43,7 +44,7 @@ import {
 import {
     ThirdPartyLoginFormResponseType
 } from "armonia/src/modules/core/api/user/public/login/thirdPartyLogin.form.response.type";
-import {AUTHENTICATION} from "@coreModule/environment";
+import {AUTHENTICATION, clientHostFor} from "@coreModule/environment";
 import fs from "fs";
 import jwt from "jsonwebtoken";
 import path from "path";
@@ -54,6 +55,41 @@ import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/
 
 /** Default timezone for new third-party users (aligned with signup). */
 const DEFAULT_NEW_USER_TIMEZONE = "Europe/Tirane";
+
+/** Host-only compare (authMW stores origin without protocol). */
+function hostOnly(value: string): string {
+    return value.replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
+}
+
+function originBaseUrl(origin: string | undefined, mappedHost: string): string {
+    if (mappedHost) {
+        return mappedHost.replace(/\/+$/, "");
+    }
+    if (!origin) {
+        return "";
+    }
+    if (origin.includes("://")) {
+        return origin.replace(/\/+$/, "");
+    }
+    const host = hostOnly(origin);
+    const scheme = host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https";
+    return `${scheme}://${host}`;
+}
+
+/** Panel uses env redirect URLs; any other origin uses `{origin}/login/{platform}`. */
+function oauthRedirectUri(origin: string | undefined, platform: "google" | "apple"): string {
+    const configured =
+        platform === "google" ? AUTHENTICATION.GOOGLE_REDIRECT_URL : AUTHENTICATION.APPLE_REDIRECT_URL;
+    const originHost = hostOnly(origin ?? "");
+    const coreHost = hostOnly(clientHostFor("core"));
+    if (!originHost || originHost === coreHost) {
+        return configured ?? "";
+    }
+    const shopHost = clientHostFor("shop");
+    const mapped = hostOnly(shopHost) === originHost ? shopHost : "";
+    const base = originBaseUrl(origin, mapped);
+    return base ? `${base}/login/${platform}` : (configured ?? "");
+}
 
 const router = Router();
 
@@ -301,9 +337,9 @@ async function LoginThirdParty(
 
     try {
         if (platform === "google") {
-            userInfo = await authenticateWithGoogle(code, languageCode);
+            userInfo = await authenticateWithGoogle(code, languageCode, origin);
         } else if (platform === "apple") {
-            userInfo = await authenticateWithApple(code, appleUserData, languageCode);
+            userInfo = await authenticateWithApple(code, appleUserData, languageCode, origin);
         } else {
             throw apiValidationException("unsupported_third_party_platform", null, null, languageCode);
         }
@@ -327,7 +363,7 @@ async function LoginThirdParty(
                 name: userInfo.name || "-",
                 surname: userInfo.surname || "-"
             },
-            { session, logger, languageCode }
+            { session, logger, languageCode, origin }
         );
     }
 
@@ -425,12 +461,13 @@ async function LoginThirdParty(
  */
 async function authenticateWithGoogle(
     code: string,
-    languageCode: string
+    languageCode: string,
+    origin: string
 ): Promise<{ email: string; name: string; surname: string; sub: string }> {
 
     const CLIENT_ID = AUTHENTICATION.GOOGLE_CLIENT_ID;
     const CLIENT_SECRET = AUTHENTICATION.GOOGLE_CLIENT_SECRET;
-    const REDIRECT_URL = AUTHENTICATION.GOOGLE_REDIRECT_URL;
+    const REDIRECT_URL = oauthRedirectUri(origin, "google");
 
     if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URL) {
         throw apiValidationException("google_oauth_config_missing", null, null, languageCode);
@@ -478,13 +515,14 @@ async function authenticateWithGoogle(
 async function authenticateWithApple(
     code: string,
     appleUserData: AppleUserData | undefined,
-    languageCode: string
+    languageCode: string,
+    origin: string
 ): Promise<{ email: string; name: string; surname: string; sub: string }> {
 
     const KEY_ID = AUTHENTICATION.APPLE_KEY_ID;
     const CLIENT_ID = AUTHENTICATION.APPLE_CLIENT_ID;         // Services ID
     const APPLE_TEAM_ID = AUTHENTICATION.APPLE_TEAM_ID;
-    const REDIRECT_URL = AUTHENTICATION.APPLE_REDIRECT_URL;
+    const REDIRECT_URL = oauthRedirectUri(origin, "apple");
     const APPLE_PRIVATE_KEY_PATH = AUTHENTICATION.APPLE_PRIVATE_KEY_PATH; // path to .p8 file
 
     if (!CLIENT_ID || !KEY_ID || !APPLE_TEAM_ID || !REDIRECT_URL || !APPLE_PRIVATE_KEY_PATH) {
@@ -557,19 +595,11 @@ async function createThirdPartyUser(
         name: string;
         surname: string;
     },
-    options: { session: any; logger: any; languageCode: string }
+    options: { session: any; logger: any; languageCode: string; origin: string }
 ): Promise<any> {
-    const { session, logger, languageCode } = options;
+    const { session, logger, languageCode, origin } = options;
 
-    // Find default company for signup
-    const company = await companyService.findOne(
-        { isDefaultForSignUp: true },
-        { session, logger, languageCode }
-    );
-
-    if (!company) {
-        throw apiValidationException("default_sign_up_company_not_found", null, null, languageCode);
-    }
+    const company = await resolveSignupCompany(origin, languageCode, {session, logger});
 
     // Find default role
     const defaultRole = await roleService.findOne(

@@ -208,16 +208,34 @@ const UserSchema = new Schema<IUser>(
         username: {
             type: SchemaTypes.String,
             required: true,
-            unique: true
+            unique: true,
+            permissions: {
+                self: {
+                    publicRead: true,
+                    publicWrite: true,
+                },
+            },
         },
         name: {
             type: SchemaTypes.String,
             required: true,
-            trim: true
+            trim: true,
+            permissions: {
+                self: {
+                    publicRead: true,
+                    publicWrite: true,
+                },
+            },
         },
         surname: {
             type: SchemaTypes.String,
-            required: true
+            required: true,
+            permissions: {
+                self: {
+                    publicRead: true,
+                    publicWrite: true,
+                },
+            },
         },
         fullName: {
             type: SchemaTypes.String,
@@ -245,7 +263,13 @@ const UserSchema = new Schema<IUser>(
             }
         },
         phoneNumber: {
-            type: SchemaTypes.String
+            type: SchemaTypes.String,
+            permissions: {
+                self: {
+                    publicRead: true,
+                    publicWrite: true,
+                },
+            },
         },
         telegram: {
             type: {
@@ -299,6 +323,7 @@ const UserSchema = new Schema<IUser>(
             type: SchemaTypes.Boolean,
             permissions: {
                 self: {
+                    publicRead: true,
                     write: "no-permission"
                 },
                 others: {}
@@ -511,6 +536,7 @@ const UserSchema = new Schema<IUser>(
             permissions: {
                 self: {
                     read: "no-permission",
+                    publicWrite: true,
                 },
                 others: {
                     read: "no-permission",
@@ -521,6 +547,12 @@ const UserSchema = new Schema<IUser>(
             type: SchemaTypes.String,
             enum: ["active", "notActive"],
             default: "notActive",
+            permissions: {
+                self: {
+                    publicRead: true,
+                    publicWrite: true,
+                },
+            },
             dynamicTableConfiguration: {
                 enumTones: {
                     active:      "success",
@@ -534,7 +566,7 @@ const UserSchema = new Schema<IUser>(
             permissions: {
                 self: {
                     read: "no-permission",
-                    write: "no-permission"
+                    publicWrite: true,
                 },
                 others: {
                     read: "no-permission",
