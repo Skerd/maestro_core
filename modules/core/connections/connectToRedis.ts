@@ -239,6 +239,7 @@ export async function connectToRedis(parentLogger?: serverLogger): Promise<void>
      * - Socket settings: host, port, timeouts, keep-alive
      * - Reconnection strategy: Exponential backoff (min(retries * 100, 3000)ms)
      * - Authentication: Username and password if provided
+     * - Database: Logical database, so deployments sharing one Redis keep their keys apart
      */
     if (!redisClient) {
         redisClient = createClient({
@@ -250,7 +251,8 @@ export async function connectToRedis(parentLogger?: serverLogger): Promise<void>
                 reconnectStrategy: () => false
             },
             username: REDIS.USERNAME,
-            password: REDIS.PASSWORD
+            password: REDIS.PASSWORD,
+            database: REDIS.DATABASE
         });
     }
 

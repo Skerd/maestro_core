@@ -238,7 +238,7 @@ export const REDIS = {
     ROOT_NODES: process.env.REDIS_ROOT_NODES.split(","),
     USERNAME: process.env.REDIS_USERNAME,
     PASSWORD: process.env.REDIS_PASSWORD,
-    DATABASE: process.env.REDIS_DATABASE,
+    DATABASE: parseInt(process.env.REDIS_DATABASE || "0", 10),
     KEY_PREFIX: process.env.REDIS_KEY_PREFIX,
     CONNECT_TIMEOUT: parseInt(process.env.REDIS_CONNECT_TIMEOUT, 10),
     CONNECTION_TIMER: parseInt(process.env.REDIS_CONNECTION_TIMER, 10),
