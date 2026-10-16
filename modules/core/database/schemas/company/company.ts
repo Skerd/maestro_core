@@ -43,6 +43,11 @@ import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModule
 import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
+import {
+    SHOP_PROVISION_STATUSES,
+    SHOP_SLUG_MAX,
+    type ShopProvisionStatus,
+} from "armonia/src/modules/core/api/company/private/company/shopSlug";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 
 function documentObjectId(ref: unknown): ObjectId | null {
@@ -82,6 +87,18 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     instagram?: string;
     facebook?: string;
     vat: string;
+    shopSlug?: string;
+    shopHost?: string;
+    shopProvision?: {
+        status: ShopProvisionStatus;
+        checkedAt?: Date;
+        lastError?: string;
+        steps: {
+            slug: boolean;
+            domain: boolean;
+            reachable: boolean;
+        };
+    };
     parentCompany?: ICompany;
     isActive: boolean;
     isDefaultForSignUp: boolean;
@@ -218,6 +235,45 @@ const CompanySchema: Schema = new Schema(
             type: SchemaTypes.String,
             required: true,
             unique: true
+        },
+        shopSlug: {
+            type: SchemaTypes.String,
+            trim: true,
+            lowercase: true,
+            maxlength: SHOP_SLUG_MAX,
+        },
+        shopHost: {
+            type: SchemaTypes.String,
+            trim: true,
+            lowercase: true,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        shopProvision: {
+            type: {
+                status: {
+                    type: SchemaTypes.String,
+                    enum: SHOP_PROVISION_STATUSES,
+                },
+                checkedAt: {
+                    type: SchemaTypes.Date,
+                },
+                lastError: {
+                    type: SchemaTypes.String,
+                },
+                steps: {
+                    slug: {type: SchemaTypes.Boolean, default: false},
+                    domain: {type: SchemaTypes.Boolean, default: false},
+                    reachable: {type: SchemaTypes.Boolean, default: false},
+                },
+            },
+            required: false,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
         },
         parentCompany: {
             type: Schema.Types.ObjectId,

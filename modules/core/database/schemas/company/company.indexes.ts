@@ -14,6 +14,8 @@ export function applyCompanyIndexes(CompanySchema: Schema): void {
     CompanySchema.index({"addresses.city": 1});
     CompanySchema.index({"addresses.country": 1});
     CompanySchema.index({allowedDomains: 1});
+    CompanySchema.index({shopSlug: 1}, {unique: true, sparse: true});
+    CompanySchema.index({shopHost: 1}, {sparse: true});
     CompanySchema.index({isActive: 1, isDefaultForSignUp: 1});
     CompanySchema.index({parentCompany: 1, isActive: 1});
     CompanySchema.index({name: 1, isActive: 1});

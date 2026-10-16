@@ -225,6 +225,15 @@ export const CLIENT_SIDE = {
     URLS: parseSinfoniaClientUrls(process.env.SINFONIA_CLIENT_URLS),
 };
 
+/** Zone for company shops (`{slug}.arpeggio.al`). Empty in local dev without a public zone. */
+export const SHOP_ROOT_DOMAIN = (process.env.SHOP_ROOT_DOMAIN || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/^\*\./, "")
+    .replace(/\.$/, "");
+
 /** Browser origin for a deployed Sinfonia app. Falls back to CLIENT_HOST (core/panel). */
 export function clientHostFor(appId: string = "core"): string {
     const mapped = CLIENT_SIDE.URLS[appId];

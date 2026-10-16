@@ -40,6 +40,20 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
         instagram: company.instagram,
         facebook: company.facebook,
         vat: company.vat,
+        shopSlug: company.shopSlug,
+        shopHost: company.shopHost,
+        shopProvision: company.shopProvision
+            ? {
+                status: company.shopProvision.status,
+                checkedAt: company.shopProvision.checkedAt?.toISOString(),
+                lastError: company.shopProvision.lastError,
+                steps: {
+                    slug: company.shopProvision.steps?.slug ?? false,
+                    domain: company.shopProvision.steps?.domain ?? false,
+                    reachable: company.shopProvision.steps?.reachable ?? false,
+                },
+            }
+            : undefined,
         parentCompany: mapSnippet<CompanyBlank>()(company.parentCompany, CompanyBlankSnippet),
         allowedDomains: company.allowedDomains,
         publicAiChat: company.publicAiChat ? {
