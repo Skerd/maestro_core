@@ -92,7 +92,6 @@ Mirrors sinfonia's `VITE_ENABLED_MODULES` for client-side filtering.
 |-------|------|
 | `@coreModule/*` | `modules/core/*` |
 | `@eCommerceModule/*` | `modules/eCommerce/*` |
-| `@eCommerceMarketplaceModule/*` | `modules/eCommerceMarketplace/*` |
 | `@propertyManagement/*` | `modules/propertyManagement/*` |
 | `@propertyDevelopmentModule/*` | `modules/propertyDevelopment/*` |
 | `armonia/*` | `../armonia/*` |
@@ -111,7 +110,6 @@ Mirrors sinfonia's `VITE_ENABLED_MODULES` for client-side filtering.
 Feature modules extend core and are documented separately:
 
 - [`modules/eCommerce`](modules/eCommerce/README.md)
-- [`modules/eCommerceMarketplace`](modules/eCommerceMarketplace/README.md)
 - [`modules/propertyManagement`](modules/propertyManagement/README.md)
 - [`modules/propertyDevelopment`](modules/propertyDevelopment/README.md)
 
