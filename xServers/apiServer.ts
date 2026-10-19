@@ -457,9 +457,9 @@ application.listen(SERVER.PORT, async () => {
     await loadOptionalModuleBootstraps(logger);
     logger.debug("Finished loading enabled module bootstraps!");
 
-    logger.debug(`Starting redis connection supervisor...`);
-    await connectToRedis(logger);
-    logger.debug(`Redis connection supervisor started!`);
+    // logger.debug(`Starting redis connection supervisor...`);
+    // await connectToRedis(logger);
+    // logger.debug(`Redis connection supervisor started!`);
 
     logger.debug(`Hydrating service counters from Redis...`);
     await hydrateAllServiceCounters();
@@ -473,13 +473,13 @@ application.listen(SERVER.PORT, async () => {
     startApiHeartbeat();
     logger.debug("API server heartbeat started!");
 
-    logger.debug(`Starting Kafka connection supervisor...`);
-    await connectToKafka(logger);
-    logger.debug(`Kafka connection supervisor started!`);
+    // logger.debug(`Starting Kafka connection supervisor...`);
+    // await connectToKafka(logger);
+    // logger.debug(`Kafka connection supervisor started!`);
 
-    logger.debug(`Starting websocket connection supervisor...`);
-    await connectToWebSocketServer(logger);
-    logger.debug(`Websocket connection supervisor started!`);
+    // logger.debug(`Starting websocket connection supervisor...`);
+    // await connectToWebSocketServer(logger);
+    // logger.debug(`Websocket connection supervisor started!`);
 
     logger.debug("Registering all notification handlers...");
     await registerAllNotificationHandlers(logger);

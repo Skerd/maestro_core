@@ -4,7 +4,9 @@
  */
 
 import type {ObjectId} from "mongodb";
+import type {CompanyBlank} from "armonia/src/modules/core/dto/company.dto";
 import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
+import {CompanyBlankSnippet} from "@coreModule/database/schemas/company/company.snippets";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 
@@ -61,23 +63,30 @@ export function mapSoftDeleteToDTO<T extends SoftDeleteDoc>(doc: T): Partial<Sof
     return result;
 }
 
-/** Doc shape with ownership plugin createdBy field */
+/** Doc shape with ownership plugin fields */
 export type OwnershipDoc = {
     createdBy?: UserRefSource;
+    company?: any;
 };
 
-/** Output shape for ownership createdBy */
+/** Output shape for ownershipPlugin fields */
 export type OwnershipDTO = {
     createdBy?: SimpleBlankUser;
+    company?: CompanyBlank;
 };
 
 /**
- * Maps ownershipPlugin createdBy field to the DTO shape.
- * Returns an object to spread into entity DTOs. Only includes createdBy when it exists.
+ * Maps ownershipPlugin fields to the DTO shape.
+ * `company` is included only when it maps through CompanyBlankSnippet (typically populated).
  */
 export function mapOwnershipToDTO<T extends OwnershipDoc>(doc: T): Partial<OwnershipDTO> {
+    const result: Partial<OwnershipDTO> = {};
     const createdBy = mapSnippet<SimpleBlankUser>()(doc.createdBy, SimpleBlankUserSnippet);
-    return createdBy ? { createdBy } : {};
+    if (createdBy) result.createdBy = createdBy;
+    // CompanyBlank needs a populated name — bare ObjectIds stay off the wire.
+    const company = mapSnippet<CompanyBlank>()(doc.company, CompanyBlankSnippet);
+    if (company && typeof company.name === "string") result.company = company;
+    return result;
 }
 
 export type LifeCycleDTO = {

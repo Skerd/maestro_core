@@ -343,6 +343,7 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
  * - Supports updating: name, email, phone, description, website, social URLs, VAT, parentCompany, allowedDomains, publicAiChat
  * - Can add, modify, or delete addresses in a single operation
  * - Logo upload replaces existing logo (old logo is deleted)
+ * - `logo: null` clears the logo (same null-sentinel as CRUD `$unset`)
  */
 router.patch(
     '',
@@ -357,7 +358,9 @@ router.patch(
     transactionHandler(),
     asyncHandler(updateCompany)
 );
-type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & MediaUploaded & SchemaSanitizerMWType;
+type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & MediaUploaded & SchemaSanitizerMWType & {
+    logo?: string | null;
+};
 /**
  * Updates company information with support for addresses and media.
  *
@@ -365,7 +368,7 @@ type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & Media
  * @returns Success message
  */
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, shopSlug, allowedDomains, publicAiChat, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, shopSlug, allowedDomains, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -391,9 +394,14 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     if (email && sanitizedWriteFields.email) existingCompany.email = email;
     if (phoneNumber && sanitizedWriteFields.phoneNumber) existingCompany.phoneNumber = phoneNumber;
     if (description && sanitizedWriteFields.description) existingCompany.description = description;
-    if (!!fileIds && !!fileIds[0] && sanitizedWriteFields.logo) {
-        deleteThis = existingCompany.logo;
-        existingCompany.logo = new ObjectId(fileIds[0])
+    if (sanitizedWriteFields.logo) {
+        if (fileIds?.[0]) {
+            deleteThis = existingCompany.logo;
+            existingCompany.logo = new ObjectId(fileIds[0]);
+        } else if (logo === null) {
+            deleteThis = existingCompany.logo;
+            existingCompany.set("logo", null);
+        }
     }
     if (website && sanitizedWriteFields.website) existingCompany.website = website;
     if (linkedin !== undefined && sanitizedWriteFields.linkedin) existingCompany.linkedin = linkedin;

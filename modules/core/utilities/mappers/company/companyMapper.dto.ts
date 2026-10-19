@@ -8,7 +8,7 @@ import {StateSimpleSnippet} from "@coreModule/database/schemas/state/state.snipp
 import {CitySimpleSnippet} from "@coreModule/database/schemas/city/city.snippets";
 import {CountrySimpleSnippet} from "@coreModule/database/schemas/country/country.snippets";
 import {CompanyBlankSnippet} from "@coreModule/database/schemas/company/company.snippets";
-import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
+import {mapSnippet, nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
 import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function companyToDTO(company: ICompany | null | undefined): Company | null {
@@ -34,7 +34,7 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
             }
         }) : undefined,
         description: company.description,
-        logo: company.logo?._id?.toString(),
+        logo: nestedEntityToRef(company.logo)?.toString(),
         website: company.website,
         linkedin: company.linkedin,
         instagram: company.instagram,

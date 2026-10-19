@@ -5,6 +5,7 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {serveMedia} from "@coreModule/utilities/media/serveMedia";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
+import {isPlatformShopOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
 
 const router = Router();
 
@@ -23,6 +24,21 @@ async function servePublicMediaFile(
 ) {
     const logger = getLogger("serve_public_media_file");
     const {languageCode, origin} = params;
+
+    // Platform apex lists every seller — public media must not be scoped to one Origin tenant.
+    if (isPlatformShopOrigin(origin)) {
+        return serveMedia({
+            mediaId: queryParams.mediaId,
+            req,
+            res,
+            logger,
+            languageCode,
+            cacheControl: "public",
+            deniedAsNotFound: true,
+            accessCheck: async (_id, media) => media.isPublic === true,
+        });
+    }
+
     const company = await resolveCompanyByOrigin(origin, languageCode);
 
     return serveMedia({
