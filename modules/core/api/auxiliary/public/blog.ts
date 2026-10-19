@@ -31,6 +31,7 @@ const router = Router();
 type PublicBlogParams = NotAuthenticatedMWType & {
     categorySlug?: string;
     limit?: number;
+    page?: number;
 };
 
 type PublicBlogSingleParams = NotAuthenticatedMWType & {
@@ -109,7 +110,7 @@ router.post(
 );
 
 async function listPublicBlog(params: PublicBlogParams): Promise<PublicBlogFormResponseType> {
-    const {origin, languageCode, logger, categorySlug, limit} = params;
+    const {origin, languageCode, logger, categorySlug, limit, page = 1} = params;
     logger.start("Loading public blog posts...");
 
     const company = await resolveCompanyByOrigin(origin, languageCode);
@@ -149,6 +150,7 @@ async function listPublicBlog(params: PublicBlogParams): Promise<PublicBlogFormR
             undefined,
             {publishedAt: -1, createdAt: -1},
             pageSize,
+            (page - 1) * pageSize,
         ),
         blogPostService.count(postFilter, {logger, languageCode}),
     ]);
