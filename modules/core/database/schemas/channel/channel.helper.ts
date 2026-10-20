@@ -155,6 +155,8 @@ export interface CreatePublicChatParams {
     };
     /** Opaque ObjectId refs from the caller. Feature modules choose the keys. */
     context?: Record<string, ObjectId>;
+    /** Signed-in site account the conversation belongs to, when there is one. */
+    customer?: IUser;
 }
 
 /**
@@ -199,7 +201,7 @@ export async function createVisitorUser(params: {
  * @throws when the company has no bot user (nothing could answer the visitor).
  */
 export async function createPublicChat(params: CreatePublicChatParams): Promise<{ channel: IChannel; visitor: IUser; }> {
-    const {companyId, languageCode, logger, session, visitor: visitorMeta, context} = params;
+    const {companyId, languageCode, logger, session, visitor: visitorMeta, context, customer} = params;
 
     const botId = await Company.findRobotId(companyId, session);
     if (!botId) {
@@ -216,14 +218,16 @@ export async function createPublicChat(params: CreatePublicChatParams): Promise<
             users: [visitor._id, botId],
             owner: visitor._id,
             company: companyId,
-            name: "",
+            name: customer ? publicChatCustomerName(customer) : "",
             isGroup: false,
             isAiAssistant: true,
             aiOwnerUser: visitor._id,
             isPublicChat: true,
             publicChat: {
                 status: "bot" as PublicChatStatus,
+                ...(customer ? {customer: customer._id} : {}),
                 visitor: {
+                    ...(customer ? {displayName: publicChatCustomerName(customer), email: customer.username} : {}),
                     ip: visitorMeta?.ip,
                     userAgent: visitorMeta?.userAgent,
                     entryUrl: visitorMeta?.entryUrl,
@@ -239,6 +243,40 @@ export async function createPublicChat(params: CreatePublicChatParams): Promise<
 
     logger?.debug(`Opened public chat ${channel._id.toString()} for visitor ${visitor._id.toString()}`);
     return {channel, visitor};
+}
+
+/** How a signed-in customer is labelled in the agent inbox (the channel name). */
+export function publicChatCustomerName(customer: IUser): string {
+    return [customer.name, customer.surname].filter(Boolean).join(" ").trim() || customer.username;
+}
+
+/**
+ * Attach a signed-in customer to a conversation they started anonymously, so the
+ * agent inbox shows who they are and they can resume it on another device.
+ *
+ * MUST use an explicit `$set` — see {@link touchPublicChat}.
+ */
+export async function linkPublicChatCustomer(params: {
+    channelId: ObjectId;
+    customer: IUser;
+    languageCode?: string;
+    logger?: serverLogger;
+    auditUserId?: string;
+}): Promise<void> {
+    const {channelId, customer, languageCode, logger, auditUserId} = params;
+    const displayName = publicChatCustomerName(customer);
+    await channelService.updateById(
+        channelId,
+        {
+            $set: {
+                name: displayName,
+                "publicChat.customer": customer._id,
+                "publicChat.visitor.displayName": displayName,
+                "publicChat.visitor.email": customer.username,
+            },
+        } as unknown as UpdateQuery<IChannel>,
+        {logger, languageCode, auditUserId},
+    );
 }
 
 /** Persist caller ObjectIds as-is; `tag` always comes from the registry, never the client. */

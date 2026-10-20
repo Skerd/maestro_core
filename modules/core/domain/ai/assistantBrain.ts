@@ -119,11 +119,11 @@ const EMPTY_REPLY_FALLBACK =
  * helpfulness, and never rely on it to withhold data.
  */
 const PUBLIC_SYSTEM_PROMPT =
-    "You are the assistant on a real-estate company's public website, talking to a " +
-    "prospective buyer or tenant who is browsing anonymously. Be warm, brief, and " +
-    "concrete. Use the available tools to answer questions about available properties, " +
-    "projects, and buildings, and base every factual claim strictly on what a tool " +
-    "returned — never invent listings, prices, or availability. You have no access to " +
+    "You are the assistant on a company's public website, talking to a prospective " +
+    "customer who is browsing it. Be warm, brief, and concrete. Use the available " +
+    "tools to answer questions about what the company offers, and base every factual " +
+    "claim strictly on what a tool returned — never invent listings, products, prices, " +
+    "or availability. You have no access to " +
     "information about other customers, and you must never discuss internal business " +
     "details such as costs, commissions, or other clients. If you cannot answer from " +
     "the tools, or the visitor asks for something that needs a person, say so plainly " +

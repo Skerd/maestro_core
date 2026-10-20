@@ -35,12 +35,16 @@ export type PublicChatContextBag = {
  *
  * `lead` is an opaque ObjectId (no mongoose `ref`) written by a feature
  * module that owns CRM. Core only tests presence (retention).
+ * `customer` is the signed-in site account the conversation belongs to; it is
+ * what lets that account resume the chat on another device. The participant is
+ * still the role-less visitor user — the account never joins the channel.
  * `context` is {@link PublicChatContextBag} (Mixed).
  */
 export interface IPublicChatMeta {
     status: PublicChatStatus,
     assignedTo?: IUser,
     lead?: ObjectId,
+    customer?: ObjectId,
     visitor: {
         displayName?: string,
         email?: string,
@@ -182,6 +186,11 @@ export const ChannelSchema = new mongoose.Schema<IChannel>(
                     refAllowlist: SimpleUserSnippet
                 },
                 lead: {
+                    type: SchemaTypes.ObjectId,
+                    required: false,
+                    default: null
+                },
+                customer: {
                     type: SchemaTypes.ObjectId,
                     required: false,
                     default: null

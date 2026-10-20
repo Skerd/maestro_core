@@ -17,7 +17,10 @@ import os from "os";
 import {isRedisConnected, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {kafkaCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
-import {getKafkaConsumerStatuses} from "@coreModule/kafka/consumerRegistry";
+import {
+    getLocalKafkaConsumerStatuses,
+    pruneStaleConsumers,
+} from "@coreModule/kafka/consumerRegistry";
 import type {
     KafkaConsumerStatus,
     KafkaServerHealth,
@@ -40,8 +43,10 @@ export async function publishKafkaServerHeartbeat(): Promise<void> {
             startedAt = uptimeKeeper.getLastStart("kafkaServer") || Date.now();
         }
         await kafkaCounter.hydrate().catch(() => {});
+        await pruneStaleConsumers().catch(() => {});
         const counters = kafkaCounter.getStats();
-        const consumerList = await getKafkaConsumerStatuses();
+        // Only consumers this process registered — not assistant/cron/ghosts in Redis.
+        const consumerList = await getLocalKafkaConsumerStatuses();
         const running = consumerList.filter((c) => c.alive).length;
 
         await redisSetEx(KAFKA_SERVER_HEARTBEAT_KEY, HEARTBEAT_TTL_SECONDS, JSON.stringify({

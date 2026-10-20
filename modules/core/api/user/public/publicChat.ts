@@ -23,6 +23,7 @@ import {Router} from "express";
 import {ObjectId} from "mongodb";
 import authMW, {NotAuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import visitorAuthMW, {VisitorAuthenticatedMWType} from "@coreModule/utilities/middlewares/visitorAuthMW";
+import publicChatCustomerMW, {PublicChatCustomerMWType} from "@coreModule/utilities/middlewares/publicChatCustomerMW";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
@@ -38,9 +39,12 @@ import {ICompany} from "@coreModule/database/schemas/company/company";
 import {
     createPublicChat, erasePublicChat,
     isBotServing,
+    linkPublicChatCustomer,
     setPublicChatStatus,
     touchPublicChat,
 } from "@coreModule/database/schemas/channel/channel.helper";
+import {findOpenCustomerChat} from "@coreModule/domain/publicChat/publicChatCustomer";
+import {userService} from "@coreModule/database/schemas/user/user.service";
 import {PUBLIC_CHAT} from "@coreModule/environment";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
 import {dispatchAiChannelMessage} from "@coreModule/domain/ai/notifyAssistantOffline";
@@ -99,12 +103,14 @@ const HISTORY_LIMIT = 50;
  * POST /api/public/chat/session — start a new conversation or resume an existing one.
  *
  * The only route that accepts an *optional* visitor token: with one it resumes,
- * without one it mints a new visitor identity.
+ * without one it mints a new visitor identity. It also accepts an optional site
+ * login token (`x-auth-token`), which ties the conversation to that customer.
  */
 router.post(
     "/session",
     authMW("public"),
     rateLimiter({windowMs: 60000, max: 10}),
+    publicChatCustomerMW(),
     validateFormZod(startPublicChatSessionFormSchema),
     asyncHandler(startPublicChatSession),
 );
@@ -168,7 +174,7 @@ router.delete(
 // Handlers
 // -------------------------------------------------------------------------
 
-type StartSessionParams = NotAuthenticatedMWType & StartPublicChatSessionFormType;
+type StartSessionParams = NotAuthenticatedMWType & PublicChatCustomerMWType & StartPublicChatSessionFormType;
 
 async function startPublicChatSession(
     params: StartSessionParams,
@@ -178,6 +184,9 @@ async function startPublicChatSession(
 
     const company = await resolveCompanyByOrigin(origin, languageCode);
     assertPublicChatEnabled(company, languageCode);
+
+    // A login issued for another tenant does not make this visitor a customer here.
+    const customer = params.customer?.companyId.equals(company._id) ? params.customer.user : undefined;
 
     let channel: IChannel | null = null;
     let visitor: IUser | null = null;
@@ -192,12 +201,35 @@ async function startPublicChatSession(
                 languageCode,
                 originCompanyId: company._id,
             });
-            channel = resumed.visitorChannel;
-            visitor = resumed.visitorUser;
-            logger.debug(`Resumed public chat ${channel._id.toString()}`);
+            // A customer's conversation only resumes for that same customer:
+            // after they sign out, the browser's stored token must not reopen it.
+            const owner = resumed.visitorChannel.publicChat?.customer;
+            if (!owner || (customer && owner.equals(customer._id))) {
+                channel = resumed.visitorChannel;
+                visitor = resumed.visitorUser;
+                logger.debug(`Resumed public chat ${channel._id.toString()}`);
+            }
         }
         catch {
             logger.debug("Presented visitor token was not resumable; starting a new conversation");
+        }
+    }
+
+    // A signed-in customer on a new device picks up their open conversation.
+    if ((!channel || !visitor) && customer) {
+        const openChat = await findOpenCustomerChat({
+            companyId: company._id,
+            customerId: customer._id,
+            languageCode,
+            logger,
+        });
+        const owner = openChat
+            ? await userService.findOne({_id: openChat.aiOwnerUser?._id, isVisitor: true}, {withDeleted: false, languageCode})
+            : null;
+        if (openChat && owner) {
+            channel = openChat;
+            visitor = owner;
+            logger.debug(`Resumed customer public chat ${channel._id.toString()}`);
         }
     }
 
@@ -208,9 +240,20 @@ async function startPublicChatSession(
             logger,
             visitor: {ip: requestIp, userAgent, entryUrl, referrer},
             context: objectIdRefsFromForm(context),
+            customer,
         });
         channel = created.channel;
         visitor = created.visitor;
+    }
+    else if (customer && !channel.publicChat?.customer) {
+        // Started anonymously, then signed in: the conversation is theirs now.
+        await linkPublicChatCustomer({
+            channelId: channel._id,
+            customer,
+            languageCode,
+            logger,
+            auditUserId: visitor._id.toString(),
+        });
     }
 
     const botId = await requireBotId(company, languageCode, logger);

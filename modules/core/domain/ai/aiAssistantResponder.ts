@@ -219,9 +219,9 @@ async function composeAndDeliverAiReply(
 
     // Ask the assistant brain for the reply, grounded in tools and past turns.
     // An anonymous visitor has no meaningful name to personalise with; a
-    // colleague does.
+    // signed-in customer and a colleague do.
     const userDisplayName = isPublic
-        ? undefined
+        ? (channel.publicChat?.customer ? channel.publicChat.visitor?.displayName : undefined)
         : ([human.name, human.surname].filter(Boolean).join(" ").trim() || human.username);
     const answer = await generateAssistantReply(
         {

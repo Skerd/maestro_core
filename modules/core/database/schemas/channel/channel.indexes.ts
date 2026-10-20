@@ -41,6 +41,12 @@ export function applyChannelIndexes(ChannelSchema: Schema): void {
     // Public visitor chats: "my assigned chats" for an agent
     ChannelSchema.index({ company: 1, isPublicChat: 1, "publicChat.assignedTo": 1 });
 
+    // Public visitor chats: a signed-in customer's open conversation
+    ChannelSchema.index(
+        { company: 1, "publicChat.customer": 1, lastAction: -1 },
+        { partialFilterExpression: { isPublicChat: true } }
+    );
+
     // Public visitor chats: retention cron sweeps by idle time
     ChannelSchema.index({ "publicChat.lastVisitorActivity": 1 });
 

@@ -80,6 +80,12 @@ const PRUNE_THRESHOLD_MS = 60 * 60 * 1_000; // 1h
 const logger = getLogger("kafka_consumer_registry");
 
 /**
+ * Names registered in *this* process. kafkaServer health uses this so
+ * assistant/cron/disabled-module entries in Redis do not inflate expected.
+ */
+const localRegisteredNames = new Set<string>();
+
+/**
  * Stored envelope shape (also returned by getKafkaConsumerStatuses, with the
  * computed `alive` flag layered on top).
  */
@@ -116,6 +122,7 @@ export class KafkaConsumerRegistration {
      */
     async register(): Promise<void> {
         const now = Date.now();
+        localRegisteredNames.add(this.name);
         await writeEntry({
             name: this.name,
             displayName: this.displayName,
@@ -158,6 +165,7 @@ export class KafkaConsumerRegistration {
      */
     async unregister(): Promise<void> {
         this.stopHeartbeat();
+        localRegisteredNames.delete(this.name);
         if (!isRedisConnected()) return;
         try {
             await getRedisClient().hDel(REGISTRY_KEY, this.name);
@@ -250,6 +258,16 @@ export async function getKafkaConsumerStatuses(): Promise<KafkaConsumerStatus[]>
         logger.warn(`getKafkaConsumerStatuses failed: ${err?.message}`);
         return [];
     }
+}
+
+/**
+ * Same as {@link getKafkaConsumerStatuses}, but only consumers registered in
+ * *this* process. Use from kafkaServer heartbeat so foreign/stale Redis
+ * entries do not inflate expected counts.
+ */
+export async function getLocalKafkaConsumerStatuses(): Promise<KafkaConsumerStatus[]> {
+    const all = await getKafkaConsumerStatuses();
+    return all.filter((c) => localRegisteredNames.has(c.name));
 }
 
 /**
