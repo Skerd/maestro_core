@@ -35,6 +35,7 @@
     "migrate:disable-tracking-without-inventory": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/disableTrackingWithoutInventory.ts",
     "migrate:sync-ecommerce-indexes": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/syncECommerceIndexes.ts",
     "migrate:order-reservations": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/moveReservationsToOrders.ts",
+    "migrate:sync-company-default-roles": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/syncCompanyDefaultRoles.ts",
     "resync:role-permissions": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/resyncRolePermissions.ts --execute",
     "api:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/apiServer.ts",
     "kafka:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/kafkaServer.ts",

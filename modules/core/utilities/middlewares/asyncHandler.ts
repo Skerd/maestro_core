@@ -3,6 +3,7 @@ import {ClientSession} from 'mongoose';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {getGridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
 import {flushAfterCommitTasks} from '@coreModule/utilities/middlewares/transactionUtils';
+import {apiValidationException} from 'armonia/src/modules/core/helpers/exceptions';
 
 /** Attempts per request before a transient transaction error is passed on. */
 const MAX_TRANSACTION_ATTEMPTS = 3;
@@ -11,6 +12,14 @@ const MAX_TRANSACTION_ATTEMPTS = 3;
 function hasErrorLabel(error: unknown, label: "TransientTransactionError" | "UnknownTransactionCommitResult"): boolean {
     const labelled = error as {hasErrorLabel?: (label: string) => boolean} | null;
     return typeof labelled?.hasErrorLabel === "function" && labelled.hasErrorLabel(label);
+}
+
+/**
+ * A write conflict that outlived every retry: tell the caller to try again (409)
+ * instead of letting it surface as a generic 500.
+ */
+function concurrentRequestError(req: Request) {
+    return apiValidationException("concurrent_request_retry", "", null, req.body?.languageCode || "en-US");
 }
 
 /** Commits, retrying while the server can't say whether the commit happened (committing twice is safe). */
@@ -55,9 +64,11 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
                     returnThis = await fn(req.body, req.params, req, res);
                     break;
                 } catch (error) {
-                    if (!session?.inTransaction() || res.headersSent || attempt >= MAX_TRANSACTION_ATTEMPTS
-                        || !hasErrorLabel(error, "TransientTransactionError")) {
+                    if (!session?.inTransaction() || res.headersSent || !hasErrorLabel(error, "TransientTransactionError")) {
                         throw error;
+                    }
+                    if (attempt >= MAX_TRANSACTION_ATTEMPTS) {
+                        throw concurrentRequestError(req);
                     }
                     logger.warn(`Transient transaction error, retrying (attempt ${attempt + 1}/${MAX_TRANSACTION_ATTEMPTS})`);
                     await session.abortTransaction();
@@ -94,7 +105,7 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
                         logger.err("Error aborting transaction after commit failure", abortError);
                     }
                     await flushAfterCommitTasks(session, false, () => undefined);
-                    throw commitError;
+                    throw hasErrorLabel(commitError, "TransientTransactionError") ? concurrentRequestError(req) : commitError;
                 }
             }
 

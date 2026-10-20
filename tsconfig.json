@@ -40,6 +40,8 @@
       "@eCommerceModule/*": ["./modules/eCommerce/*"],
       "@financeModule/*": ["./modules/finance/*"],
       "@swissOutreachModule/*": ["./modules/swissOutreach/*"],
+      "@carRentalModule/*": ["./modules/carRental/*"],
+      "@dentalClinicModule/*": ["./modules/dentalClinic/*"],
       "@initializer": ["./initializer/index.ts"],
       "armonia/*": ["../armonia/*"],
     },

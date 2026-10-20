@@ -94,6 +94,8 @@ Mirrors sinfonia's `VITE_ENABLED_MODULES` for client-side filtering.
 | `@eCommerceModule/*` | `modules/eCommerce/*` |
 | `@propertyManagement/*` | `modules/propertyManagement/*` |
 | `@propertyDevelopmentModule/*` | `modules/propertyDevelopment/*` |
+| `@carRentalModule/*` | `modules/carRental/*` |
+| `@dentalClinicModule/*` | `modules/dentalClinic/*` |
 | `armonia/*` | `../armonia/*` |
 
 ## Server entry points

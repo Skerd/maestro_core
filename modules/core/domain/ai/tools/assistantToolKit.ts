@@ -75,9 +75,7 @@ export function toAmount(value: unknown): number {
 }
 
 /** Round a money total to 2dp so summed Decimal128 values don't show float dust. */
-export function roundMoney(value: number): number {
-    return Math.round(value * 100) / 100;
-}
+export {roundMoney} from "@coreModule/utilities/helpers/money";
 
 /** Best display name for a populated User, null-safe. */
 export function userDisplayName(user: any): string | null {

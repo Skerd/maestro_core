@@ -122,13 +122,20 @@ describe("asyncHandler transient-error retry (E-21)", {timeout: 30000}, () => {
         expect((await Counter.findById(counter._id))!.get("hits")).toBe(1);
     });
 
-    it("gives up after the last attempt", async () => {
+    it("gives up after the last attempt with a retryable 409", async () => {
         let attempts = 0;
         const failure = await runHandler(async () => {
             attempts += 1;
             throw Object.assign(new Error("still conflicting"), {hasErrorLabel: () => true});
         });
-        expect(failure).toBeInstanceOf(Error);
+        expect(failure).toMatchObject({error_code: "concurrent_request_retry", status: 409});
         expect(attempts).toBe(3);
+    });
+
+    it("passes non-transient errors through untouched", async () => {
+        const failure = await runHandler(async () => {
+            throw new Error("business rule");
+        });
+        expect(failure).toMatchObject({message: "business rule"});
     });
 });

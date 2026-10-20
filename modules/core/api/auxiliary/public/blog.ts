@@ -6,6 +6,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {dateToISOString, mapMedia, mapSnippet, objectIdToString} from "@coreModule/utilities/mappers/common.mapper";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
+import {publicMediaUrl, publicMediaUrls} from "@coreModule/utilities/media/publicMediaUrl";
 import {isPlatformShopOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
 import Company from "@coreModule/database/schemas/company/company";
 import {blogPostService} from "@coreModule/database/schemas/blogPost/blogPost.service";
@@ -27,7 +28,6 @@ import type {IBlogPost} from "@coreModule/database/schemas/blogPost/blogPost";
 import type {IBlogCategory} from "@coreModule/database/schemas/blogCategory/blogCategory";
 
 const DEFAULT_LIMIT = 24;
-const MEDIA_BASE = "/api/auxiliary/public/media/";
 const POST_POPULATE = [
     "mainImage",
     "imageGallery",
@@ -52,18 +52,6 @@ function truncateExcerpt(content: string, max = 180): string {
     const cleaned = content.replace(/\s+/g, " ").trim();
     if (cleaned.length <= max) return cleaned;
     return `${cleaned.slice(0, max - 1).trimEnd()}…`;
-}
-
-function publicMediaUrl(media: unknown): string | undefined {
-    const mapped = media ? mapMedia(media) : undefined;
-    return mapped?._id ? `${MEDIA_BASE}${mapped._id}` : undefined;
-}
-
-function publicMediaUrls(mediaList: unknown): string[] {
-    if (!Array.isArray(mediaList)) return [];
-    return mediaList
-        .map((item) => publicMediaUrl(item))
-        .filter((url): url is string => Boolean(url));
 }
 
 function mapPublicCategory(doc: IBlogCategory): PublicBlogCategoryItem {
