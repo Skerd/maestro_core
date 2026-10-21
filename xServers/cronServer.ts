@@ -11,6 +11,7 @@ import {connectToKafka} from "@coreModule/connections/connectToKafka";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {CRON, KAFKA} from "@coreModule/environment";
 import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
+import {registerAllNotificationHandlers} from "@coreModule/domain/notifications/registerAllNotificationHandlers";
 import {seedPlatformCronJobs} from "@coreModule/cronjobs/bootstrap/seedPlatformJobs";
 import {schedulerEngine} from "@coreModule/cronjobs/engine/schedulerEngine";
 import "@coreModule/database/schemas/cronJob/cronJob";
@@ -41,6 +42,8 @@ async function setCronUp(logger: serverLogger): Promise<void> {
         }
 
         await loadAllCronHandlers(logger);
+        // Jobs emit notification events in this process; without the handlers here they would be dropped.
+        await registerAllNotificationHandlers(logger);
         if (CRON.SEED_PLATFORM_JOBS) {
             await seedPlatformCronJobs();
         }

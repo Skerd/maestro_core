@@ -122,6 +122,25 @@ export function getKafkaInstance(): Kafka | null {
     return kafkaInstance;
 }
 
+/**
+ * Creates the topic when it does not exist yet (a no-op otherwise). Consumers call
+ * it before subscribing: a fresh deployment or a new instance prefix has no topics,
+ * and subscribing to a missing one fails instead of creating it.
+ */
+export async function ensureKafkaTopic(topic: string): Promise<void> {
+    const kafka = getKafkaInstance();
+    if (!kafka) {
+        return;
+    }
+    const admin = kafka.admin();
+    await admin.connect();
+    try {
+        await admin.createTopics({topics: [{topic}], waitForLeaders: true});
+    } finally {
+        await admin.disconnect();
+    }
+}
+
 export function getProducerInstance(): Producer | null {
     if (!KAFKA.ENABLED) {
         return null;

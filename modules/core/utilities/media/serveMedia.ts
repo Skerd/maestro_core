@@ -104,6 +104,38 @@ export function setSecurityHeaders(
     }
 }
 
+/**
+ * Parses a single-range `Range: bytes=…` header against a file of `size` bytes.
+ * Returns the inclusive byte range to send, "unsatisfiable" for a range that
+ * starts past the end, or undefined when the header is absent, malformed or asks
+ * for several ranges (the whole file is sent then, as RFC 9110 allows).
+ */
+export function parseByteRange(
+    header: string | undefined,
+    size: number,
+): {start: number; end: number} | "unsatisfiable" | undefined {
+    const match = header?.match(/^bytes=(\d*)-(\d*)$/);
+    if (!match || (match[1] === "" && match[2] === "")) {
+        return undefined;
+    }
+    if (match[1] === "") {
+        const suffix = Number(match[2]);
+        if (suffix === 0 || size === 0) {
+            return "unsatisfiable";
+        }
+        return {start: Math.max(0, size - suffix), end: size - 1};
+    }
+    const start = Number(match[1]);
+    const end = match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
+    if (start >= size) {
+        return "unsatisfiable";
+    }
+    if (end < start) {
+        return undefined;
+    }
+    return {start, end};
+}
+
 export type ServeMediaContext = Record<string, unknown>;
 
 /**
@@ -174,6 +206,7 @@ async function loadMediaForServe(options: {
 export async function serveMedia(options: ServeMediaOptions): Promise<void> {
     const {
         mediaId: mediaIdParam,
+        req,
         res,
         logger = getLogger('serve_media'),
         languageCode,
@@ -200,11 +233,30 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
 
     const gridfs = getGridFSStorage(languageCode, 'media', logger);
     const fileId = media.fileId instanceof ObjectId ? media.fileId : new ObjectId(media.fileId.toString());
-    const fileStream = gridfs.downloadFile(fileId);
+    // The stored GridFS length, not the Media size fields: those can describe the upload before re-encoding.
+    const size: number = (await gridfs.getFileMetadata(fileId)).length;
+    const range = parseByteRange(req.headers.range, size);
 
     const mimeType = media.mimeType || media.metadata?.mime || 'application/octet-stream';
     const displayName = media.originalName || media.fileName || 'file';
     setSecurityHeaders(res, mimeType, displayName, cacheControl);
+    // Video players (Safari/iOS always) need byte ranges to play and seek.
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    if (range === "unsatisfiable") {
+        res.setHeader('Content-Range', `bytes */${size}`);
+        res.status(416).end();
+        logger.finish(`Unsatisfiable range for media file: ${mediaIdParam}`);
+        return;
+    }
+    if (range) {
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+        res.setHeader('Content-Length', String(range.end - range.start + 1));
+    } else {
+        res.setHeader('Content-Length', String(size));
+    }
+    const fileStream = gridfs.downloadFile(fileId, range);
 
     fileStream.on('error', (error) => {
         logger.err(`Error streaming file: ${error}`);

@@ -29,7 +29,7 @@
  * @module kafkaConsumer
  */
 
-import {getConsumerInstance, getProducerInstance} from "@coreModule/connections/connectToKafka";
+import {ensureKafkaTopic, getConsumerInstance, getProducerInstance} from "@coreModule/connections/connectToKafka";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {KAFKA} from "@coreModule/environment";
 import {
@@ -324,6 +324,7 @@ async function startSingleUserTopicConsumer(parentLogger: serverLogger | undefin
         await registration.register();
         registration.startHeartbeat();
 
+        await ensureKafkaTopic(spec.topic);
         await consumer.subscribe({
             topics: [spec.topic],
             fromBeginning: false

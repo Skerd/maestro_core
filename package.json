@@ -48,7 +48,15 @@
     "websocket": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/webSocketServer.ts",
     "cron": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/cronServer.ts",
     "assistant": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/assistantServer.ts",
-    "telegram": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/telegramServer.ts"
+    "telegram": "export NODE_ENV=production && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/telegramServer.ts",
+    "dev:ecommerce": "node ../scripts/dev/arpeggio.mjs up ecommerce --only api,websocket,kafka,cron",
+    "dev:carRental": "node ../scripts/dev/arpeggio.mjs up carRental --only api,websocket,kafka,cron",
+    "dev:dentalClinic": "node ../scripts/dev/arpeggio.mjs up dentalClinic --only api,websocket,kafka,cron",
+    "dev:propertyManagement": "node ../scripts/dev/arpeggio.mjs up propertyManagement --only api,websocket,kafka,cron",
+    "reset:ecommerce": "node ../scripts/dev/arpeggio.mjs reset ecommerce",
+    "reset:carRental": "node ../scripts/dev/arpeggio.mjs reset carRental",
+    "reset:dentalClinic": "node ../scripts/dev/arpeggio.mjs reset dentalClinic",
+    "reset:propertyManagement": "node ../scripts/dev/arpeggio.mjs reset propertyManagement"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

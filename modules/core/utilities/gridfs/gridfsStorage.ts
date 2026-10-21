@@ -117,11 +117,12 @@ export class GridFSStorage {
      * Download a file from GridFS
      * 
      * @param fileId - GridFS file ID
+     * @param range - Optional inclusive byte range, for HTTP Range requests
      * @returns Readable stream of file data
      */
-    downloadFile(fileId: ObjectId | string): Readable {
+    downloadFile(fileId: ObjectId | string, range?: {start: number; end: number}): Readable {
         const id = typeof fileId === 'string' ? new ObjectId(fileId) : fileId;
-        return this.bucket.openDownloadStream(id);
+        return this.bucket.openDownloadStream(id, range ? {start: range.start, end: range.end + 1} : undefined);
     }
 
     /**

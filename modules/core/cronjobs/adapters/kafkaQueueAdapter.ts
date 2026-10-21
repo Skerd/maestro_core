@@ -1,5 +1,5 @@
 import {Types} from "mongoose";
-import {getConsumerInstance, getProducerInstance, isKafkaConnected} from "@coreModule/connections/connectToKafka";
+import {ensureKafkaTopic, getConsumerInstance, getProducerInstance, isKafkaConnected} from "@coreModule/connections/connectToKafka";
 import {KAFKA} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
@@ -66,6 +66,7 @@ export class KafkaQueueAdapter implements QueueAdapter {
         await this.registration.register();
         this.registration.startHeartbeat();
 
+        await ensureKafkaTopic(topic);
         await consumer.subscribe({topic, fromBeginning: false});
         void consumer.run({
             eachBatch: async ({batch, heartbeat}) => {

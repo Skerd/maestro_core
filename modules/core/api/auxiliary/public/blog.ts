@@ -26,6 +26,7 @@ import type {BlogCategorySimple} from "armonia/src/modules/core/dto/blogCategory
 import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
 import type {IBlogPost} from "@coreModule/database/schemas/blogPost/blogPost";
 import type {IBlogCategory} from "@coreModule/database/schemas/blogCategory/blogCategory";
+import {ObjectId} from "mongodb";
 
 const DEFAULT_LIMIT = 24;
 const POST_POPULATE = [
@@ -66,7 +67,7 @@ function mapPublicCategory(doc: IBlogCategory): PublicBlogCategoryItem {
 function mapPublicSeller(company: unknown): PublicBlogSeller | undefined {
     if (!company || typeof company !== "object" || !("_id" in company)) return undefined;
     const row = company as {
-        _id: unknown;
+        _id: ObjectId;
         name?: unknown;
         logo?: unknown;
         shopSlug?: unknown;
@@ -74,7 +75,7 @@ function mapPublicSeller(company: unknown): PublicBlogSeller | undefined {
     };
     const name = typeof row.name === "string" ? row.name.trim() : "";
     if (!name) return undefined;
-    const seller: PublicBlogSeller = {_id: objectIdToString(row._id as {toString(): string}), name};
+    const seller: PublicBlogSeller = {_id: objectIdToString(row._id), name};
     const logo = mapMedia(row.logo);
     if (logo?._id) seller.logo = logo._id;
     if (typeof row.shopSlug === "string" && row.shopSlug.trim()) seller.shopSlug = row.shopSlug.trim();
