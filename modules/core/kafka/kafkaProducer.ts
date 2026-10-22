@@ -10,6 +10,7 @@
  * - Graceful degradation when Kafka is disabled or unavailable
  * - Comprehensive error logging without throwing exceptions
  * - Support for multiple event types (login history, emails, etc.)
+ * - Event publishers report failure (`false`) so callers can handle the event directly
  * 
  * Retry Strategy:
  * - Exponential backoff: delay = 2^attempt * KAFKA.PRODUCER_RETRY_DELAY_BASE_MS
@@ -23,7 +24,7 @@
  * 
  * Message Format:
  * All messages include:
- * - key: User ID (for partitioning)
+ * - key: Partitioning key (usually the user ID)
  * - value: JSON stringified event data
  * - headers: Event metadata (event-type, timestamp)
  * 
@@ -43,18 +44,17 @@ import {
     LoginHistoryEvent,
     MFADisableEmailEvent
 } from "@coreModule/kafka/types";
-import {kafkaCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
+import type {Message} from "kafkajs";
 
 const logger = getLogger("kafka_producer");
 
 /**
  * Check if Kafka publishing is available (enabled and connected).
- * Shared helper for this module and domain publishers that mirror named email publish flows.
  *
  * @param logger - Logger instance for warning messages
  * @returns true if Kafka is enabled and connected, false otherwise
  */
-export function canPublish(logger: serverLogger): boolean {
+function canPublish(logger: serverLogger): boolean {
     if (!KAFKA.ENABLED) {
         logger.debug("Kafka is disabled, skipping event publishing");
         return false;
@@ -86,25 +86,15 @@ function sleep(ms: number): Promise<void> {
  * blocking requests when Kafka is experiencing issues.
  * 
  * @param topic - Kafka topic name to publish to
- * @param message - Kafka message object (key, value, headers)
- * @param maxRetries - Maximum number of retry attempts (default: MAX_RETRIES)
+ * @param message - Kafka message object (key, value, headers), or several
+ * @param maxRetries - Maximum number of attempts (default: KAFKA.PRODUCER_MAX_RETRIES)
  * @param loggerInstance - Optional logger instance for tracking retry attempts (defaults to module logger)
  * 
  * @throws Error if all retry attempts fail or circuit breaker is open
- * 
- * @example
- * ```typescript
- * await publishWithRetry('user-events', {
- *   key: 'user123',
- *   value: JSON.stringify(eventData),
- *   headers: { 'event-type': 'login' }
- * });
- * ```
  */
-export async function publishWithRetry(topic: string, message: any, maxRetries: number = KAFKA.PRODUCER_MAX_RETRIES, loggerInstance?: serverLogger): Promise<void> {
+export async function publishWithRetry(topic: string, message: Message | Message[], maxRetries: number = KAFKA.PRODUCER_MAX_RETRIES, loggerInstance?: serverLogger): Promise<void> {
     // Use module-level logger if none provided
     const log = loggerInstance || logger;
-    const startedAt = Date.now();
 
     let lastError: any;
 
@@ -127,7 +117,6 @@ export async function publishWithRetry(topic: string, message: any, maxRetries: 
             if (attempt > 0) {
                 log.debug(`Successfully published to ${topic} after ${attempt + 1} attempts`);
             }
-            kafkaCounter.recordSuccess(Date.now() - startedAt);
             return;
         } catch (error: any) {
             lastError = error;
@@ -142,377 +131,111 @@ export async function publishWithRetry(topic: string, message: any, maxRetries: 
         }
     }
 
-    kafkaCounter.recordFailure(Date.now() - startedAt);
     log.err(`Failed to publish to ${topic}: ${lastError?.message}`);
     throw lastError;
 }
 
 /**
- * Publish login history event to Kafka
- * 
- * Publishes user login/authentication events for audit and analytics purposes.
- * This is a fire-and-forget operation - errors are logged but don't throw exceptions.
- * 
- * Event includes:
- * - User ID and company ID
- * - User agent and IP address
- * - MFA status
- * - Timestamp
- * - Error details (if authentication failed)
- * 
- * @param params - Login history event data
- * 
- * @example
- * ```typescript
- * await publishLoginHistoryEvent({
- *   eventType: 'login_history',
- *   userId: 'user123',
- *   companyId: 'company456',
- *   userAgent: 'Mozilla/5.0...',
- *   requestIP: '192.168.1.1',
- *   userMfaEnabled: true,
- *   timestamp: Date.now(),
- *   error: null
- * });
- * ```
+ * Publish one event to Kafka: JSON value, `key` for partitioning, and the
+ * event's `eventType` and `timestamp` as headers. Never throws.
+ *
+ * Shared by the core publishers below and the feature modules' publishers.
+ *
+ * @param topic - Topic from env; publishing is skipped when it is not configured
+ * @param key - Partitioning key (events with the same key keep their order)
+ * @param event - Event payload
+ * @param log - Logger for this publish (defaults to module logger)
+ * @returns true once Kafka has the event; false when Kafka is disabled,
+ *          disconnected, the topic is not configured or every attempt failed —
+ *          the caller then handles the event directly instead (e.g. sends the email)
  */
-export async function publishLoginHistoryEvent(params: LoginHistoryEvent): Promise<void> {
-
-    if( !canPublish(logger) ) return;
-
-    const producer = getProducerInstance();
-    if (!producer) {
-        logger.warn("Kafka producer is not available, skipping login history event");
-        return;
+export async function publishEvent(topic: string | undefined, key: string, event: {eventType: string; timestamp: number}, log: serverLogger = logger): Promise<boolean> {
+    if (!canPublish(log)) return false;
+    if (!topic) {
+        log.warn(`No Kafka topic configured for ${event.eventType} events, skipping event publishing`);
+        return false;
     }
 
     try {
         await publishWithRetry(
-            KAFKA.TOPICS.USER_LOGIN_HISTORY,
+            topic,
             {
-                key: params.userId.toString(),
-                value: JSON.stringify(params),
+                key,
+                value: JSON.stringify(event),
                 headers: {
-                    'event-type': 'login_history',
-                    'timestamp': new Date(params.timestamp).toISOString(), 
-                },
-            },
-            KAFKA.PRODUCER_MAX_RETRIES,
-            logger
-        );
-
-        logger.debug(`Published login history event for user ${params.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to publish login history event for user ${params.userId}: ${error.message}`);
-    }
-}
-
-/**
- * Publish an AI-channel message event to Kafka.
- *
- * Fired when a human user posts in their AI-assistant channel; the AI responder
- * ("Layer 2") consumes it and composes the bot's reply. Fire-and-forget — the
- * user's own message is already persisted and delivered independently.
- *
- * @param params - AI-channel message event data
- */
-export async function publishAiChannelMessageEvent(params: AiChannelMessageEvent, loggerInstance?: serverLogger): Promise<void> {
-    const log = loggerInstance || logger;
-    if (!canPublish(log)) return;
-
-    try {
-        await publishWithRetry(
-            KAFKA.TOPICS.AI_CHANNEL_MESSAGE,
-            {
-                key: params.channelId,
-                value: JSON.stringify(params),
-                headers: {
-                    'event-type': 'ai_channel_message',
-                    'timestamp': new Date(params.timestamp).toISOString(),
+                    'event-type': event.eventType,
+                    'timestamp': new Date(event.timestamp).toISOString(),
                 },
             },
             KAFKA.PRODUCER_MAX_RETRIES,
             log
         );
-
-        log.debug(`Published AI-channel message event for channel ${params.channelId}`);
+        log.debug(`Published ${event.eventType} event (key ${key})`);
+        return true;
     }
-    catch (error: any) {
-        log.err(`Failed to publish AI-channel message event for channel ${params.channelId}: ${error.message}`);
+    catch {
+        // publishWithRetry has logged the failure.
+        return false;
     }
 }
 
 /**
- * Publish activation email event to Kafka
- * 
- * Publishes events for sending account activation emails to new users.
- * This is a fire-and-forget operation - errors are logged but don't throw exceptions.
- * 
- * @param params - Activation email event data (email, userId, activationCode, etc.)
- * 
- * @example
- * ```typescript
- * await publishActivationEmailEvent({
- *   eventType: 'activation_email',
- *   email: 'user@example.com',
- *   userId: 'user123',
- *   fullName: 'John Doe',
- *   activationCode: 'ABC123',
- *   languageCode: 'en-US',
- *   timestamp: Date.now()
- * });
- * ```
+ * Publish login history event (login/authentication attempt, for audit).
+ * @returns false when not published; see {@link publishEvent}
  */
-export async function publishActivationEmailEvent(params: ActivationEmailEvent): Promise<void> {
-    if (!canPublish(logger)) return;
-
-    const producer = getProducerInstance();
-    if (!producer) {
-        logger.warn("Kafka producer is not available, skipping activation email event");
-        return;
-    }
-
-    try {
-        await publishWithRetry(
-            KAFKA.TOPICS.ACTIVATION_EMAIL,
-            {
-                key: params.userId.toString(),
-                value: JSON.stringify(params),
-                headers: {
-                    'event-type': 'activation_email',
-                    'timestamp': new Date(params.timestamp).toISOString(),
-                },
-            },
-            KAFKA.PRODUCER_MAX_RETRIES,
-            logger
-        );
-
-        logger.debug(`Published activation email event for user ${params.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to publish activation email event for user ${params.userId}: ${error.message}`);
-    }
-}
-
-
-/**
- * Publish MFA disable email event to Kafka
- * 
- * Publishes events for sending MFA disable notification emails to users.
- * This is a fire-and-forget operation - errors are logged but don't throw exceptions.
- * 
- * @param params - MFA disable email event data (email, userId, resetCode, etc.)
- * 
- * @example
- * ```typescript
- * await publishMfaDisableEmailEvent({
- *   eventType: 'mfa_disable_email',
- *   email: 'user@example.com',
- *   userId: 'user123',
- *   fullName: 'John Doe',
- *   resetCode: 'XYZ789',
- *   languageCode: 'en-US',
- *   timestamp: Date.now()
- * });
- * ```
- */
-export async function publishMfaDisableEmailEvent(params: MFADisableEmailEvent): Promise<void> {
-    if (!canPublish(logger)) return;
-
-    const producer = getProducerInstance();
-    if (!producer) {
-        logger.warn("Kafka producer is not available, skipping MFA disable email event");
-        return;
-    }
-
-    try {
-        await publishWithRetry(
-            KAFKA.TOPICS.MFA_DISABLE_EMAIL,
-            {
-                key: params.userId.toString(),
-                value: JSON.stringify(params),
-                headers: {
-                    'event-type': 'mfa_disable_email',
-                    'timestamp': new Date(params.timestamp).toISOString(),
-                },
-            },
-            KAFKA.PRODUCER_MAX_RETRIES,
-            logger
-        );
-
-        logger.debug(`Published MFA disable email event for user ${params.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to publish MFA disable email event for user ${params.userId}: ${error.message}`);
-    }
-}
-
-
-/**
- * Publish forgot password email event to Kafka
- * 
- * Publishes events for sending password reset emails to users.
- * This is a fire-and-forget operation - errors are logged but don't throw exceptions.
- * 
- * @param params - Forgot password email event data (email, userId, resetCode, etc.)
- * 
- * @example
- * ```typescript
- * await publishForgotPasswordEmailEvent({
- *   eventType: 'forgot_password_email',
- *   email: 'user@example.com',
- *   userId: 'user123',
- *   fullName: 'John Doe',
- *   resetCode: 'RESET456',
- *   expiresAfterOpening: true,
- *   languageCode: 'en-US',
- *   timestamp: Date.now()
- * });
- * ```
- */
-export async function publishForgotPasswordEmailEvent(params: ForgotPasswordEmailEvent): Promise<void> {
-    if (!canPublish(logger)) return;
-
-    const producer = getProducerInstance();
-    if (!producer) {
-        logger.warn("Kafka producer is not available, skipping forgot password email event");
-        return;
-    }
-
-    try {
-        await publishWithRetry(
-            KAFKA.TOPICS.FORGOT_PASSWORD_EMAIL,
-            {
-                key: params.userId.toString(),
-                value: JSON.stringify(params),
-                headers: {
-                    'event-type': 'forgot_password_email',
-                    'timestamp': new Date(params.timestamp).toISOString(),
-                },
-            },
-            KAFKA.PRODUCER_MAX_RETRIES,
-            logger
-        );
-
-        logger.debug(`Published forgot password email event for user ${params.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to publish forgot password email event for user ${params.userId}: ${error.message}`);
-    }
+export function publishLoginHistoryEvent(params: LoginHistoryEvent): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.USER_LOGIN_HISTORY, params.userId.toString(), params);
 }
 
 /**
- * Publish invitation email event to Kafka
- * 
- * Publishes events for sending user invitation emails.
- * This is a fire-and-forget operation - errors are logged but don't throw exceptions.
- * 
- * @param params - Invitation email event data (email, userId, invitationCode, company info, etc.)
- * 
- * @example
- * ```typescript
- * await publishInvitationEmailEvent({
- *   eventType: 'invitation_email',
- *   email: 'newuser@example.com',
- *   userId: 'user123',
- *   fullName: 'Jane Doe',
- *   welcomeMessage: 'Welcome to our platform!',
- *   invitationCode: 'INV789',
- *   inviterName: 'John Admin',
- *   companyName: 'Acme Corp',
- *   languageCode: 'en-US',
- *   timestamp: Date.now()
- * });
- * ```
- */
-export async function publishInvitationEmailEvent(params: InvitationEmailEvent): Promise<void> {
-    if (!canPublish(logger)) return;
-
-    const producer = getProducerInstance();
-    if (!producer) {
-        logger.warn("Kafka producer is not available, skipping invitation email event");
-        return;
-    }
-
-    try {
-        await publishWithRetry(
-            KAFKA.TOPICS.INVITATION_EMAIL,
-            {
-                key: params.userId.toString(),
-                value: JSON.stringify(params),
-                headers: {
-                    'event-type': 'invitation_email',
-                    'timestamp': new Date(params.timestamp).toISOString(),
-                },
-            },
-            KAFKA.PRODUCER_MAX_RETRIES,
-            logger
-        );
-
-        logger.debug(`Published invitation email event for user ${params.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to publish invitation email event for user ${params.userId}: ${error.message}`);
-    }
-}
-
-/**
- * Publish API access event to Kafka
+ * Publish an AI-channel message event.
  *
- * Publishes events for API request audit and analytics (endpoint, method, status, duration, etc.).
- * This is a fire-and-forget operation - errors are logged but don't throw exceptions.
+ * Fired when a human user posts in their AI-assistant channel; the AI responder
+ * ("Layer 2") consumes it and composes the bot's reply. The user's own message
+ * is already persisted and delivered independently.
  *
- * @param params - API access event data (endpoint, method, statusCode, actionUser, etc.)
- *
- * @example
- * ```typescript
- * await publishApiAccessEvent({
- *   eventType: 'api_access',
- *   endpoint: '/api/users',
- *   method: 'GET',
- *   statusCode: 200,
- *   duration: 45,
- *   actionUser: 'user123',
- *   actionNumber: '1',
- *   user: 'user123',
- *   company: 'company456',
- *   deviceId: 'device-abc',
- *   userAgent: 'Mozilla/5.0...',
- *   requestIp: '192.168.1.1',
- *   source: 'web',
- *   timestamp: Date.now()
- * });
- * ```
+ * @returns false when not published; see {@link publishEvent}
  */
-export async function publishApiAccessEvent(params: ApiAccessEvent): Promise<void> {
-    if (!canPublish(logger)) return;
-
-    const producer = getProducerInstance();
-    if (!producer) {
-        logger.warn("Kafka producer is not available, skipping api access event");
-        return;
-    }
-
-    try {
-        await publishWithRetry(
-            KAFKA.TOPICS.API_ACCESS,
-            {
-                key: (params.actionUser?.toString() || "") + params.actionNumber,
-                value: JSON.stringify(params),
-                headers: {
-                    'event-type': 'api_access',
-                    'timestamp': new Date(params.timestamp).toISOString(),
-                },
-            },
-            KAFKA.PRODUCER_MAX_RETRIES,
-            logger
-        );
-
-        logger.debug(`Published api access event for user ${params.actionUser}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to publish api access event for user ${params.actionUser}: ${error.message}`);
-    }
+export function publishAiChannelMessageEvent(params: AiChannelMessageEvent, loggerInstance?: serverLogger): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.AI_CHANNEL_MESSAGE, params.channelId, params, loggerInstance);
 }
 
+/**
+ * Publish activation email event (account activation for new users).
+ * @returns false when not published; see {@link publishEvent}
+ */
+export function publishActivationEmailEvent(params: ActivationEmailEvent): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.ACTIVATION_EMAIL, params.userId.toString(), params);
+}
+
+/**
+ * Publish MFA disable email event.
+ * @returns false when not published; see {@link publishEvent}
+ */
+export function publishMfaDisableEmailEvent(params: MFADisableEmailEvent): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.MFA_DISABLE_EMAIL, params.userId.toString(), params);
+}
+
+/**
+ * Publish forgot password email event (password reset).
+ * @returns false when not published; see {@link publishEvent}
+ */
+export function publishForgotPasswordEmailEvent(params: ForgotPasswordEmailEvent): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.FORGOT_PASSWORD_EMAIL, params.userId.toString(), params);
+}
+
+/**
+ * Publish invitation email event.
+ * @returns false when not published; see {@link publishEvent}
+ */
+export function publishInvitationEmailEvent(params: InvitationEmailEvent): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.INVITATION_EMAIL, params.userId.toString(), params);
+}
+
+/**
+ * Publish API access event (request audit and analytics: endpoint, method, status, duration, ...).
+ * @returns false when not published; see {@link publishEvent}
+ */
+export function publishApiAccessEvent(params: ApiAccessEvent): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.API_ACCESS, (params.actionUser?.toString() || "") + params.actionNumber, params);
+}

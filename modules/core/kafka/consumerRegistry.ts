@@ -35,10 +35,12 @@
  *
  * Process model
  * -------------
- * The consumer's owning process (kafkaServer / webSocketServer):
- *   1. Calls `register()` once on start. This writes the envelope to Redis.
- *   2. Calls `startHeartbeat()` to emit periodic `lastSeen` updates.
- *   3. Calls `stopHeartbeat()` + `unregister()` on graceful shutdown.
+ * The consumer's owning process (kafkaServer / assistantServer):
+ *   1. Calls `register()` once subscribed. This writes the envelope to Redis.
+ *   2. Calls `startHeartbeat()` whenever the consumer joins its group, to emit
+ *      periodic `lastSeen` updates.
+ *   3. Calls `stopHeartbeat()` whenever the consumer stops — on a crash as well
+ *      as on shutdown — so the entry goes stale and shows the consumer down.
  *
  * Any process (including the API server) can call `getKafkaConsumerStatuses()`
  * to render the dashboard view; it just reads the hash and applies the
@@ -51,9 +53,9 @@
  * - Redis down at heartbeat time: we silently skip; the next successful
  *   heartbeat will refresh `lastSeen`. The reader will mark the consumer
  *   "stale" until then, which is exactly correct behaviour.
- * - Process killed without unregister: the registry entry remains but its
+ * - Process stopped or killed: the registry entry remains but its
  *   `lastSeen` stops moving. After STALE_THRESHOLD_MS the reader marks it
- *   not alive. A janitor pass (see `pruneStaleConsumers`) can hard-delete
+ *   not alive. A janitor pass (see `pruneStaleConsumers`) hard-deletes
  *   entries older than a longer window.
  *
  * @module kafka/core/consumerRegistry
@@ -63,10 +65,8 @@ import {getLogger} from "@coreModule/loggers/serverLog";
 import {executeWithCircuitBreaker, getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
 import type {KafkaConsumerStatus} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 
-/** Redis hash key — exported for maintenance scripts (must stay in sync). */
-export const KAFKA_CONSUMER_REGISTRY_HASH_KEY = "kafka:consumers";
-
-const REGISTRY_KEY = KAFKA_CONSUMER_REGISTRY_HASH_KEY;
+/** Redis hash holding one entry per consumer. */
+const REGISTRY_KEY = "kafka:consumers";
 
 /** Heartbeat publication cadence. */
 const HEARTBEAT_INTERVAL_MS = 5_000;
@@ -101,12 +101,11 @@ interface RegistryEntry {
 /**
  * Per-consumer registration handle. Owns its heartbeat timer.
  *
- * Created and managed by the consumer's start function. The consumer should
- * keep a reference so it can stop the heartbeat on shutdown.
+ * Created by the consumer's start function, which drives the heartbeat from
+ * the consumer's group-join and stop events.
  */
 export class KafkaConsumerRegistration {
     private heartbeatTimer: NodeJS.Timeout | null = null;
-    private stopped = false;
 
     constructor(
         public readonly name: string,
@@ -136,42 +135,24 @@ export class KafkaConsumerRegistration {
     /**
      * Begins the heartbeat loop. Each tick refreshes `lastSeen` only — never
      * `lastStart` — so the original start time keeps showing on the UI.
+     * Idempotent: a rebalance rejoins the group without a stop in between.
      */
     startHeartbeat(): void {
-        if (this.heartbeatTimer || this.stopped) return;
+        if (this.heartbeatTimer) return;
         this.heartbeatTimer = setInterval(() => {
             void this.tick();
         }, HEARTBEAT_INTERVAL_MS);
     }
 
     /**
-     * Stops the heartbeat loop. Does NOT remove the registry entry; call
-     * `unregister()` for that. We separate the two so a crashing consumer
-     * leaves a stale entry in the registry (visible in the UI as "down")
-     * rather than disappearing without a trace.
+     * Stops the heartbeat loop but keeps the registry entry, so a stopped or
+     * crashed consumer shows as "down" in the UI rather than disappearing.
+     * `startHeartbeat()` resumes it after a restart.
      */
     stopHeartbeat(): void {
-        this.stopped = true;
         if (this.heartbeatTimer) {
             clearInterval(this.heartbeatTimer);
             this.heartbeatTimer = null;
-        }
-    }
-
-    /**
-     * Removes the entry from the registry. Call only on *graceful* shutdown
-     * (e.g. SIGTERM), never on a crash or container kill — otherwise the UI
-     * would show "all consumers up" while the process is actually dead.
-     */
-    async unregister(): Promise<void> {
-        this.stopHeartbeat();
-        localRegisteredNames.delete(this.name);
-        if (!isRedisConnected()) return;
-        try {
-            await executeWithCircuitBreaker(() => getRedisClient().hDel(REGISTRY_KEY, this.name));
-        }
-        catch (err: any) {
-            logger.warn(`unregister(${this.name}) failed: ${err?.message}`);
         }
     }
 

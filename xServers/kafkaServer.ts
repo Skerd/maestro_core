@@ -1,20 +1,21 @@
 /**
  * Kafka Server Entry Point
  *
- * Standalone process that owns the Kafka-side consumers:
+ * Standalone process that owns the Kafka-side consumers of every enabled module
+ * (discovered under `{module}/kafka/`):
  *   - User-event topic consumers (one consumer + env group per topic: login history,
  *     activation email, MFA disable, invitation, forgot password)
- *   - Real estate consumers (e.g. reservation client email)
+ *   - Feature-module consumers (e.g. reservation client email, product order email)
  *   - API access persistence consumer (api_access -> Mongo ApiAccess)
+ *   - API access metrics consumer (api_access -> in-memory MetricsAggregator),
+ *     whose aggregator this process also persists and publishes as snapshots
  *
- * The metrics aggregation consumer (api_access -> in-memory MetricsAggregator)
- * intentionally does NOT live here — it runs inside the WebSocket server so
- * the live broadcaster can read the aggregator without IPC overhead.
+ * The AI-channel responder consumer is not here: it runs in assistantServer.
  *
  * Server Lifecycle:
  *   1. Connect to MongoDB.
  *   2. Hydrate UptimeKeeper from the ledger.
- *   3. Connect to Redis (for retry-count tracking + service counters).
+ *   3. Connect to Redis (consumer registry + service counters).
  *   4. Hydrate + start service counter flush loop.
  *   5. Connect Kafka producer (required for DLQ forwarding).
  *   6. Start each consumer; failures are isolated so one bad consumer cannot
@@ -54,7 +55,7 @@ global.ServerName = "KafkaServer";
  * Initialization sequence:
  *  1. Connect to MongoDB (with retry).
  *  2. Hydrate the UptimeKeeper from the ledger so health responses survive restart.
- *  3. Connect to Redis (consumer needs it for retry-count tracking).
+ *  3. Connect to Redis (consumer registry heartbeats + service counters).
  *  4. Connect to Kafka (producer). Required so the consumer can forward failed
  *     messages to the DLQ — otherwise DLQ writes fail with "producer is disconnected".
  *  5. Start the API access consumer and any other event consumers.

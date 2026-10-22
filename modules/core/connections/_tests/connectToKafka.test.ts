@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
     producers: [] as any[],
     consumers: [] as any[],
     connectFailures: 0,
+    disconnectOrder: [] as string[],
 }));
 
 function fakeProducer() {
@@ -21,6 +22,7 @@ function fakeProducer() {
             }
         }),
         disconnect: vi.fn(async () => {
+            state.disconnectOrder.push("producer");
             producer.emit("producer.disconnect");
         }),
         send: vi.fn(),
@@ -37,7 +39,9 @@ vi.mock("kafkajs", () => ({
             return producer;
         }
         consumer() {
-            const consumer = {disconnect: vi.fn(async () => {})};
+            const consumer = {disconnect: vi.fn(async () => {
+                state.disconnectOrder.push("consumer");
+            })};
             state.consumers.push(consumer);
             return consumer;
         }
@@ -79,6 +83,7 @@ describe("connectToKafka", () => {
         state.producers.length = 0;
         state.consumers.length = 0;
         state.connectFailures = 0;
+        state.disconnectOrder.length = 0;
     });
     afterEach(() => {
         vi.useRealTimers();
@@ -120,7 +125,21 @@ describe("connectToKafka", () => {
         expect(kafka.isKafkaConnected()).toBe(true);
     });
 
-    it("disconnects the producer and every consumer without reconnecting", async () => {
+    it("keeps the producer when a single request times out", async () => {
+        const kafka = await load();
+        await kafka.connectToKafka();
+        await vi.advanceTimersByTimeAsync(0);
+        const producer = state.producers[0];
+
+        producer.emit("producer.network.request_timeout");
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(kafka.isKafkaConnected()).toBe(true);
+        expect(producer.disconnect).not.toHaveBeenCalled();
+        expect(producer.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it("disconnects every consumer, then the producer, without reconnecting", async () => {
         const kafka = await load();
         await kafka.connectToKafka();
         await vi.advanceTimersByTimeAsync(0);
@@ -135,6 +154,7 @@ describe("connectToKafka", () => {
         expect(producer.connect).toHaveBeenCalledTimes(1);
         expect(state.producers).toHaveLength(1);
         expect(state.consumers.every((c) => c.disconnect.mock.calls.length === 1)).toBe(true);
+        expect(state.disconnectOrder).toEqual(["consumer", "consumer", "producer"]);
         expect(kafka.isKafkaConnected()).toBe(false);
     });
 

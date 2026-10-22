@@ -149,7 +149,6 @@ export function getProducerInstance(): Producer | null {
     if (!producerInstance) {
         producerInstance = kafka.producer({
             allowAutoTopicCreation: true,
-            transactionTimeout: 30000,
             createPartitioner: Partitioners.DefaultPartitioner,
         });
     }
@@ -362,6 +361,7 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
         }
 
         metadataProbeRunning = true;
+        let probeTimeout: NodeJS.Timeout | undefined;
         try {
             // Create fresh admin connection if needed
             if (!kafkaMetadataProbeAdmin) {
@@ -375,9 +375,9 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
                     kafkaMetadataProbeAdmin.describeCluster(),
                     kafkaMetadataProbeAdmin.listTopics(),
                 ]),
-                new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error("Metadata probe timeout")), 5000)
-                ),
+                new Promise<never>((_, reject) => {
+                    probeTimeout = setTimeout(() => reject(new Error("Metadata probe timeout")), 5000);
+                }),
             ]);
 
             const brokersOnline = (cluster.brokers || []).map(
@@ -408,19 +408,19 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
                 scheduleReconnectIfNeeded(`metadata probe failure: ${error.message}`);
             }
         } finally {
+            clearTimeout(probeTimeout);
             metadataProbeRunning = false;
         }
     };
 
+    // Only a real disconnect triggers the supervisor. A single request timeout
+    // is retried by KafkaJS itself; the metadata probe catches a broker that
+    // stops answering altogether.
     const producer = getProducerInstance();
     if (producer && !producerHandlersSetup) {
         producer.on("producer.disconnect", () => {
             isConnected = false;
             scheduleReconnectIfNeeded("producer disconnect event");
-        });
-        producer.on("producer.network.request_timeout", (event: any) => {
-            isConnected = false;
-            scheduleReconnectIfNeeded(event?.error?.message || "producer network request timeout");
         });
         producerHandlersSetup = true;
     }
@@ -443,8 +443,8 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
 }
 
 /**
- * Stops the reconnect supervisor and metadata probe, then disconnects the
- * producer and every registered consumer (so they leave their groups cleanly).
+ * Stops the reconnect supervisor and metadata probe, then disconnects every
+ * registered consumer (so they leave their groups cleanly) and the producer.
  * Called by each server's graceful shutdown.
  */
 export async function disconnectFromKafka(): Promise<void> {
@@ -452,14 +452,17 @@ export async function disconnectFromKafka(): Promise<void> {
     shuttingDown = true;
     isConnected = false;
     await teardownKafkaMetadataProbe();
-    if (producerInstance) {
-        await producerInstance.disconnect();
+    // Consumers first: a message failing while they finish still needs the
+    // producer to reach the DLQ.
+    await disconnectAllRegisteredConsumers();
+    try {
+        await producerInstance?.disconnect();
+    } finally {
         producerInstance = null;
         producerHandlersSetup = false;
+        kafkaInstance = null;
+        lastClusterStats = null;
     }
-    await disconnectAllRegisteredConsumers();
-    kafkaInstance = null;
-    lastClusterStats = null;
 }
 
 export function isKafkaConnected(): boolean {

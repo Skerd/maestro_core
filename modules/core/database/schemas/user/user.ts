@@ -1028,7 +1028,10 @@ UserSchema.methods.addLoginHistory = async function (companyId: ObjectId, req: a
     }
 
     if( isKafkaConnected() ){
-        publishLoginHistoryEvent(loginEvent).catch((err) => {console.error(`Failed to publish login history to Kafka: ${err.message}`);});
+        // Not awaited, so a slow broker never delays the login; stored directly when the publish fails.
+        publishLoginHistoryEvent(loginEvent)
+            .then(async (published) => { if (!published) await AddToLoginHistory(loginEvent); })
+            .catch((err) => {console.error(`Failed to persist login history: ${err.message}`);});
     }
     else{
         try{
@@ -1107,7 +1110,10 @@ UserSchema.methods.sendActivationEmail = async function (emailAddress: string, l
     }
 
     if (isKafkaConnected()) {
-        publishActivationEmailEvent(activationEmail).catch((err) => {console.error(`Failed to publish activation email to Kafka: ${err.message}`);});
+        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
+        publishActivationEmailEvent(activationEmail)
+            .then(async (published) => { if (!published) await SendActivationEmail(activationEmail); })
+            .catch((err) => {console.error(`Failed to send activation email: ${err.message}`);});
     }
     else {
         await SendActivationEmail(activationEmail, session);
@@ -1361,7 +1367,10 @@ UserSchema.methods.sendDisableMfaEmail = async function (languageCode: string = 
     }
 
     if (isKafkaConnected()) {
-        publishMfaDisableEmailEvent(mfaDisableEmail).catch((err) => {console.error(`Failed to publish mfa disable email to Kafka: ${err.message}`);});
+        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
+        publishMfaDisableEmailEvent(mfaDisableEmail)
+            .then(async (published) => { if (!published) await SendMfaDisableEmail(mfaDisableEmail); })
+            .catch((err) => {console.error(`Failed to send mfa disable email: ${err.message}`);});
     }
     else {
         await SendMfaDisableEmail(mfaDisableEmail, session);
@@ -1453,7 +1462,10 @@ UserSchema.methods.sendForgotPasswordEmail = async function (languageCode: strin
     }
 
     if (isKafkaConnected()) {
-        publishForgotPasswordEmailEvent(forgotPasswordEmail).catch((err) => {console.error(`Failed to publish forgot password email to Kafka: ${err.message}`);});
+        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
+        publishForgotPasswordEmailEvent(forgotPasswordEmail)
+            .then(async (published) => { if (!published) await SendForgotPasswordEmail(forgotPasswordEmail); })
+            .catch((err) => {console.error(`Failed to send forgot password email: ${err.message}`);});
     }
     else {
         await SendForgotPasswordEmail(forgotPasswordEmail, session);
@@ -1548,7 +1560,10 @@ UserSchema.methods.sendInvitationEmail = async function (welcomeMessage: string,
     }
 
     if (isKafkaConnected()) {
-        publishInvitationEmailEvent(invitationEmail).catch((err) => {console.error(`Failed to publish invitation email to Kafka: ${err.message}`);});
+        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
+        publishInvitationEmailEvent(invitationEmail)
+            .then(async (published) => { if (!published) await SendInvitationEmail(invitationEmail); })
+            .catch((err) => {console.error(`Failed to send invitation email: ${err.message}`);});
     }
     else {
         await SendInvitationEmail(invitationEmail, session);

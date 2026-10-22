@@ -6,16 +6,20 @@
  * and user management events.
  * 
  * Features:
- * - Automatic retry mechanism with configurable max retries
+ * - Backed-off retries: a failing message pauses its partition, then is redelivered
  * - Dead Letter Queue (DLQ) for failed messages after max retries
- * - Redis-based retry tracking to prevent infinite retry loops
  * - Graceful error handling with detailed logging
  * - One Kafka consumer per user-event topic (distinct consumer groups from env)
  * 
  * Retry Strategy:
- * - Messages are retried up to MAX_RETRIES times (default: 3)
- * - Retry count is tracked in Redis with 1-hour TTL
- * - After max retries, messages are sent to DLQ topic: `{original_topic}_dlq`
+ * - A message gets up to KAFKA.CONSUMER_MAX_RETRIES attempts (default: 3)
+ * - After a failed attempt its partition pauses for 5 s, then 20 s, ... (other
+ *   partitions keep flowing), and Kafka redelivers the uncommitted offset
+ * - Attempts are counted in memory per consumer: the same consumer gets the
+ *   offset back; a rebalance in between at worst grants extra attempts
+ * - After the last attempt, the message is sent to DLQ topic: `{original_topic}_dlq`;
+ *   `yarn kafka:replay-dlq` puts DLQ messages back on their original topic
+ * - If the DLQ is unreachable the message is redelivered, never committed unhandled
  * 
  * DLQ Message Format:
  * - originalTopic: Original Kafka topic name
@@ -24,7 +28,7 @@
  * - originalMessage: Original message payload
  * - error: Error details (message and stack trace)
  * - timestamp: When the message was sent to DLQ
- * - retryCount: Number of retry attempts
+ * - retryCount: Number of attempts made
  * 
  * @module kafkaConsumer
  */
@@ -48,127 +52,40 @@ import {
     SendInvitationEmail,
     SendMfaDisableEmail
 } from "@coreModule/utilities/database/user";
-import {redisDel, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
 import {ObjectId} from "mongodb";
 import ApiAccess from "@coreModule/database/schemas/apiAccess/apiAccess";
 import {kafkaCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {KafkaConsumerRegistration} from "@coreModule/kafka/consumerRegistry";
 import {metricsAggregator} from "@coreModule/utilities/timing/metricsAggregator";
+import type {EachMessagePayload, KafkaMessage} from "kafkajs";
 
 const logger = getLogger("kafka_consumer");
 
 /** Suffix appended to topic name for Dead Letter Queue */
-const DLQ_TOPIC_SUFFIX = '_dlq';
+export const DLQ_TOPIC_SUFFIX = '_dlq';
 
-/** TTL for retry count tracking in Redis (1 hour) */
-const RETRY_COUNT_TTL_SECONDS = 3600;
+/** Partition pause after a message's first failed attempt; each further failure waits 4x longer. */
+const CONSUMER_RETRY_BASE_DELAY_MS = 5_000;
 
-/**
- * Process login history event
- * This replicates the logic from UserSchema.methods.addLoginHistory
- */
-async function processLoginHistoryEvent(event: LoginHistoryEvent): Promise<void> {
-    try {
-        await AddToLoginHistory(event);
-        logger.debug(`Processed login history event for user ${event.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to process login history event: ${error.message}`);
-        throw error; // Re-throw to trigger retry mechanism
-    }
-}
-
-/**
- * Process activation email event
- * This replicates the logic from UserSchema.methods.sendActivationEmail
- */
-async function processActivationEmailEvent(event: ActivationEmailEvent): Promise<void> {
-    try {
-        await SendActivationEmail(event);
-        logger.debug(`Processed activation email event for user ${event.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to process activation email event: ${error.message}`);
-        throw error; // Re-throw to trigger retry mechanism
-    }
-}
-
-/**
- * Process MFA disable email event
- * 
- * Handles sending MFA disable notification emails to users.
- * This replicates the logic from UserSchema.methods.sendDisableMfaEmail
- * 
- * @param event - MFA disable email event data
- * @throws Re-throws error to trigger retry mechanism
- */
-async function processMfaDisableEmailEvent(event: MFADisableEmailEvent): Promise<void> {
-    try {
-        await SendMfaDisableEmail(event);
-        logger.debug(`Processed mfa disable email event for user ${event.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to process mfa disable email event: ${error.message}`);
-        throw error; // Re-throw to trigger retry mechanism
-    }
-}
-
-/**
- * Process invitation email event
- * 
- * Handles sending invitation emails to new users.
- * 
- * @param event - Invitation email event data
- * @throws Re-throws error to trigger retry mechanism
- */
-async function processInvitationEmailEvent(event: InvitationEmailEvent): Promise<void> {
-    try {
-        await SendInvitationEmail(event);
-        logger.debug(`Processed invitation email event for user ${event.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to process invitation email event: ${error.message}`);
-        throw error; // Re-throw to trigger retry mechanism
-    }
-}
-
-/**
- * Process forgot-password email event (Kafka path mirrors other email handlers).
- */
-async function processForgotPasswordEmailEvent(event: ForgotPasswordEmailEvent): Promise<void> {
-    try {
-        await SendForgotPasswordEmail(event);
-        logger.debug(`Processed forgot password email event for user ${event.userId}`);
-    }
-    catch (error: any) {
-        logger.err(`Failed to process forgot password email event: ${error.message}`);
-        throw error;
-    }
-}
+/** Upper bound for that pause (reached while the DLQ itself is unreachable). */
+const CONSUMER_RETRY_MAX_DELAY_MS = 5 * 60_000;
 
 async function processApiEvent(event: ApiAccessEvent): Promise<void> {
-    try {
-        await new ApiAccess({
-            endpoint: event.endpoint,
-            method: event.method,
-            statusCode: event.statusCode,
-            duration: event.duration,
-            errorType: event.errorType || undefined,
-            actionUser: event.actionUser ? new ObjectId(event.actionUser) : undefined,
-            actionNumber: event.actionNumber,
-            deviceId: event.deviceId || undefined,
-            userAgent: event.userAgent || undefined,
-            requestIp: event.requestIp || undefined,
-            source: event.source || undefined,
-            company: event.company ? new ObjectId(event.company) : undefined,
-            createdBy: event.user ? new ObjectId(event.user) : undefined
-        }).save();
-        logger.debug(`Processed api event`);
-    }
-    catch (error: any){
-        logger.err(`Failed to process api event: ${error.message}`);
-        throw error;
-    }
+    await new ApiAccess({
+        endpoint: event.endpoint,
+        method: event.method,
+        statusCode: event.statusCode,
+        duration: event.duration,
+        errorType: event.errorType || undefined,
+        actionUser: event.actionUser ? new ObjectId(event.actionUser) : undefined,
+        actionNumber: event.actionNumber,
+        deviceId: event.deviceId || undefined,
+        userAgent: event.userAgent || undefined,
+        requestIp: event.requestIp || undefined,
+        source: event.source || undefined,
+        company: event.company ? new ObjectId(event.company) : undefined,
+        createdBy: event.user ? new ObjectId(event.user) : undefined
+    }).save();
 }
 
 async function processApiMetricsEvent(event: ApiAccessEvent): Promise<void> {
@@ -192,66 +109,71 @@ async function processApiMetricsEvent(event: ApiAccessEvent): Promise<void> {
  * Send failed message to Dead Letter Queue (DLQ)
  *
  * After a message has exceeded the maximum retry attempts, it is sent to a DLQ
- * topic for manual inspection and potential reprocessing.
+ * topic for manual inspection and replay (`yarn kafka:replay-dlq`). Throws when
+ * the DLQ is unreachable, so the caller redelivers the message instead of losing it.
  */
-async function sendToDeadLetterQueue(topic: string, message: any, error: Error, log: serverLogger): Promise<void> {
-    try {
-        const dlqTopic = `${topic}${DLQ_TOPIC_SUFFIX}`;
+async function sendToDeadLetterQueue(topic: string, partition: number, message: KafkaMessage, error: Error, attempts: number, log: serverLogger): Promise<void> {
+    const dlqTopic = `${topic}${DLQ_TOPIC_SUFFIX}`;
 
-        await publishWithRetry(dlqTopic, {
-            key: message.key?.toString() || "unknown",
-            value: JSON.stringify({
-                originalTopic: topic,
-                originalPartition: message.partition,
-                originalOffset: message.offset,
-                originalMessage: message.value?.toString(),
-                error: {
-                    message: error.message,
-                    stack: error.stack
-                },
-                timestamp: new Date().toISOString(),
-                retryCount: KAFKA.CONSUMER_MAX_RETRIES
-            }),
-            headers: {
-                "original-topic": topic,
-                "error-type": error.constructor.name,
-                "dlq-timestamp": new Date().toISOString()
-            }
-        }, KAFKA.PRODUCER_MAX_RETRIES, log);
+    await publishWithRetry(dlqTopic, {
+        key: message.key?.toString() || "unknown",
+        value: JSON.stringify({
+            originalTopic: topic,
+            originalPartition: partition,
+            originalOffset: message.offset,
+            originalMessage: message.value?.toString(),
+            error: {
+                message: error.message,
+                stack: error.stack
+            },
+            timestamp: new Date().toISOString(),
+            retryCount: attempts
+        }),
+        headers: {
+            "original-topic": topic,
+            "error-type": error.constructor.name,
+            "dlq-timestamp": new Date().toISOString()
+        }
+    }, KAFKA.PRODUCER_MAX_RETRIES, log);
 
-        log.warn(`Sent message to DLQ: ${dlqTopic}`);
-    } catch (dlqError: any) {
-        log.err(`Failed to send message to DLQ: ${dlqError.message}`);
-    }
+    log.warn(`Sent message to DLQ: ${dlqTopic}`);
 }
 
 /**
  * Shared retry + DLQ path for Kafka `eachMessage` handlers.
+ *
+ * `attempts` belongs to one consumer and is keyed by partition and offset:
+ * rethrowing leaves the offset uncommitted, so Kafka redelivers the same offset
+ * to this consumer once the paused partition resumes.
  */
-async function consumeMessageWithRetry(consumerLogger: serverLogger, topic: string, partition: number, message: { offset: string; key?: Buffer | null; value?: Buffer | null; partition?: number }, execute: () => Promise<void>): Promise<void> {
+async function consumeMessageWithRetry(consumerLogger: serverLogger, attempts: Map<string, number>, {topic, partition, message, pause}: EachMessagePayload, execute: () => Promise<void>): Promise<void> {
     const startedAt = Date.now();
+    const attemptKey = `${partition}:${message.offset}`;
     try {
         await execute();
         kafkaCounter.recordSuccess(Date.now() - startedAt);
+        attempts.delete(attemptKey);
     } catch (error: any) {
         kafkaCounter.recordFailure(Date.now() - startedAt);
-        consumerLogger.err(`Error processing message from topic ${topic}, partition ${partition}: ${error.message}`);
+        const attempt = (attempts.get(attemptKey) ?? 0) + 1;
+        consumerLogger.err(`Error processing message from topic ${topic}, partition ${partition} (attempt ${attempt}/${KAFKA.CONSUMER_MAX_RETRIES}): ${error.message}`);
 
-        const retryKey = `kafka:retry:${topic}:${partition}:${message.offset}`;
-        // Kafka redelivers the same offset after a rethrow, so the offset
-        // identifies the message across attempts.
-        const cached = await redisGet(retryKey);
-        const retryCount = (cached ? parseInt(cached, 10) : 0) + 1;
-
-        if (retryCount >= KAFKA.CONSUMER_MAX_RETRIES) {
+        if (attempt >= KAFKA.CONSUMER_MAX_RETRIES) {
             consumerLogger.err(`Message exceeded max retries (${KAFKA.CONSUMER_MAX_RETRIES}). Sending to DLQ.`);
-            await sendToDeadLetterQueue(topic, message, error, consumerLogger);
-            await redisDel(retryKey);
+            try {
+                await sendToDeadLetterQueue(topic, partition, message, error, attempt, consumerLogger);
+                attempts.delete(attemptKey);
+                return;
+            } catch (dlqError: any) {
+                consumerLogger.err(`Failed to send message to DLQ, redelivering it: ${dlqError.message}`);
+            }
         }
-        else {
-            await redisSetEx(retryKey, RETRY_COUNT_TTL_SECONDS, retryCount.toString());
-            throw error;
-        }
+
+        attempts.set(attemptKey, attempt);
+        // Back off on this partition only; the others keep flowing meanwhile.
+        const resume = pause();
+        setTimeout(resume, Math.min(CONSUMER_RETRY_BASE_DELAY_MS * 4 ** (attempt - 1), CONSUMER_RETRY_MAX_DELAY_MS));
+        throw error;
     }
 }
 
@@ -265,7 +187,14 @@ export type KafkaUserTopicSpec = {
     processEvent: (eventData: any) => Promise<void>;
 };
 
-async function startSingleUserTopicConsumer(parentLogger: serverLogger | undefined, spec: KafkaUserTopicSpec): Promise<void> {
+/**
+ * Start one Kafka consumer for a topic (same machinery as core user-event consumers).
+ *
+ * The consumer is registered in the consumer registry once subscribed, and
+ * heartbeats there only while it is a member of its group: a crash disconnects
+ * it (STOP), and KafkaJS rejoins after a restartable crash (GROUP_JOIN).
+ */
+export async function addKafkaTopicConsumer(parentLogger: serverLogger | undefined, spec: KafkaUserTopicSpec): Promise<void> {
     if (!spec.groupId || !spec.topic) {
         const skipLog = getLogger("kafka_consumer", parentLogger);
         skipLog.warn(`Skipping consumer "${spec.registryKey}": missing KAFKA_CONSUMER_GROUP or KAFKA_TOPIC in env`);
@@ -287,12 +216,17 @@ async function startSingleUserTopicConsumer(parentLogger: serverLogger | undefin
         spec.groupId,
         spec.topic
     );
+    consumer.on(consumer.events.GROUP_JOIN, () => registration.startHeartbeat());
+    consumer.on(consumer.events.STOP, () => registration.stopHeartbeat());
+    consumer.on(consumer.events.CRASH, ({payload}) => {
+        consumerLogger.err(`Consumer crashed (${spec.registryKey}), ${payload.restart ? "restarting" : "not restarting"}: ${payload.error.message}`);
+    });
+
+    const attempts = new Map<string, number>();
 
     try {
         await consumer.connect();
         consumerLogger.info("Kafka consumer connected");
-        await registration.register();
-        registration.startHeartbeat();
 
         await ensureKafkaTopic(spec.topic);
         await consumer.subscribe({
@@ -301,17 +235,18 @@ async function startSingleUserTopicConsumer(parentLogger: serverLogger | undefin
         });
 
         consumerLogger.info(`Subscribed to topic: ${spec.topic}`);
+        await registration.register();
 
-        // Do not await `run()` — it only settles when the consumer stops. The
-        // kafka server must continue starting sibling consumers and the API
-        // access consumer after this returns.
+        // Not awaited: `run()` resolves only once the group is joined, which
+        // sibling consumers need not wait for. A failed join is reported through
+        // the CRASH event, not as a rejection.
         void consumer.run({
-            eachMessage: async ({ topic, partition, message }) => {
-                await consumeMessageWithRetry(consumerLogger, topic, partition, message, async () => {
-                    const eventData = JSON.parse(message.value?.toString() || "{}");
+            eachMessage: async (payload) => {
+                await consumeMessageWithRetry(consumerLogger, attempts, payload, async () => {
+                    const eventData = JSON.parse(payload.message.value?.toString() || "{}");
                     if (eventData.eventType !== spec.expectedEventType) {
                         consumerLogger.warn(
-                            `Unexpected eventType "${eventData.eventType}" on ${topic}; expected "${spec.expectedEventType}"`
+                            `Unexpected eventType "${eventData.eventType}" on ${payload.topic}; expected "${spec.expectedEventType}"`
                         );
                         return;
                     }
@@ -319,7 +254,7 @@ async function startSingleUserTopicConsumer(parentLogger: serverLogger | undefin
                 });
             }
         }).catch((err: any) => {
-            consumerLogger.err(`Consumer run loop crashed (${spec.registryKey}): ${err?.message}`);
+            consumerLogger.err(`Consumer run failed (${spec.registryKey}): ${err?.message}`);
         });
 
         consumerLogger.finish(`Kafka consumer running: ${spec.displayName}`);
@@ -330,18 +265,11 @@ async function startSingleUserTopicConsumer(parentLogger: serverLogger | undefin
 }
 
 /**
- * Start one Kafka consumer for a topic (same machinery as core user-event consumers).
- */
-export async function addKafkaTopicConsumer(parentLogger: serverLogger | undefined, spec: KafkaUserTopicSpec): Promise<void> {
-    return startSingleUserTopicConsumer(parentLogger, spec);
-}
-
-/**
  * Starts one Kafka consumer per user-event topic. Each uses its own consumer group
  * from env (`KAFKA_CONSUMER_GROUP_*`) matching the topic (`KAFKA_TOPIC_*`).
  *
  * Runs all consumers concurrently (`Promise.allSettled`); one failing startup does
- * not abort the others. Each `consumer.run()` blocks until that consumer stops.
+ * not abort the others.
  *
  * @param parentLogger - Optional parent logger instance for hierarchical logging
  */
@@ -363,7 +291,7 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
             groupId: KAFKA.CONSUMER_GROUP.LOGIN_HISTORY,
             topic: KAFKA.TOPICS.USER_LOGIN_HISTORY,
             expectedEventType: "login_history",
-            processEvent: (d) => processLoginHistoryEvent(d as LoginHistoryEvent)
+            processEvent: (d) => AddToLoginHistory(d as LoginHistoryEvent)
         },
         {
             registryKey: "userActivationEmail",
@@ -371,7 +299,7 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
             groupId: KAFKA.CONSUMER_GROUP.ACTIVATION_EMAIL,
             topic: KAFKA.TOPICS.ACTIVATION_EMAIL,
             expectedEventType: "activation_email",
-            processEvent: (d) => processActivationEmailEvent(d as ActivationEmailEvent)
+            processEvent: (d) => SendActivationEmail(d as ActivationEmailEvent)
         },
         {
             registryKey: "userMfaDisableEmail",
@@ -379,7 +307,7 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
             groupId: KAFKA.CONSUMER_GROUP.MFA_DISABLE_EMAIL,
             topic: KAFKA.TOPICS.MFA_DISABLE_EMAIL,
             expectedEventType: "mfa_disable_email",
-            processEvent: (d) => processMfaDisableEmailEvent(d as MFADisableEmailEvent)
+            processEvent: (d) => SendMfaDisableEmail(d as MFADisableEmailEvent)
         },
         {
             registryKey: "userInvitationEmail",
@@ -387,7 +315,7 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
             groupId: KAFKA.CONSUMER_GROUP.INVITATION_EMAIL,
             topic: KAFKA.TOPICS.INVITATION_EMAIL,
             expectedEventType: "invitation_email",
-            processEvent: (d) => processInvitationEmailEvent(d as InvitationEmailEvent)
+            processEvent: (d) => SendInvitationEmail(d as InvitationEmailEvent)
         },
         {
             registryKey: "userForgotPasswordEmail",
@@ -395,7 +323,7 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
             groupId: KAFKA.CONSUMER_GROUP.FORGOT_PASSWORD_EMAIL,
             topic: KAFKA.TOPICS.FORGOT_PASSWORD_EMAIL,
             expectedEventType: "forgot_password_email",
-            processEvent: (d) => processForgotPasswordEmailEvent(d as ForgotPasswordEmailEvent)
+            processEvent: (d) => SendForgotPasswordEmail(d as ForgotPasswordEmailEvent)
         },
         {
             registryKey: "apiAccessPersistence",
@@ -408,7 +336,7 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
         {
             registryKey: "apiAccessMetrics",
             displayName: "API access metrics",
-            groupId: KAFKA.CONSUMER_GROUP.API_ACCESS + "-metrics", // this si to differentiate from api aceess
+            groupId: KAFKA.CONSUMER_GROUP.API_ACCESS + "-metrics", // its own group, so it also receives every api-access event
             topic: KAFKA.TOPICS.API_ACCESS,
             expectedEventType: "api_access",
             processEvent: (d) => processApiMetricsEvent(d as ApiAccessEvent)
@@ -416,7 +344,7 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
     ];
 
     const results = await Promise.allSettled(
-        specs.map((spec) => startSingleUserTopicConsumer(parentLogger, spec))
+        specs.map((spec) => addKafkaTopicConsumer(parentLogger, spec))
     );
 
     results.forEach((r, i) => {

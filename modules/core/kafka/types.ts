@@ -190,25 +190,6 @@ export interface ApiAccessEvent {
 }
 
 /**
- * Generic Kafka message wrapper
- * 
- * Used for type-safe Kafka message handling.
- * 
- * @template T - Type of the message value/payload
- * 
- * @property key - Message key (typically user ID for partitioning)
- * @property value - Message payload/value
- * @property headers - Optional message headers (metadata)
- * @property timestamp - Optional message timestamp
- */
-export interface KafkaMessage<T = any> {
-    key?: string;
-    value: T;
-    headers?: Record<string, string>;
-    timestamp?: string;
-}
-
-/**
  * AI-channel message event - a human user posted in their AI-assistant channel.
  * Consumed by the AI responder ("Layer 2"), which composes the bot's reply.
  */

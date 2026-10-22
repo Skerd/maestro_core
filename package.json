@@ -37,6 +37,7 @@
     "migrate:order-reservations": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/moveReservationsToOrders.ts",
     "migrate:sync-company-default-roles": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/syncCompanyDefaultRoles.ts",
     "resync:role-permissions": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/resyncRolePermissions.ts --execute",
+    "kafka:replay-dlq": "ts-node --transpile-only -r tsconfig-paths/register scripts/replayKafkaDeadLetters.ts",
     "api:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/apiServer.ts",
     "kafka:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/kafkaServer.ts",
     "websocket:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/webSocketServer.ts",
