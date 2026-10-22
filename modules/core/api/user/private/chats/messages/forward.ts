@@ -25,7 +25,7 @@ import {IChannel} from "@coreModule/database/schemas/channel/channel";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
 
 const router = Router();

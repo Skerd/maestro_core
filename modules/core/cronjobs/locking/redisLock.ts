@@ -1,5 +1,5 @@
 import {randomUUID} from "crypto";
-import {getRedisClient, isRedisConnected, redisDel} from "@coreModule/connections/connectToRedis";
+import {redisReleaseLock, redisTryAcquireOrRenewLock} from "@coreModule/connections/connectToRedis";
 import {CRON} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
 // Heartbeat lives with counters in cronSchedulerHealth; re-exported below for
@@ -14,40 +14,42 @@ export type RedisLockHandle = {
     renewTimer?: NodeJS.Timeout;
 };
 
+/** Redis lock TTLs are whole seconds; round up so a lock never lives shorter than asked. */
+function toTtlSeconds(ttlMs: number): number {
+    return Math.max(1, Math.ceil(ttlMs / 1000));
+}
+
+/**
+ * Takes the lock when nobody holds it. A fresh token per call means the
+ * acquire-or-renew primitive can only succeed on an unset key here.
+ * Returns null when the lock is held elsewhere or Redis is unavailable.
+ */
 export async function acquireRedisLock(key: string, ttlMs: number = CRON.LOCK_TTL_MS): Promise<RedisLockHandle | null> {
-    if (!isRedisConnected()) return null;
-    const client = getRedisClient();
     const token = randomUUID();
     const fullKey = `cron:lock:${key}`;
-    const ok = await client.set(fullKey, token, {NX: true, PX: ttlMs});
-    if (ok !== "OK") return null;
+    const acquired = await redisTryAcquireOrRenewLock(fullKey, token, toTtlSeconds(ttlMs));
+    if (!acquired) return null;
 
     const handle: RedisLockHandle = {key: fullKey, token};
     const renewMs = Math.max(Math.floor(ttlMs / 3), 1_000);
     handle.renewTimer = setInterval(() => {
-        void (async () => {
-            try {
-                const current = await client.get(fullKey);
-                if (current === token) {
-                    await client.pExpire(fullKey, ttlMs);
-                }
-            } catch (e: unknown) {
-                const msg = e instanceof Error ? e.message : String(e);
-                logger.err(`Lock renew failed for ${fullKey}: ${msg}`);
+        void renewRedisLock(handle, ttlMs).then((renewed) => {
+            if (!renewed) {
+                logger.err(`Lock renew failed for ${fullKey}`);
             }
-        })();
+        });
     }, renewMs);
 
     return handle;
 }
 
+/**
+ * Extends the lock while this handle owns it. If the lock had already expired
+ * and nobody took it, it is re-taken; false means another owner has it (or
+ * Redis is unavailable).
+ */
 export async function renewRedisLock(handle: RedisLockHandle, ttlMs: number = CRON.LOCK_TTL_MS): Promise<boolean> {
-    if (!isRedisConnected()) return false;
-    const client = getRedisClient();
-    const current = await client.get(handle.key);
-    if (current !== handle.token) return false;
-    await client.pExpire(handle.key, ttlMs);
-    return true;
+    return redisTryAcquireOrRenewLock(handle.key, handle.token, toTtlSeconds(ttlMs));
 }
 
 export async function releaseRedisLock(handle: RedisLockHandle): Promise<void> {
@@ -55,14 +57,9 @@ export async function releaseRedisLock(handle: RedisLockHandle): Promise<void> {
         clearInterval(handle.renewTimer);
         handle.renewTimer = undefined;
     }
-    if (!isRedisConnected()) return;
-    const client = getRedisClient();
-    const current = await client.get(handle.key);
-    if (current === handle.token) {
-        await redisDel(handle.key);
-    }
+    await redisReleaseLock(handle.key, handle.token);
 }
 
-export async function acquireLeaderLock(serverId: string): Promise<RedisLockHandle | null> {
+export async function acquireLeaderLock(): Promise<RedisLockHandle | null> {
     return acquireRedisLock("leader", CRON.LEADER_LOCK_TTL_MS);
 }

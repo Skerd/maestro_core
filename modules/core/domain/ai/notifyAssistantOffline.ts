@@ -30,7 +30,7 @@ import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {isAssistantResponderOnline} from "@coreModule/domain/ai/assistantHealth";
 import {AI_ASSISTANT} from "@coreModule/environment";
 import {publishAiChannelMessageEvent} from "@coreModule/kafka/kafkaProducer";

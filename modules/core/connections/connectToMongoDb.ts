@@ -1,38 +1,49 @@
-import mongoose, {Mongoose} from "mongoose";
+import mongoose from "mongoose";
 import {MONGO_DB} from "@coreModule/environment";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import {mongoDbCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {MongoDbHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {initializeMongoDatabase} from "@initializer";
 
-export const mongooseInstance = require("mongoose");
+export const mongooseInstance = mongoose;
 
 mongooseInstance.set('strictQuery', true);
-let retryCount = 0;
-let firstConnection = true;
 
+const MAX_CONNECT_ATTEMPTS = 300;
+
+/** Connection lifecycle handlers are registered once per process. */
+let handlersSetup = false;
+
+/** Full connection string, credentials and TLS files included. Never log it. */
+function buildMongoUri(): string {
+    const port = MONGO_DB.PORT !== "" ? (":" + MONGO_DB.PORT) : "";
+    return `${MONGO_DB.PRE_HOST + MONGO_DB.USER}:${MONGO_DB.PASSWORD}@${MONGO_DB.HOST + port}/${MONGO_DB.DB_NAME + MONGO_DB.PARAMS}&tlsCAFile=${MONGO_DB.ROOT_CA_CERT_PATH}&tlsCertificateKeyFile=${MONGO_DB.TLS_CERTIFICATE_KEY_FILE_PATH}`;
+}
+
+/**
+ * Connects mongoose, retrying until MongoDB answers (exits the process after
+ * {@link MAX_CONNECT_ATTEMPTS}). After the first connection the driver itself
+ * reconnects on network loss, so the lifecycle handlers below only log.
+ */
 export async function connectToMongoDb(parentLogger?: serverLogger, canInitialize?: boolean): Promise<void> {
 
     let logger = getLogger("connecting_to_mongo_db_instance", parentLogger);
     logger.start("Setting up MongoDB instance");
-    logger.debug(`${MONGO_DB.PRE_HOST + MONGO_DB.USER}:${MONGO_DB.PASSWORD}@${MONGO_DB.HOST + (MONGO_DB.PORT !== "" ? (":" + MONGO_DB.PORT) : "")}/${MONGO_DB.DB_NAME + MONGO_DB.PARAMS}&tlsCAFile=${MONGO_DB.ROOT_CA_CERT_PATH}&tlsCertificateKeyFile=${MONGO_DB.TLS_CERTIFICATE_KEY_FILE_PATH}`);
+    logger.debug(`MongoDB target host=${MONGO_DB.HOST}, port=${MONGO_DB.PORT}, db=${MONGO_DB.DB_NAME}, user=${MONGO_DB.USER ? 'provided' : 'not provided'}`);
 
-    const connectWithRetry = async (): Promise<Mongoose> => {
-        let currentRetryCount = 0;
+    const connectWithRetry = async (): Promise<void> => {
+        let attempt = 0;
         while (true) {
             try {
-                logger.debug(`Attempting MongoDB connection [${currentRetryCount + 1}/${300}]...`);
-                const instance = await mongoose.connect(`${MONGO_DB.PRE_HOST + MONGO_DB.USER}:${MONGO_DB.PASSWORD}@${MONGO_DB.HOST + (MONGO_DB.PORT !== "" ? (":" + MONGO_DB.PORT) : "")}/${MONGO_DB.DB_NAME + MONGO_DB.PARAMS}&tlsCAFile=${MONGO_DB.ROOT_CA_CERT_PATH}&tlsCertificateKeyFile=${MONGO_DB.TLS_CERTIFICATE_KEY_FILE_PATH}`);
+                logger.debug(`Attempting MongoDB connection [${attempt + 1}/${MAX_CONNECT_ATTEMPTS}]...`);
+                await mongoose.connect(buildMongoUri());
                 logger.info('MongoDB connected');
-                retryCount = 0;
                 void uptimeKeeper.markStart("mongoDb");
-                return instance;
+                return;
             } catch (error) {
-                currentRetryCount++;
-                retryCount = currentRetryCount;
+                attempt++;
                 logger.err(`MongoDB connection failed: ${error.message}. Retrying in ${MONGO_DB.CONNECTION_TIMER} ms.`);
-                if (currentRetryCount >= 300) {
+                if (attempt >= MAX_CONNECT_ATTEMPTS) {
                     logger.fail('Exceeded MongoDB retry limit. Exiting...');
                     process.exit(1);
                 }
@@ -41,80 +52,36 @@ export async function connectToMongoDb(parentLogger?: serverLogger, canInitializ
         }
     };
 
-    logger.debug("Setting up onConnected handler");
-    mongooseInstance.connection.on('connected', () => {
-        retryCount = 0;
-        logger.info(`MongoDB connected successfully. ReadyState: [${mongooseInstance.connection.readyState}]`);
-    });
-    logger.debug("Finished setting up onConnected handler");
-
-    logger.debug("Setting up onError handler");
-    mongooseInstance.connection.on('error', (error) => {
-        logger.err(`MongoDB connection error. Message: ${error.message}. ReadyState: [${mongooseInstance.connection.readyState}]`);
-    });
-    logger.debug("Finished setting up onError handler");
-
-    logger.debug("Setting up onDisconnected handler");
-    mongooseInstance.connection.on('disconnected', async (ee: any) => {
-        if( !firstConnection ) {
-            retryCount++;
-            logger.warn(`MongoDB disconnected. ReadyState: [${mongooseInstance.connection.readyState}]. Retrying in ${MONGO_DB.CONNECTION_TIMER} ms. This connection CANNOT FAIL.`);
-            if (retryCount >= 300) {
-                logger.fail('Exceeded MongoDB retry limit. Exiting...');
-                process.exit(1);
-            }
-            await new Promise((res) => {setTimeout(() => {res(true);}, MONGO_DB.CONNECTION_TIMER)});
-            try{
-                await mongoose.connect(`${MONGO_DB.PRE_HOST + MONGO_DB.USER}:${MONGO_DB.PASSWORD}@${MONGO_DB.HOST + (MONGO_DB.PORT !== "" ? (":" + MONGO_DB.PORT) : "")}/${MONGO_DB.DB_NAME + MONGO_DB.PARAMS}`);
-            }catch(err){
-                logger.err(`MongoDB connection error. Error: ${err.message}`);
-            }
-        }
-    });
-    logger.debug("Finished setting up onDisconnected handler");
-
-    logger.debug("Setting up onReconnected handler");
-    mongooseInstance.connection.on('reconnected', () => {
-        logger.info(`MongoDB reconnected. ReadyState: [${mongooseInstance.connection.readyState}]`);
-    });
-    logger.debug("Finished setting up onReconnected handler");
-
-    logger.debug("Setting up SIGINT handler");
-    process.on('SIGINT', async () => {
-        logger.info('Received SIGINT, closing database connection...');
-        try {
-            await mongoose.disconnect();
-            logger.info('Database connection closed successfully');
-        }
-        catch (error) {
-            logger.err('Error closing database connection');
-        }
-        process.exit(0);
-    });
-    logger.debug("Finished setting up SIGINT handler");
-
-    logger.debug("Setting up SIGTERM handler");
-    process.on('SIGTERM', async () => {
-        logger.info('Received SIGTERM, closing database connection...');
-        try {
-            await mongoose.disconnect();
-            logger.info('Database connection closed successfully');
-        }
-        catch (error) {
-            logger.err('Error closing database connection');
-        }
-        process.exit(0);
-    });
-    logger.debug("Finished setting up SIGTERM handler");
+    if (!handlersSetup) {
+        mongooseInstance.connection.on('connected', () => {
+            logger.info(`MongoDB connected successfully. ReadyState: [${mongooseInstance.connection.readyState}]`);
+        });
+        mongooseInstance.connection.on('error', (error) => {
+            logger.err(`MongoDB connection error. Message: ${error.message}. ReadyState: [${mongooseInstance.connection.readyState}]`);
+        });
+        mongooseInstance.connection.on('disconnected', () => {
+            logger.warn(`MongoDB disconnected. ReadyState: [${mongooseInstance.connection.readyState}]. The driver reconnects automatically.`);
+        });
+        mongooseInstance.connection.on('reconnected', () => {
+            logger.info(`MongoDB reconnected. ReadyState: [${mongooseInstance.connection.readyState}]`);
+        });
+        handlersSetup = true;
+    }
 
     await connectWithRetry();
-    firstConnection = false;
 
     if( !!canInitialize ){
         await initializeMongoDatabase(parentLogger);
     }
 
     logger.finish("Finished setting up MongoDB instance");
+}
+
+/**
+ * Closes the mongoose connection. Called by each server's graceful shutdown.
+ */
+export async function disconnectFromMongoDb(): Promise<void> {
+    await mongoose.disconnect();
 }
 
 /**
@@ -134,7 +101,6 @@ export async function getMongoDbHealth(): Promise<MongoDbHealth> {
     const conn = mongooseInstance.connection;
     const readyState = conn?.readyState ?? 0;
     const connected = readyState === 1;
-    const circuitBreakerStats = mongoDbCircuitBreaker.getStats();
 
     let dbSize = 0;
     let storageSize = 0;
@@ -191,14 +157,6 @@ export async function getMongoDbHealth(): Promise<MongoDbHealth> {
             availableConnections,
             utilizationPercent: maxPoolSize === 0 ? 0 : Math.round((currentConnections / maxPoolSize) * 100),
             waitingRequests: 0
-        },
-        circuitBreaker: circuitBreakerStats
+        }
     };
-}
-
-/**
- * Convenience boolean for callers that only need a connectedness check.
- */
-export function isMongoDbConnected(): boolean { 
-    return mongooseInstance.connection?.readyState === 1;
 }

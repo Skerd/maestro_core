@@ -23,6 +23,7 @@ import {
     connectToTelegramInstance,
     disconnectFromTelegram,
 } from "@coreModule/connections/connectToTelegram";
+import {closeConnections} from "@coreModule/connections/closeConnections";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {
     hydrateAllServiceCounters,
@@ -61,6 +62,7 @@ async function gracefulShutdown(logger: serverLogger): Promise<void> {
     logger.debug("Telegram server shutting down...");
     await disconnectFromTelegram();
     await uptimeKeeper.markStop("telegramServer");
+    await closeConnections(logger);
     process.exit(0);
 }
 

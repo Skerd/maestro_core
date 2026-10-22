@@ -29,6 +29,7 @@ import {startAllKafkaConsumers} from "@coreModule/kafka/startAllKafkaConsumers";
 import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import {connectToKafka} from "@coreModule/connections/connectToKafka";
+import {closeConnections} from "@coreModule/connections/closeConnections";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {
     hydrateAllServiceCounters,
@@ -114,6 +115,7 @@ async function gracefulShutdown(): Promise<void> {
     log.debug("Kafka server shutting down...");
     stopKafkaServerHeartbeat();
     await uptimeKeeper.markStop("kafkaServer");
+    await closeConnections(log);
     process.exit(0);
 }
 

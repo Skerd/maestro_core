@@ -49,7 +49,7 @@ import {PUBLIC_CHAT} from "@coreModule/environment";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
 import {dispatchAiChannelMessage} from "@coreModule/domain/ai/notifyAssistantOffline";
 import {isAssistantResponderOnline} from "@coreModule/domain/ai/assistantHealth";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import {
     publicChatAgent,

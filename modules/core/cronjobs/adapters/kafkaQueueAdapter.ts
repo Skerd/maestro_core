@@ -1,8 +1,7 @@
 import {Types} from "mongoose";
-import {ensureKafkaTopic, getConsumerInstance, getProducerInstance, isKafkaConnected} from "@coreModule/connections/connectToKafka";
+import {ensureKafkaTopic, getConsumerInstance, isKafkaConnected} from "@coreModule/connections/connectToKafka";
 import {KAFKA} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
-import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
 import {KafkaConsumerRegistration} from "@coreModule/kafka/consumerRegistry";
 import {publishWithRetry} from "@coreModule/kafka/kafkaProducer";
 import CronJobModel from "@coreModule/database/schemas/cronJob/cronJob";
@@ -11,14 +10,11 @@ import type {CronQueueMessage, QueueAdapter} from "@coreModule/cronjobs/adapters
 
 const logger = getLogger("cron_kafka");
 const DLQ_SUFFIX = "_dlq";
-const RETRY_TTL = 3600;
 
 type BatchItem = {
     parsed: CronQueueMessage;
     raw: string;
     topic: string;
-    partition: number;
-    offset: string;
 };
 
 export class KafkaQueueAdapter implements QueueAdapter {
@@ -93,8 +89,6 @@ export class KafkaQueueAdapter implements QueueAdapter {
                         parsed,
                         raw,
                         topic: batch.topic,
-                        partition: batch.partition,
-                        offset: message.offset,
                     });
                     byJob.set(parsed.jobId, items);
                 }
@@ -124,7 +118,7 @@ export class KafkaQueueAdapter implements QueueAdapter {
                         } catch (e: unknown) {
                             const errMsg = e instanceof Error ? e.message : String(e);
                             logger.err(`Cron kafka handler failed: ${errMsg}`);
-                            await this.handleFailure(item.topic, item.partition, item.offset, item.raw, e);
+                            await this.handleFailure(item.topic, item.parsed, item.raw, e);
                         }
                         await heartbeat();
                     }
@@ -139,43 +133,34 @@ export class KafkaQueueAdapter implements QueueAdapter {
         });
     }
 
+    /**
+     * Re-enqueues a message whose handler threw, or moves it to the DLQ once it
+     * has failed `CONSUMER_MAX_RETRIES` times. The count travels inside the
+     * message: a re-enqueued message gets a new offset, so nothing keyed by
+     * offset could follow it across attempts.
+     */
     private async handleFailure(
         topic: string,
-        partition: number,
-        offset: string,
+        parsed: CronQueueMessage,
         raw: string,
         error: unknown,
     ): Promise<void> {
-        const retryKey = `cron:kafka:retry:${topic}:${partition}:${offset}`;
-        let retryCount = 0;
-        if (isRedisConnected()) {
-            const client = getRedisClient();
-            retryCount = parseInt((await client.get(retryKey)) ?? "0", 10) + 1;
-            await client.setEx(retryKey, RETRY_TTL, String(retryCount));
-        } else {
-            retryCount = 1;
-        }
-
+        const deliveryAttempt = (parsed.deliveryAttempt ?? 0) + 1;
         const maxRetries = KAFKA.CONSUMER_MAX_RETRIES ?? 3;
-        if (retryCount >= maxRetries) {
-            const producer = getProducerInstance();
-            if (!producer) return;
-            await producer.send({
-                topic: `${topic}${DLQ_SUFFIX}`,
-                messages: [{
-                    value: JSON.stringify({
-                        originalTopic: topic,
-                        originalMessage: raw,
-                        error: error instanceof Error ? error.message : String(error),
-                        retryCount,
-                        timestamp: new Date().toISOString(),
-                    }),
-                }],
-            });
+        if (deliveryAttempt >= maxRetries) {
+            await publishWithRetry(`${topic}${DLQ_SUFFIX}`, {
+                value: JSON.stringify({
+                    originalTopic: topic,
+                    originalMessage: raw,
+                    error: error instanceof Error ? error.message : String(error),
+                    retryCount: deliveryAttempt,
+                    timestamp: new Date().toISOString(),
+                }),
+            }, KAFKA.PRODUCER_MAX_RETRIES, logger);
             return;
         }
 
-        await this.enqueue(JSON.parse(raw) as CronQueueMessage);
+        await this.enqueue({...parsed, deliveryAttempt});
     }
 
     async stopConsumer(): Promise<void> {

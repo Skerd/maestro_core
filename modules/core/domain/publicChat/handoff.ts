@@ -26,7 +26,7 @@ import {messageService} from "@coreModule/database/schemas/message/message.servi
 import {setPublicChatStatus} from "@coreModule/database/schemas/channel/channel.helper";
 import Company from "@coreModule/database/schemas/company/company";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";

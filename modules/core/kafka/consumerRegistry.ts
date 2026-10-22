@@ -60,7 +60,7 @@
  */
 
 import {getLogger} from "@coreModule/loggers/serverLog";
-import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
+import {executeWithCircuitBreaker, getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
 import type {KafkaConsumerStatus} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 
 /** Redis hash key — exported for maintenance scripts (must stay in sync). */
@@ -168,7 +168,7 @@ export class KafkaConsumerRegistration {
         localRegisteredNames.delete(this.name);
         if (!isRedisConnected()) return;
         try {
-            await getRedisClient().hDel(REGISTRY_KEY, this.name);
+            await executeWithCircuitBreaker(() => getRedisClient().hDel(REGISTRY_KEY, this.name));
         }
         catch (err: any) {
             logger.warn(`unregister(${this.name}) failed: ${err?.message}`);
@@ -182,7 +182,7 @@ export class KafkaConsumerRegistration {
             // Re-read so we don't clobber a peer's `lastStart` if two processes
             // share the same `name` (which is a misconfiguration but should
             // not corrupt the registry).
-            const raw = await client.hGet(REGISTRY_KEY, this.name);
+            const raw = await executeWithCircuitBreaker(() => client.hGet(REGISTRY_KEY, this.name));
             const existing: RegistryEntry | null = raw ? safeParse(raw) : null;
             await writeEntry({
                 name: this.name,
@@ -205,7 +205,7 @@ export class KafkaConsumerRegistration {
 async function writeEntry(entry: RegistryEntry): Promise<void> {
     if (!isRedisConnected()) return;
     try {
-        await getRedisClient().hSet(REGISTRY_KEY, entry.name, JSON.stringify(entry));
+        await executeWithCircuitBreaker(() => getRedisClient().hSet(REGISTRY_KEY, entry.name, JSON.stringify(entry)));
     }
     catch (err: any) {
         logger.warn(`writeEntry(${entry.name}) failed: ${err?.message}`);
@@ -234,7 +234,7 @@ function safeParse(raw: string): RegistryEntry | null {
 export async function getKafkaConsumerStatuses(): Promise<KafkaConsumerStatus[]> {
     if (!isRedisConnected()) return [];
     try {
-        const raw = await getRedisClient().hGetAll(REGISTRY_KEY);
+        const raw = await executeWithCircuitBreaker(() => getRedisClient().hGetAll(REGISTRY_KEY));
         const now = Date.now();
         const out: KafkaConsumerStatus[] = [];
         for (const [, value] of Object.entries(raw || {})) {
@@ -281,7 +281,7 @@ export async function pruneStaleConsumers(): Promise<number> {
     if (!isRedisConnected()) return 0;
     try {
         const client = getRedisClient();
-        const raw = await client.hGetAll(REGISTRY_KEY);
+        const raw = await executeWithCircuitBreaker(() => client.hGetAll(REGISTRY_KEY));
         const now = Date.now();
         const stale: string[] = [];
         for (const [field, value] of Object.entries(raw || {})) {
@@ -295,7 +295,7 @@ export async function pruneStaleConsumers(): Promise<number> {
             }
         }
         if (stale.length > 0) {
-            await client.hDel(REGISTRY_KEY, stale);
+            await executeWithCircuitBreaker(() => client.hDel(REGISTRY_KEY, stale));
         }
         return stale.length;
     }

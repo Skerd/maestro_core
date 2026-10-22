@@ -5,7 +5,7 @@
  * Allows multiple server instances to share connection state.
  */
 
-import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
+import {executeWithCircuitBreaker, getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
 import {serverLogger} from "@coreModule/loggers/serverLog";
 
 const CONNECTION_PREFIX = "ws:connection:";
@@ -56,20 +56,20 @@ export async function addUserConnection(
         };
 
         // Store connection info
-        await redis.setEx(
+        await executeWithCircuitBreaker(() => redis.setEx(
             `${CONNECTION_PREFIX}${connectionId}`,
             CONNECTION_TTL,
             JSON.stringify(connectionInfo)
-        );
+        ));
 
         // Add to user's connection set
-        await redis.sAdd(`${USER_CONNECTIONS_PREFIX}${userId}`, connectionId);
-        await redis.expire(`${USER_CONNECTIONS_PREFIX}${userId}`, CONNECTION_TTL);
+        await executeWithCircuitBreaker(() => redis.sAdd(`${USER_CONNECTIONS_PREFIX}${userId}`, connectionId));
+        await executeWithCircuitBreaker(() => redis.expire(`${USER_CONNECTIONS_PREFIX}${userId}`, CONNECTION_TTL));
 
         // Add to rooms
         for (const room of info.rooms || []) {
-            await redis.sAdd(`${ROOM_PREFIX}${room}`, connectionId);
-            await redis.expire(`${ROOM_PREFIX}${room}`, CONNECTION_TTL);
+            await executeWithCircuitBreaker(() => redis.sAdd(`${ROOM_PREFIX}${room}`, connectionId));
+            await executeWithCircuitBreaker(() => redis.expire(`${ROOM_PREFIX}${room}`, CONNECTION_TTL));
         }
 
         logger?.debug(`Added connection ${connectionId} for user ${userId}`);
@@ -96,7 +96,7 @@ export async function removeUserConnection(
         const redis = getRedisClient();
         
         // Get connection info
-        const connectionData = await redis.get(`${CONNECTION_PREFIX}${connectionId}`);
+        const connectionData = await executeWithCircuitBreaker(() => redis.get(`${CONNECTION_PREFIX}${connectionId}`));
         if (!connectionData) {
             return;
         }
@@ -104,15 +104,15 @@ export async function removeUserConnection(
         const connection: ConnectionInfo = JSON.parse(connectionData);
         
         // Remove from user's connection set
-        await redis.sRem(`${USER_CONNECTIONS_PREFIX}${connection.userId}`, connectionId);
+        await executeWithCircuitBreaker(() => redis.sRem(`${USER_CONNECTIONS_PREFIX}${connection.userId}`, connectionId));
 
         // Remove from rooms
         for (const room of connection.rooms || []) {
-            await redis.sRem(`${ROOM_PREFIX}${room}`, connectionId);
+            await executeWithCircuitBreaker(() => redis.sRem(`${ROOM_PREFIX}${room}`, connectionId));
         }
 
         // Delete connection info
-        await redis.del(`${CONNECTION_PREFIX}${connectionId}`);
+        await executeWithCircuitBreaker(() => redis.del(`${CONNECTION_PREFIX}${connectionId}`));
 
         logger?.debug(`Removed connection ${connectionId} for user ${connection.userId}`);
     } catch (error: any) {
@@ -133,7 +133,7 @@ export async function getUserConnections(userId: string): Promise<string[]> {
 
     try {
         const redis = getRedisClient();
-        return await redis.sMembers(`${USER_CONNECTIONS_PREFIX}${userId}`);
+        return await executeWithCircuitBreaker(() => redis.sMembers(`${USER_CONNECTIONS_PREFIX}${userId}`));
     } catch (error) {
         return [];
     }
@@ -152,7 +152,7 @@ export async function getRoomConnections(room: string): Promise<string[]> {
 
     try {
         const redis = getRedisClient();
-        return await redis.sMembers(`${ROOM_PREFIX}${room}`);
+        return await executeWithCircuitBreaker(() => redis.sMembers(`${ROOM_PREFIX}${room}`));
     } catch (error) {
         return [];
     }
@@ -176,20 +176,20 @@ export async function addConnectionToRoom(
 
     try {
         const redis = getRedisClient();
-        await redis.sAdd(`${ROOM_PREFIX}${room}`, connectionId);
-        await redis.expire(`${ROOM_PREFIX}${room}`, CONNECTION_TTL);
+        await executeWithCircuitBreaker(() => redis.sAdd(`${ROOM_PREFIX}${room}`, connectionId));
+        await executeWithCircuitBreaker(() => redis.expire(`${ROOM_PREFIX}${room}`, CONNECTION_TTL));
 
         // Update connection info
-        const connectionData = await redis.get(`${CONNECTION_PREFIX}${connectionId}`);
+        const connectionData = await executeWithCircuitBreaker(() => redis.get(`${CONNECTION_PREFIX}${connectionId}`));
         if (connectionData) {
             const connection: ConnectionInfo = JSON.parse(connectionData);
             if (!connection.rooms.includes(room)) {
                 connection.rooms.push(room);
-                await redis.setEx(
+                await executeWithCircuitBreaker(() => redis.setEx(
                     `${CONNECTION_PREFIX}${connectionId}`,
                     CONNECTION_TTL,
                     JSON.stringify(connection)
-                );
+                ));
             }
         }
 
@@ -217,18 +217,18 @@ export async function removeConnectionFromRoom(
 
     try {
         const redis = getRedisClient();
-        await redis.sRem(`${ROOM_PREFIX}${room}`, connectionId);
+        await executeWithCircuitBreaker(() => redis.sRem(`${ROOM_PREFIX}${room}`, connectionId));
 
         // Update connection info
-        const connectionData = await redis.get(`${CONNECTION_PREFIX}${connectionId}`);
+        const connectionData = await executeWithCircuitBreaker(() => redis.get(`${CONNECTION_PREFIX}${connectionId}`));
         if (connectionData) {
             const connection: ConnectionInfo = JSON.parse(connectionData);
             connection.rooms = connection.rooms.filter(r => r !== room);
-            await redis.setEx(
+            await executeWithCircuitBreaker(() => redis.setEx(
                 `${CONNECTION_PREFIX}${connectionId}`,
                 CONNECTION_TTL,
                 JSON.stringify(connection)
-            );
+            ));
         }
 
         logger?.debug(`Removed connection ${connectionId} from room ${room}`);
@@ -250,7 +250,7 @@ export async function getConnectionInfo(connectionId: string): Promise<Connectio
 
     try {
         const redis = getRedisClient();
-        const data = await redis.get(`${CONNECTION_PREFIX}${connectionId}`);
+        const data = await executeWithCircuitBreaker(() => redis.get(`${CONNECTION_PREFIX}${connectionId}`));
         if (!data) {
             return null;
         }
@@ -272,7 +272,7 @@ export async function updateConnectionHeartbeat(connectionId: string): Promise<v
 
     try {
         const redis = getRedisClient();
-        await redis.expire(`${CONNECTION_PREFIX}${connectionId}`, CONNECTION_TTL);
+        await executeWithCircuitBreaker(() => redis.expire(`${CONNECTION_PREFIX}${connectionId}`, CONNECTION_TTL));
     } catch (error) {
         // Ignore errors
     }

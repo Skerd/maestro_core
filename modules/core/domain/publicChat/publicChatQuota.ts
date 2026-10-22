@@ -20,7 +20,7 @@
  * @module publicChat/publicChatQuota
  */
 
-import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
+import {redisIncrWithExpiry} from "@coreModule/connections/connectToRedis";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {PUBLIC_CHAT} from "@coreModule/environment";
 
@@ -40,21 +40,12 @@ export interface QuotaVerdict {
  * Returns `true` (allowed) on any Redis problem — see the fail-open note above.
  */
 async function consume(key: string, limit: number, ttlSeconds: number, logger?: serverLogger): Promise<boolean> {
-    if (!isRedisConnected()) {
+    const counter = await redisIncrWithExpiry(key, ttlSeconds);
+    if (!counter) {
+        logger?.warn(`Public chat quota counter unavailable for ${key}; allowing the message`);
         return true;
     }
-    try {
-        const redis = getRedisClient();
-        const count = await redis.incr(key);
-        if (count === 1) {
-            await redis.expire(key, ttlSeconds);
-        }
-        return count <= limit;
-    }
-    catch (e: any) {
-        logger?.warn(`Public chat quota check failed for ${key}: ${e?.message ?? e}`);
-        return true;
-    }
+    return counter.count <= limit;
 }
 
 /** Current UTC day/hour stamps, so counters roll over on a fixed boundary. */

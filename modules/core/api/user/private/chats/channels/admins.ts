@@ -33,7 +33,7 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import Channel from "@coreModule/database/schemas/channel/channel";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 
 /**
  * Chat channel admin promotion and demotion (private).

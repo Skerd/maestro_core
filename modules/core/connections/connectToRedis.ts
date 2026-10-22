@@ -6,27 +6,26 @@
  * - Circuit breaker pattern for failure protection and cascading failure prevention
  * - Connection pool configuration and timeout settings
  * - Event handlers for connection lifecycle (ready, error, end)
- * - Graceful shutdown handling (SIGINT, SIGTERM)
  * - Health monitoring and connection status checks
  * - Circuit breaker-protected operation wrappers
  * 
  * Connection Configuration:
  * - connectTimeout: Time to wait for initial connection
  * - keepAlive: Keep-alive interval for maintaining connections
- * - reconnectStrategy: Exponential backoff reconnection strategy
+ * - reconnectStrategy: disabled; this module's supervisor owns reconnection
  * - CONNECTION_TIMER: Delay between retry attempts
  * 
  * Retry Strategy:
  * - Retries connection attempts until Redis becomes available
  * - Waits CONNECTION_TIMER milliseconds between retry attempts
- * - Uses exponential backoff for reconnection (min(retries * 100, 3000)ms)
  * - Keeps the Redis supervisor running until the connection recovers
  * 
  * Circuit Breaker:
  * - Protects all Redis operations from cascading failures
- * - Automatically opens after 5 failures within 60 seconds
- * - Resets after 30 seconds in HALF_OPEN state
+ * - Opens after 5 failures within 60 seconds; a call slower than 5 seconds counts as a failure
+ * - Lets a trial call through after 30 seconds (HALF_OPEN)
  * - Requires 2 successful operations to close from HALF_OPEN
+ * - Callers outside this module wrap raw client calls with {@link executeWithCircuitBreaker}
  * 
  * @module connectToRedis
  */
@@ -39,15 +38,6 @@ import {RedisHealth} from "armonia/src/modules/core/api/auxiliary/private/server
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {redisCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 
-/**
- * Redis instance - exported for use throughout the application
- * This is the singleton instance that manages the Redis connection
- */
-export const redisInstance = require('redis');
-
-/** Tracks retry attempts for connection failures */
-let retryCount = 0;
-
 /** Flag to distinguish first connection from reconnection attempts */
 let firstConnection = true;
 
@@ -57,9 +47,6 @@ let redisClient: RedisClientType | null = null;
 /** Connection status flag - tracks if Redis is currently connected */
 let isConnected = false;
 
-/** Flag to ensure graceful shutdown handlers are only registered once */
-let shutdownHandlersSetup = false;
-
 /** Flag to ensure Redis client lifecycle handlers are only registered once */
 let clientHandlersSetup = false;
 
@@ -68,6 +55,9 @@ let reconnectInProgress = false;
 
 /** Prevent overlapping connection loops */
 let connectInProgress = false;
+
+/** Set by {@link disconnectFromRedis} so the 'end' event does not start a reconnect. */
+let shuttingDown = false;
 
 async function waitForRetry(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
@@ -79,9 +69,7 @@ async function waitForRetry(ms: number): Promise<void> {
  * This function:
  * 1. Creates Redis client with connection configuration
  * 2. Sets up event handlers for connection lifecycle events
- * 3. Implements retry logic with circuit breaker protection
- * 4. Handles graceful shutdown on SIGINT/SIGTERM
- * 5. Configures automatic reconnection strategy
+ * 3. Retries until Redis is reachable, then supervises reconnection after drops
  * 
  * @param parentLogger - Optional parent logger instance for hierarchical logging
  * 
@@ -97,13 +85,13 @@ async function waitForRetry(ms: number): Promise<void> {
 export async function connectToRedis(parentLogger?: serverLogger): Promise<void> {
     let logger = getLogger("connecting_to_redis_instance", parentLogger);
     logger.start("Setting up Redis instance");
+    shuttingDown = false;
     const primaryNode = REDIS.ROOT_NODES[0];
     const [host, port] = primaryNode.split(':');
     logger.debug(`Redis target node=${primaryNode}, username=${REDIS.USERNAME ? 'provided' : 'not provided'}, password=${REDIS.PASSWORD ? 'provided' : 'not provided'}`);
 
     /**
-     * Internal retry function that attempts connection with circuit breaker protection
-     * Continues retrying until successful
+     * Internal retry function. Continues retrying until successful or shutting down.
      */
     const connectWithRetry = async (initialRetryCount = 0): Promise<void> => {
         if (connectInProgress) {
@@ -114,7 +102,7 @@ export async function connectToRedis(parentLogger?: serverLogger): Promise<void>
         connectInProgress = true;
         let currentRetryCount = initialRetryCount;
         try {
-            while (true) {
+            while (!shuttingDown) {
                 try {
                     logger.debug(`Attempting Redis connection [${currentRetryCount + 1}/infinite]...`);
                     
@@ -127,14 +115,12 @@ export async function connectToRedis(parentLogger?: serverLogger): Promise<void>
                     await redisClient!.connect();
 
                     logger.info('Redis connected');
-                    retryCount = 0; // Reset retry count on successful connection
                     isConnected = true;
                     firstConnection = false;
                     void uptimeKeeper.markStart("redis");
                     return;
                 } catch (error: any) {
                     currentRetryCount++;
-                    retryCount = currentRetryCount;
                     logger.err(`Redis connection failed: ${error.message}. Retrying in ${REDIS.CONNECTION_TIMER} ms.`);
                     
                     // Continue retrying in the background instead of blocking startup.
@@ -153,21 +139,24 @@ export async function connectToRedis(parentLogger?: serverLogger): Promise<void>
         }
 
         reconnectInProgress = true;
-        retryCount = 0;
         isConnected = false;
 
         try {
             logger.warn(`Redis disconnected. Retrying in ${REDIS.CONNECTION_TIMER} ms.`);
             await waitForRetry(REDIS.CONNECTION_TIMER);
             await connectWithRetry();
-            logger.info('Redis reconnected');
+            if (isConnected) {
+                logger.info('Redis reconnected');
+            }
         } finally {
             reconnectInProgress = false;
         }
     };
 
     const scheduleReconnectIfNeeded = (reason: string): void => {
-        if (firstConnection) {
+        // Failed attempts inside a running supervisor also emit 'error'/'end';
+        // they must not log or schedule again.
+        if (firstConnection || shuttingDown || reconnectInProgress || connectInProgress) {
             return;
         }
 
@@ -178,54 +167,6 @@ export async function connectToRedis(parentLogger?: serverLogger): Promise<void>
             logger.err(`Redis reconnection error. Error: ${err.message}`);
         });
     };
-
-    // ============================================================================
-    // Graceful Shutdown Handlers
-    // ============================================================================
-    
-    /**
-     * SIGINT Handler (Ctrl+C)
-     * Ensures clean Redis disconnection before process termination
-     * This is critical for preventing connection leaks and data corruption
-     */
-    if (!shutdownHandlersSetup) {
-        logger.debug("Setting up SIGINT handler");
-        process.on('SIGINT', async () => {
-            logger.info('Received SIGINT, closing Redis connection...');
-            try {
-                if (redisClient) {
-                    await redisClient.quit();
-                    logger.info('Redis connection closed successfully');
-                }
-            } catch (error: any) {
-                logger.err('Error closing Redis connection');
-            }
-            process.exit(0);
-        });
-        logger.debug("Finished setting up SIGINT handler");
-
-        /**
-         * SIGTERM Handler (Process termination signal)
-         * Ensures clean Redis disconnection before process termination
-         * Used by process managers (PM2, systemd, Docker, etc.) for graceful shutdown
-         */
-        logger.debug("Setting up SIGTERM handler");
-        process.on('SIGTERM', async () => {
-            logger.info('Received SIGTERM, closing Redis connection...');
-            try {
-                if (redisClient) {
-                    await redisClient.quit();
-                    logger.info('Redis connection closed successfully');
-                }
-            } catch (error: any) {
-                logger.err('Error closing Redis connection');
-            }
-            process.exit(0);
-        });
-        logger.debug("Finished setting up SIGTERM handler");
-
-        shutdownHandlersSetup = true;
-    }
 
     // ============================================================================
     // Redis Client Creation
@@ -267,7 +208,6 @@ export async function connectToRedis(parentLogger?: serverLogger): Promise<void>
     if (!clientHandlersSetup) {
         logger.debug("Setting up onReady handler");
         redisClient.on('ready', () => {
-            retryCount = 0; // Reset retry count on successful connection
             isConnected = true;
             logger.info('Redis ready');
         });
@@ -467,6 +407,45 @@ export async function redisDel(key: string): Promise<void> {
 }
 
 /**
+ * Atomically increment a counter and make sure it expires.
+ *
+ * INCR and the expiry run in one Lua script, so a counter can never be left
+ * without a TTL (two separate calls could leave a permanent key if the second
+ * failed). A key that somehow lost its TTL gets one again on the next call.
+ *
+ * @param key - Counter key
+ * @param ttlSeconds - Expiry applied when the key has none
+ * @returns The new count and its remaining TTL in seconds, or null when Redis
+ * is unavailable or the call failed (callers choose to fail open or closed)
+ */
+export async function redisIncrWithExpiry(key: string, ttlSeconds: number): Promise<{count: number; ttlSeconds: number} | null> {
+    if (!isRedisConnected()) {
+        return null;
+    }
+
+    const script =
+        "local c = redis.call('incr', KEYS[1]) " +
+        "local t = redis.call('ttl', KEYS[1]) " +
+        "if t < 0 then redis.call('expire', KEYS[1], ARGV[1]) t = tonumber(ARGV[1]) end " +
+        "return {c, t}";
+
+    const startedAt = Date.now();
+    try {
+        const result = await executeWithCircuitBreaker(async () => {
+            return await getRedisClient().eval(script, {
+                keys: [key],
+                arguments: [String(ttlSeconds)]
+            });
+        }) as [number, number];
+        redisCounter.recordSuccess(Date.now() - startedAt);
+        return {count: Number(result[0]), ttlSeconds: Number(result[1])};
+    } catch (error) {
+        redisCounter.recordFailure(Date.now() - startedAt);
+        return null;
+    }
+}
+
+/**
  * Atomically acquire OR renew a self-owned lock — a leader-election primitive.
  *
  * Sets `key` to `owner` with a `ttlSeconds` expiry ONLY if the key is currently
@@ -585,20 +564,19 @@ export async function redisMGet(keys: string[]): Promise<(string | null)[]> {
 /**
  * Disconnect from Redis gracefully
  * 
- * Closes the Redis connection and cleans up resources.
- * Sets connection status to false and nullifies the client.
- * 
- * @example
- * ```typescript
- * await disconnectFromRedis();
- * ```
+ * Closes the Redis connection and cleans up resources. Called by each
+ * server's graceful shutdown.
  */
 export async function disconnectFromRedis(): Promise<void> {
-    if (redisClient) {
-        await redisClient.quit();
-        redisClient = null;
-    }
+    // Set first: quit() emits 'end', which must not schedule a reconnect.
+    shuttingDown = true;
     isConnected = false;
+    if (redisClient) {
+        const client = redisClient;
+        redisClient = null;
+        clientHandlersSetup = false;
+        await client.quit();
+    }
 }
 
 /**
@@ -615,153 +593,6 @@ export async function disconnectFromRedis(): Promise<void> {
  */
 export function isRedisConnected(): boolean {
     return isConnected && redisClient !== null;
-}
-
-// ============================================================================
-// Helper Functions for Common Redis Operations
-// ============================================================================
-// Note: These functions do NOT use circuit breaker - use redisGet/redisSetEx
-// for circuit breaker protection, or wrap these with executeWithCircuitBreaker
-
-/**
- * Set a key-value pair in Redis with optional TTL
- * 
- * @param key - Redis key
- * @param value - Value to store
- * @param ttl - Optional time to live in seconds
- * 
- * @example
- * ```typescript
- * await setKey('user:123', 'data', 3600); // With TTL
- * await setKey('user:123', 'data'); // Without TTL
- * ```
- */
-export async function setKey(key: string, value: string, ttl?: number): Promise<void> {
-    const client = getRedisClient();
-    if (ttl) {
-        await client.setEx(key, ttl, value);
-    } else {
-        await client.set(key, value);
-    }
-}
-
-/**
- * Get a value from Redis by key
- * 
- * @param key - Redis key to retrieve
- * @returns Value associated with key, or null if not found
- * 
- * @example
- * ```typescript
- * const value = await getKey('user:123');
- * ```
- */
-export async function getKey(key: string): Promise<string | null> {
-    const client = getRedisClient();
-    return await client.get(key);
-}
-
-/**
- * Delete a key from Redis
- * 
- * @param key - Redis key to delete
- * @returns Number of keys deleted (0 or 1)
- * 
- * @example
- * ```typescript
- * const deleted = await deleteKey('user:123');
- * ```
- */
-export async function deleteKey(key: string): Promise<number> {
-    const client = getRedisClient();
-    return await client.del(key);
-}
-
-/**
- * Check if a key exists in Redis
- * 
- * @param key - Redis key to check
- * @returns true if key exists, false otherwise
- * 
- * @example
- * ```typescript
- * if (await keyExists('user:123')) {
- *   console.log('Key exists');
- * }
- * ```
- */
-export async function keyExists(key: string): Promise<boolean> {
-    const client = getRedisClient();
-    const exists = await client.exists(key);
-    return exists > 0;
-}
-
-/**
- * Set a field in a Redis hash
- * 
- * @param hash - Hash key
- * @param field - Field name within the hash
- * @param value - Value to store
- * 
- * @example
- * ```typescript
- * await setHash('user:123', 'name', 'John Doe');
- * ```
- */
-export async function setHash(hash: string, field: string, value: string): Promise<void> {
-    const client = getRedisClient();
-    await client.hSet(hash, field, value);
-}
-
-/**
- * Get a field value from a Redis hash
- * 
- * @param hash - Hash key
- * @param field - Field name within the hash
- * @returns Field value, or null if not found
- * 
- * @example
- * ```typescript
- * const name = await getHash('user:123', 'name');
- * ```
- */
-export async function getHash(hash: string, field: string): Promise<string | null> {
-    const client = getRedisClient();
-    return await client.hGet(hash, field);
-}
-
-/**
- * Get all fields and values from a Redis hash
- * 
- * @param hash - Hash key
- * @returns Object with all field-value pairs
- * 
- * @example
- * ```typescript
- * const user = await getAllHash('user:123');
- * // Returns: { name: 'John', email: 'john@example.com' }
- * ```
- */
-export async function getAllHash(hash: string): Promise<Record<string, string>> {
-    const client = getRedisClient();
-    return await client.hGetAll(hash);
-}
-
-/**
- * Delete a field from a Redis hash
- * 
- * @param hash - Hash key
- * @param field - Field name to delete
- * @returns Number of fields deleted (0 or 1)
- * 
- * @example
- * ```typescript
- * const deleted = await deleteHash('user:123', 'name');
- * ```
- */
-export async function deleteHash(hash: string, field: string): Promise<number> {
-    const client = getRedisClient();
-    return await client.hDel(hash, field);
 }
 
 /**
@@ -836,7 +667,7 @@ export async function getRedisHealth(): Promise<RedisHealth> {
  * }
  * ```
  */
-export async function pingRedis(): Promise<boolean> {
+async function pingRedis(): Promise<boolean> {
     if (!isRedisConnected()) {
         return false;
     }
@@ -851,65 +682,4 @@ export async function pingRedis(): Promise<boolean> {
         // Circuit breaker is open or operation failed
         return false;
     }
-}
-
-/**
- * Get Redis circuit breaker statistics
- * 
- * Returns the current state and statistics of the Redis circuit breaker,
- * useful for monitoring and debugging.
- * 
- * @returns Circuit breaker statistics including:
- * - state: Current circuit state (CLOSED, OPEN, HALF_OPEN)
- * - failures: Current failure count
- * - successes: Current success count (in HALF_OPEN state)
- * - totalRequests: Total requests processed
- * - totalFailures: Total failures encountered
- * - totalSuccesses: Total successful operations
- * 
- * @example
- * ```typescript
- * const stats = getRedisCircuitBreakerStats();
- * if (stats.state === 'OPEN') {
- *   console.warn('Redis circuit breaker is OPEN - service unavailable');
- * }
- * ```
- */
-export function getRedisCircuitBreakerStats() {
-    return redisCircuitBreaker.getStats();
-}
-
-/**
- * Check if Redis circuit breaker is open
- * 
- * Quick check to determine if the circuit breaker is currently open,
- * which means Redis operations will fail fast.
- * 
- * @returns true if circuit is open, false otherwise
- * 
- * @example
- * ```typescript
- * if (isRedisCircuitBreakerOpen()) {
- *   return { error: 'Cache temporarily unavailable' };
- * }
- * ```
- */
-export function isRedisCircuitBreakerOpen(): boolean {
-    return redisCircuitBreaker.isOpen();
-}
-
-/**
- * Manually reset the Redis circuit breaker
- * 
- * Resets the circuit breaker to CLOSED state, clearing all failure counts.
- * Use with caution - only reset if you're certain the service has recovered.
- * 
- * @example
- * ```typescript
- * // After confirming Redis is back online
- * resetRedisCircuitBreaker();
- * ```
- */
-export function resetRedisCircuitBreaker(): void {
-    redisCircuitBreaker.reset();
 }

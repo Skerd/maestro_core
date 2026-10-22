@@ -25,6 +25,7 @@ import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import {connectToKafka} from "@coreModule/connections/connectToKafka";
 import {connectToWebSocketServer} from "@coreModule/connections/connectToWebSocketServer";
+import {closeConnections} from "@coreModule/connections/closeConnections";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {KAFKA, AI_ASSISTANT} from "@coreModule/environment";
 import {startAiChannelConsumer} from "@coreModule/kafka/aiChannelConsumer";
@@ -98,6 +99,7 @@ async function gracefulShutdown(logger: serverLogger): Promise<void> {
     logger.debug("Assistant server shutting down...");
     stopAssistantHeartbeat();
     await uptimeKeeper.markStop("assistantServer");
+    await closeConnections(logger);
     process.exit(0);
 }
 

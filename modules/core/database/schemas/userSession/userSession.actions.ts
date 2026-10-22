@@ -8,7 +8,7 @@ import {WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import UserSession from "@coreModule/database/schemas/userSession/userSession";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 
 function notifySessionRevoked(userId: string, sessionId: string, logger: serverLogger) {

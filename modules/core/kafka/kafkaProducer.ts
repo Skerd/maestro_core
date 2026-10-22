@@ -106,45 +106,45 @@ export async function publishWithRetry(topic: string, message: any, maxRetries: 
     const log = loggerInstance || logger;
     const startedAt = Date.now();
 
-    try {
-        await kafkaCircuitBreaker.execute(async () => {
-            let lastError: any;
+    let lastError: any;
 
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                try {
-                    const producer = getProducerInstance();
-                    if (!producer) {
-                        throw new Error("Kafka producer is not available");
-                    }
-
-                    await producer.send({
-                        topic,
-                        messages: Array.isArray(message) ? message : [message]
-                    });
-
-                    if (attempt > 0) {
-                        log.debug(`Successfully published to ${topic} after ${attempt + 1} attempts`);
-                    }
-                    return;
-                } catch (error: any) {
-                    lastError = error;
-                    if (attempt < maxRetries - 1) {
-                        const delay = Math.pow(2, attempt) * KAFKA.PRODUCER_RETRY_DELAY_BASE_MS;
-                        log.warn(`Failed to publish to ${topic} (attempt ${attempt + 1}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`);
-                        await sleep(delay);
-                    }
+    // Each attempt goes through the breaker on its own, so every failed send
+    // counts toward opening it, and an open breaker ends the retries at once.
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            await kafkaCircuitBreaker.execute(async () => {
+                const producer = getProducerInstance();
+                if (!producer) {
+                    throw new Error("Kafka producer is not available");
                 }
-            }
 
-            log.err(`Failed to publish to ${topic} after ${maxRetries} attempts: ${lastError?.message}`);
-            throw lastError;
-        });
-        kafkaCounter.recordSuccess(Date.now() - startedAt);
-    } catch (error: any) {
-        kafkaCounter.recordFailure(Date.now() - startedAt);
-        log.warn(`Kafka circuit breaker is open or operation failed for topic ${topic}: ${error.message}`);
-        throw error;
+                await producer.send({
+                    topic,
+                    messages: Array.isArray(message) ? message : [message]
+                });
+            });
+
+            if (attempt > 0) {
+                log.debug(`Successfully published to ${topic} after ${attempt + 1} attempts`);
+            }
+            kafkaCounter.recordSuccess(Date.now() - startedAt);
+            return;
+        } catch (error: any) {
+            lastError = error;
+            if (kafkaCircuitBreaker.isOpen()) {
+                break;
+            }
+            if (attempt < maxRetries - 1) {
+                const delay = Math.pow(2, attempt) * KAFKA.PRODUCER_RETRY_DELAY_BASE_MS;
+                log.warn(`Failed to publish to ${topic} (attempt ${attempt + 1}/${maxRetries}): ${error.message}. Retrying in ${delay}ms...`);
+                await sleep(delay);
+            }
+        }
     }
+
+    kafkaCounter.recordFailure(Date.now() - startedAt);
+    log.err(`Failed to publish to ${topic}: ${lastError?.message}`);
+    throw lastError;
 }
 
 /**

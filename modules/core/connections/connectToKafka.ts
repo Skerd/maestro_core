@@ -14,10 +14,7 @@ let kafkaInstance: Kafka | null = null;
 let producerInstance: Producer | null = null;
 /** Every consumer created via `getConsumerInstance` — disconnected on graceful shutdown. */
 const registeredConsumers = new Set<Consumer>();
-let retryCount = 0;
-let firstConnection = true;
 let isConnected = false;
-let shutdownHandlersSetup = false;
 let producerHandlersSetup = false;
 let reconnectInProgress = false;
 let connectInProgress = false;
@@ -112,7 +109,7 @@ function buildKafkaClientConfig(): KafkaConfig {
     return kafkaConfig;
 }
 
-export function getKafkaInstance(): Kafka | null {
+function getKafkaInstance(): Kafka | null {
     if (!KAFKA.ENABLED) {
         return null;
     }
@@ -160,8 +157,8 @@ export function getProducerInstance(): Producer | null {
 }
 
 /**
- * Creates a dedicated KafkaJS consumer for `groupId`. The `topics` argument is
- * kept for call-site readability; subscription is the caller's responsibility.
+ * Creates a dedicated KafkaJS consumer for `groupId`; subscription is the
+ * caller's responsibility. Registered so shutdown can disconnect it.
  */
 export function getConsumerInstance(groupId: string): Consumer | null {
     if (!KAFKA.ENABLED) {
@@ -269,14 +266,11 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
                     logger.debug(
                         `Kafka producer configured: clientId=${KAFKA.CLIENT_ID}, brokers=${KAFKA.BROKERS.length}, allowAutoTopicCreation=true`,
                     );
-                    retryCount = 0;
                     isConnected = true;
-                    firstConnection = false;
                     void uptimeKeeper.markStart("kafka");
                     return;
                 } catch (error: any) {
                     currentRetryCount++;
-                    retryCount = currentRetryCount;
                     isConnected = false;
                     logger.err(`Kafka connection failed: ${error.message}. Retrying in ${KAFKA.CONNECTION_TIMER} ms.`);
                     try {
@@ -302,7 +296,6 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
 
         reconnectInProgress = true;
         reconnectScheduled = false;
-        retryCount = 0;
         isConnected = false;
 
         // Clean up metadata probe admin client before reconnecting
@@ -432,32 +425,6 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
         producerHandlersSetup = true;
     }
 
-    const gracefulShutdown = async (signal: "SIGINT" | "SIGTERM"): Promise<void> => {
-        logger.info(`Received ${signal}, closing Kafka connection...`);
-        try {
-            shuttingDown = true;
-            await teardownKafkaMetadataProbe();
-            if (producerInstance) {
-                await producerInstance.disconnect();
-            }
-            await disconnectAllRegisteredConsumers();
-            logger.info("Kafka connection closed successfully");
-        } catch {
-            logger.err("Error closing Kafka connection");
-        }
-        process.exit(0);
-    };
-
-    if (!shutdownHandlersSetup) {
-        process.on("SIGINT", async () => {
-            await gracefulShutdown("SIGINT");
-        });
-        process.on("SIGTERM", async () => {
-            await gracefulShutdown("SIGTERM");
-        });
-        shutdownHandlersSetup = true;
-    }
-
     if (isConnected) {
         logger.debug("Kafka producer already connected. Ensuring metadata probe is active.");
         startMetadataProbeInterval();
@@ -475,24 +442,28 @@ export async function connectToKafka(parentLogger?: serverLogger): Promise<void>
     logger.finish("Finished setting up Kafka instance");
 }
 
+/**
+ * Stops the reconnect supervisor and metadata probe, then disconnects the
+ * producer and every registered consumer (so they leave their groups cleanly).
+ * Called by each server's graceful shutdown.
+ */
 export async function disconnectFromKafka(): Promise<void> {
+    // Set first: the producer's disconnect event must not schedule a reconnect.
+    shuttingDown = true;
+    isConnected = false;
     await teardownKafkaMetadataProbe();
     if (producerInstance) {
         await producerInstance.disconnect();
         producerInstance = null;
+        producerHandlersSetup = false;
     }
     await disconnectAllRegisteredConsumers();
     kafkaInstance = null;
-    isConnected = false;
     lastClusterStats = null;
 }
 
 export function isKafkaConnected(): boolean {
     return isConnected && KAFKA.ENABLED;
-}
-
-export async function executeWithCircuitBreaker<T>(operation: () => Promise<T>): Promise<T> {
-    return await kafkaCircuitBreaker.execute(operation);
 }
 
 /**
@@ -525,16 +496,4 @@ export async function getKafkaHealth(): Promise<KafkaHealth> {
         clusterId: lastClusterStats?.clusterId,
         circuitBreaker: circuitBreakerStats,
     };
-}
-
-export function getKafkaCircuitBreakerStats() {
-    return kafkaCircuitBreaker.getStats();
-}
-
-export function isKafkaCircuitBreakerOpen(): boolean {
-    return kafkaCircuitBreaker.isOpen();
-}
-
-export function resetKafkaCircuitBreaker(): void {
-    kafkaCircuitBreaker.reset();
 }

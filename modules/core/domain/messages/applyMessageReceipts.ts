@@ -7,7 +7,7 @@ import {messageService} from "@coreModule/database/schemas/message/message.servi
 import {IMessage} from "@coreModule/database/schemas/message/message";
 import {IUser} from "@coreModule/database/schemas/user/user";
 import {WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 
 export const MESSAGE_RECEIPT_MAX_BATCH = 800;
 

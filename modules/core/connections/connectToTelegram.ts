@@ -13,8 +13,7 @@
  * - Telegraf bot instance management
  * - Circuit breaker pattern for failure protection and cascading failure prevention
  * - Command handlers for account linking (/start) and trivial static replies (/help, /hi)
- * - User account linking via verification codes
- * - Graceful shutdown handling (SIGINT, SIGTERM)
+ * - User account linking via single-use verification codes
  * - Health monitoring and connection status checks
  *
  * Bot Configuration:
@@ -23,7 +22,7 @@
  *
  * Bot Commands:
  * - /start {code}: Links user account to Telegram using verification code
- *   - Verifies code from user.requests.telegram.code
+ *   - Verifies code from user.requests.telegram.code, then clears it (single use)
  *   - Stores chatId in user.telegram.chatId
  *   - Sends confirmation message to user
  * - /help: Static reply (no AI)
@@ -36,13 +35,13 @@
  * 1. User generates QR code via POST /api/user/telegram
  * 2. System stores verification code in user.requests.telegram.code
  * 3. User scans QR code and starts bot with /start {code}
- * 4. Bot verifies code and links chatId to user account
+ * 4. Bot verifies code, links chatId to user account and clears the code
  * 5. User receives confirmation message
  * 
  * Circuit Breaker:
- * - Protects Telegram bot operations from cascading failures
- * - Automatically opens after 5 failures within 60 seconds
- * - Resets after 30 seconds in HALF_OPEN state
+ * - Wraps calls to the Telegram API only (sends and replies), never database work
+ * - Opens after 5 failures within 60 seconds; a call slower than 15 seconds counts as a failure
+ * - Lets a trial call through after 30 seconds (HALF_OPEN)
  * - Requires 2 successful operations to close from HALF_OPEN
  * 
  * @module connectToTelegram
@@ -50,7 +49,7 @@
 
 import {randomUUID} from "crypto";
 import os from "os";
-import {Telegraf} from "telegraf";
+import {Context, Telegraf} from "telegraf";
 import User from "@coreModule/database/schemas/user/user";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {CONSTANTS, TELEGRAM} from "@coreModule/environment";
@@ -75,13 +74,10 @@ import {telegramCounter} from "@coreModule/utilities/serviceMetrics/serviceCount
  * Telegraf bot instance - singleton instance for Telegram bot operations
  * This instance is created once and reused throughout the application lifecycle
  */
-export const telegrafBot = new Telegraf(TELEGRAM.TOKEN);
+const telegrafBot = new Telegraf(TELEGRAM.TOKEN);
 
 /** Connection status flag - tracks if Telegram bot is currently running */
 let isConnected = false;
-
-/** Flag to track if shutdown handlers have been set up (only set up once) */
-let shutdownHandlersSetup = false;
 
 /** Flag to ensure bot command/message handlers are only registered once */
 let handlersSetup = false;
@@ -178,8 +174,8 @@ async function waitForRetry(ms: number): Promise<void> {
  * 
  * This function:
  * 1. Sets up command handlers (/start, /help, /hi) — no free-text/AI handler
- * 2. Launches the bot to start receiving updates
- * 3. Sets up graceful shutdown handlers
+ * 2. Starts the leadership supervisor, which launches polling in the one
+ *    process holding the Redis poller lock
  * 
  * @param parentLogger - Parent logger instance for hierarchical logging
  * 
@@ -308,6 +304,15 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
             // Command Handlers
             // ============================================================================
             
+            /** Replies through the Telegram circuit breaker; a failed reply is logged, never thrown. */
+            const safeReply = async (ctx: Context, text: string, handlerLogger: serverLogger): Promise<void> => {
+                try {
+                    await telegramCircuitBreaker.execute(() => ctx.reply(text));
+                } catch (error: any) {
+                    handlerLogger.warn(`Telegram reply failed: ${error?.message ?? error}`);
+                }
+            };
+
             /**
              * /start command handler
              * Links user account to Telegram using verification code
@@ -315,89 +320,80 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
              * Flow:
              * 1. Extracts verification code from command payload
              * 2. Finds user with matching code in requests.telegram.code
-             * 3. Stores chatId in user.telegram.chatId
+             * 3. Stores chatId in user.telegram.chatId and clears the code (single use)
              * 4. Sends confirmation message to user
              */
             telegrafBot.start(async (ctx) => {
                 const startLogger = getLogger("telegram-start-command", logger);
                 startLogger.debug(`Received /start command from chat ${ctx.chat.id}`);
-                
+
+                const startPayload = ctx.payload; // Verification code from /start {code}
+                if (!startPayload) {
+                    await safeReply(ctx, `To link your account, scan the Telegram QR code from your profile settings.`, startLogger);
+                    return;
+                }
+
+                let linkedUsername: string | null = null;
                 try {
-                    // Wrap critical operations with circuit breaker protection
-                    await telegramCircuitBreaker.execute(async () => {
-                        let startPayload = ctx.payload; // Verification code from /start {code}
-                        
-                        // Find user with matching verification code
-                        let user = await User.findOne({"requests.telegram.code": startPayload})
-                            .select("userProfile username companies telegram requests.telegram");
-                        
-                        if( !!user ){
+                    // Find user with matching verification code
+                    const user = await User.findOne({"requests.telegram.code": startPayload})
+                        .select("userProfile username companies telegram requests.telegram");
 
-                            if( !user.telegram ){
-                                user.telegram = {
-                                    runProtocols: false,
-                                    chatId: ctx.chat.id
+                    if( !!user ){
+
+                        if( !user.telegram ){
+                            user.telegram = {
+                                runProtocols: false,
+                                chatId: ctx.chat.id
+                            }
+                        }
+
+                        // Link Telegram chatId to user account; the code is single use.
+                        user.telegram.chatId = ctx.chat.id;
+                        user.set("requests.telegram.code", undefined);
+                        await user.save();
+                        linkedUsername = user.username;
+                        startLogger.info(`Telegram successfully linked for user: ${user.username}`);
+
+                        const companyRef = user.companies?.[0];
+                        const notificationCompanyId = companyRef
+                            ? String((companyRef as {_id?: unknown})._id ?? companyRef)
+                            : undefined;
+                        if (notificationCompanyId) {
+                            emitNotificationEvent(NotificationEventCodes.TELEGRAM_LINKED, {
+                                receiverIds: [user._id.toString()],
+                                payload: {
+                                    companyId: notificationCompanyId,
+                                    languageCode: CONSTANTS.DEFAULT_LANGUAGE
                                 }
-                            }
-
-                            // Link Telegram chatId to user account
-                            user.telegram.chatId = ctx.chat.id;
-                            await user.save();
-                            
-                            startLogger.info(`Telegram successfully linked for user: ${user.username}`);
-                            await ctx.reply(`Telegram successfully activated for your account: ${user.username}`);
-
-                            const companyRef = user.companies?.[0];
-                            const notificationCompanyId = companyRef
-                                ? String((companyRef as {_id?: unknown})._id ?? companyRef)
-                                : undefined;
-                            if (notificationCompanyId) {
-                                emitNotificationEvent(NotificationEventCodes.TELEGRAM_LINKED, {
-                                    receiverIds: [user._id.toString()],
-                                    payload: {
-                                        companyId: notificationCompanyId,
-                                        languageCode: CONSTANTS.DEFAULT_LANGUAGE
-                                    }
-                                });
-                            }
+                            });
                         }
-                        else{
-                            // Invalid or expired verification code
-                            startLogger.warn(`Invalid verification code from chat ${ctx.chat.id}`);
-                            await ctx.reply(`Invalid verification code. Please generate a new QR code.`);
-                        }
-                    });
-                } catch (error: any) {
-                    const startLogger = getLogger("telegram-start-command", logger);
-                    
-                    // Check if error is from circuit breaker
-                    if (error.message?.includes('Circuit breaker')) {
-                        startLogger.warn(`Circuit breaker is OPEN - Telegram service unavailable`);
-                        await ctx.reply(`Telegram service is temporarily unavailable. Please try again later.`);
-                    } else {
-                        startLogger.err(`Error processing /start command: ${error.message}`);
-                        await ctx.reply(`An error occurred while linking your account. Please try again.`);
                     }
+                } catch (error: any) {
+                    startLogger.err(`Error processing /start command: ${error.message}`);
+                    await safeReply(ctx, `An error occurred while linking your account. Please try again.`, startLogger);
+                    return;
+                }
+
+                if (linkedUsername) {
+                    await safeReply(ctx, `Telegram successfully activated for your account: ${linkedUsername}`, startLogger);
+                } else {
+                    // Invalid, already used or replaced verification code
+                    startLogger.warn(`Invalid verification code from chat ${ctx.chat.id}`);
+                    await safeReply(ctx, `Invalid verification code. Please generate a new QR code.`, startLogger);
                 }
             });
 
             /**
              * /help command handler
-             * Provides help information to users
+             * Explains what the bot does
              */
             telegrafBot.help(async (ctx) => {
-                try {
-                    await telegramCircuitBreaker.execute(async () => {
-                        await ctx.reply('Send me a sticker');
-                    });
-                } catch (error: any) {
-                    const helpLogger = getLogger("telegram-help-command", logger);
-                    if (error.message?.includes('Circuit breaker')) {
-                        helpLogger.warn(`Circuit breaker is OPEN - Telegram service unavailable`);
-                    } else {
-                        helpLogger.err(`Error processing /help command: ${error.message}`);
-                    }
-                }
+                await safeReply(
+                    ctx,
+                    `This bot delivers your account notifications. To link an account, scan the Telegram QR code from your profile settings.`,
+                    getLogger("telegram-help-command", logger)
+                );
             });
 
             /**
@@ -406,20 +402,14 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
              */
             telegrafBot.command('hi', async (ctx) => {
                 if( !ctx.from.is_bot ){
-                    try {
-                        await telegramCircuitBreaker.execute(async () => {
-                            let {first_name, last_name} = ctx.from;
-                            await ctx.reply(`Hey there ${first_name} ${last_name}!`);
-                        });
-                    } catch (error: any) {
-                        const hiLogger = getLogger("telegram-hi-command", logger);
-                        if (error.message?.includes('Circuit breaker')) {
-                            hiLogger.warn(`Circuit breaker is OPEN - Telegram service unavailable`);
-                        } else {
-                            hiLogger.err(`Error processing /hi command: ${error.message}`);
-                        }
-                    }
+                    const name = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" ");
+                    await safeReply(ctx, `Hey there ${name}!`, getLogger("telegram-hi-command", logger));
                 }
+            });
+
+            // Without this, an error escaping a handler would end the long-poll.
+            telegrafBot.catch((error: any, ctx) => {
+                logger.err(`Unhandled Telegram error for update ${ctx.update.update_id}: ${error?.message ?? error}`);
             });
 
             // ============================================================================
@@ -436,69 +426,6 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
 
             handlersSetup = true;
         }
-
-        // ============================================================================
-        // Graceful Shutdown Handlers
-        // ============================================================================
-        // Set up shutdown handlers only once (on first connection)
-        // These handlers will persist for the lifetime of the process
-        
-        if (!shutdownHandlersSetup) {
-            /**
-             * SIGINT Handler (Ctrl+C)
-             * Ensures clean Telegram bot shutdown before process termination
-             * This is critical for preventing connection leaks and ensuring proper cleanup
-             */
-            logger.debug("Setting up SIGINT handler");
-            process.on('SIGINT', async () => {
-                const shutdownLogger = getLogger("telegram-shutdown");
-                shutdownLogger.info('Received SIGINT, stopping Telegram bot...');
-                try {
-                    if (telegrafBot) {
-                        await telegrafBot.stop('SIGINT');
-                        isConnected = false;
-                        stopTelegramHealthSnapshotPublisher();
-                        // Release the poller lock so another instance takes over now,
-                        // rather than after the TTL lapses.
-                        await releasePollerLeadership();
-                        shutdownLogger.info('Telegram bot stopped successfully');
-                    }
-                } catch (error) {
-                    shutdownLogger.err('Error stopping Telegram bot');
-                }
-                process.exit(0);
-            });
-            logger.debug("Finished setting up SIGINT handler");
-
-            /**
-             * SIGTERM Handler (Process termination signal)
-             * Ensures clean Telegram bot shutdown before process termination
-             * Used by process managers (PM2, systemd, Docker, etc.) for graceful shutdown
-             */
-            logger.debug("Setting up SIGTERM handler");
-            process.on('SIGTERM', async () => {
-                const shutdownLogger = getLogger("telegram-shutdown");
-                shutdownLogger.info('Received SIGTERM, stopping Telegram bot...');
-                try {
-                    if (telegrafBot) {
-                        await telegrafBot.stop('SIGTERM');
-                        isConnected = false;
-                        stopTelegramHealthSnapshotPublisher();
-                        // Release the poller lock so another instance takes over now,
-                        // rather than after the TTL lapses.
-                        await releasePollerLeadership();
-                        shutdownLogger.info('Telegram bot stopped successfully');
-                    }
-                } catch (error) {
-                    shutdownLogger.err('Error stopping Telegram bot');
-                }
-                process.exit(0);
-            });
-            logger.debug("Finished setting up SIGTERM handler");
-            
-            shutdownHandlersSetup = true;
-        }
-
     }
     catch (e: any){
         logger.err(`Telegram initialization failed: ${e.message}`);
@@ -520,45 +447,23 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
 /**
  * Disconnect from Telegram bot gracefully
  * 
- * Stops the Telegram bot and cleans up resources.
- * Resets connection status.
- * 
- * @example
- * ```typescript
- * await disconnectFromTelegram();
- * ```
+ * Permanently opts this process out of polling, stops the bot if it is
+ * polling here, and releases the poller lock so another instance can take
+ * over at once. Called by telegramServer's graceful shutdown.
  */
 export async function disconnectFromTelegram(): Promise<void> {
-    if (telegrafBot) {
+    // Set first so the leadership supervisor won't relaunch.
+    pollerDisabled = true;
+    if (isConnected || launchInProgress) {
         try {
-            // Permanently opt this process out of polling so the leadership
-            // supervisor won't relaunch, and release the lock for other instances.
-            pollerDisabled = true;
             await telegrafBot.stop();
-            isConnected = false;
-            stopTelegramHealthSnapshotPublisher();
-            await releasePollerLeadership();
-        } catch (error) {
-            const logger = getLogger("telegram-disconnect");
-            logger.err('Error disconnecting from Telegram bot');
+        } catch (error: any) {
+            getLogger("telegram-disconnect").err(`Error stopping Telegram bot: ${error?.message ?? error}`);
         }
     }
-}
-
-/**
- * Check if Telegram bot is currently connected and running
- * 
- * @returns true if Telegram bot is connected and running, false otherwise
- * 
- * @example
- * ```typescript
- * if (!isTelegramConnected()) {
- *   throw new Error('Telegram bot not available');
- * }
- * ```
- */
-export function isTelegramConnected(): boolean {
-    return isConnected;
+    isConnected = false;
+    stopTelegramHealthSnapshotPublisher();
+    await releasePollerLeadership();
 }
 
 /**
@@ -583,7 +488,7 @@ export function isTelegramConnected(): boolean {
  * }
  * ```
  */
-export function getTelegramHealth(): TelegramHealth {
+function getTelegramHealth(): TelegramHealth {
     const circuitBreakerStats = telegramCircuitBreaker.getStats();
     const counters = telegramCounter.getStats();
 
@@ -696,65 +601,4 @@ export function getTelegramBot(): Telegraf {
  */
 export async function executeWithCircuitBreaker<T>(operation: () => Promise<T>): Promise<T> {
     return await telegramCircuitBreaker.execute(operation);
-}
-
-/**
- * Get Telegram circuit breaker statistics
- * 
- * Returns the current state and statistics of the Telegram circuit breaker,
- * useful for monitoring and debugging.
- * 
- * @returns Circuit breaker statistics including:
- * - state: Current circuit state (CLOSED, OPEN, HALF_OPEN)
- * - failures: Current failure count
- * - successes: Current success count (in HALF_OPEN state)
- * - totalRequests: Total requests processed
- * - totalFailures: Total failures encountered
- * - totalSuccesses: Total successful operations
- * 
- * @example
- * ```typescript
- * const stats = getTelegramCircuitBreakerStats();
- * if (stats.state === 'OPEN') {
- *   console.warn('Telegram circuit breaker is OPEN - service unavailable');
- * }
- * ```
- */
-export function getTelegramCircuitBreakerStats() {
-    return telegramCircuitBreaker.getStats();
-}
-
-/**
- * Check if Telegram circuit breaker is open
- * 
- * Quick check to determine if the circuit breaker is currently open,
- * which means Telegram operations will fail fast.
- * 
- * @returns true if circuit is open, false otherwise
- * 
- * @example
- * ```typescript
- * if (isTelegramCircuitBreakerOpen()) {
- *   return { error: 'Telegram temporarily unavailable' };
- * }
- * ```
- */
-export function isTelegramCircuitBreakerOpen(): boolean {
-    return telegramCircuitBreaker.isOpen();
-}
-
-/**
- * Manually reset the Telegram circuit breaker
- * 
- * Resets the circuit breaker to CLOSED state, clearing all failure counts.
- * Use with caution - only reset if you're certain the service has recovered.
- * 
- * @example
- * ```typescript
- * // After confirming Telegram API is back online
- * resetTelegramCircuitBreaker();
- * ```
- */
-export function resetTelegramCircuitBreaker(): void {
-    telegramCircuitBreaker.reset();
 }

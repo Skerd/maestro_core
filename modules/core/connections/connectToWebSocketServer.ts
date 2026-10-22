@@ -4,9 +4,8 @@
  * Provides comprehensive WebSocket connection management for server-to-server communication with:
  * - Automatic retry logic with configurable retry intervals
  * - Circuit breaker pattern for failure protection and cascading failure prevention
- * - Connection lifecycle event handlers (open, close, error, ping/pong)
- * - Keep-alive mechanism with periodic ping messages
- * - Graceful shutdown handling (SIGINT, SIGTERM)
+ * - Connection lifecycle event handlers (open, close, error, pong)
+ * - Keep-alive mechanism with periodic ping messages and dead-peer detection
  * - Health monitoring and connection status checks
  * 
  * Connection Configuration:
@@ -16,9 +15,9 @@
  * - RETRY_TIMER: Delay between reconnection attempts
  * 
  * Keep-Alive Mechanism:
- * - Sends MACHINE_PING message every 1000ms (1 second) when connected
- * - Responds to ping frames with pong frames
- * - Maintains connection health and detects disconnections
+ * - Sends a MACHINE_PING message and a ping frame every KEEP_ALIVE_INTERVAL ms
+ * - Terminates the socket when no pong arrives for 3 intervals, which triggers
+ *   a reconnect (a half-open TCP connection would otherwise swallow messages)
  * 
  * Retry Strategy:
  * - Automatically reconnects on connection close or error
@@ -26,9 +25,10 @@
  * - Continues retrying indefinitely (critical service)
  * 
  * Circuit Breaker:
- * - Protects WebSocket operations from cascading failures
- * - Automatically opens after 5 failures within 60 seconds
- * - Resets after 30 seconds in HALF_OPEN state
+ * - Every outbound message goes through {@link pushWebsocketMessage}, which
+ *   runs the send through the WebSocket circuit breaker
+ * - Opens after 5 failures within 60 seconds; a send slower than 5 seconds counts as a failure
+ * - Lets a trial send through after 30 seconds (HALF_OPEN)
  * - Requires 2 successful operations to close from HALF_OPEN
  * 
  * @module connectToWebSocketServer
@@ -40,25 +40,25 @@ import {clearInterval} from "node:timers";
 import {MACHINE_TO_MACHINE_SECRET, WEBSOCKET} from "@coreModule/environment";
 import {webSocketCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {WebSocketHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
-import {WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
+import {WebSocketMessageCodes, WebSocketPush} from "armonia/src/modules/core/websocket/types";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 
 /**
- * Extended WebSocket type with keep-alive interval tracking
+ * Extended WebSocket type with keep-alive tracking
  */
-type WebSocketType = WebSocket & { keepAliveInterval?: NodeJS.Timeout };
+type WebSocketType = WebSocket & { keepAliveInterval?: NodeJS.Timeout; lastPongAt?: number };
+
+/** Missed keep-alive intervals after which the peer is considered dead. */
+const MISSED_PONGS_BEFORE_TERMINATE = 3;
 
 /** WebSocket connection instance - null until connection is established */
-export let WebSocketServerLocal: WebSocketType | null = null;
+let WebSocketServerLocal: WebSocketType | null = null;
 
 /** Connection status flag - tracks if WebSocket is currently connected */
 let isConnected = false;
 
 /** Retry count for tracking connection attempts */
 let retryCount = 0;
-
-/** Flag to track if shutdown handlers have been set up (only set up once) */
-let shutdownHandlersSetup = false;
 
 /** Prevent overlapping initial connection attempts */
 let connectInProgress = false;
@@ -133,11 +133,8 @@ async function createSocketAndWaitForOpen(wsUrl: string): Promise<WebSocketType>
             rejectOnce(error);
         };
 
-        const handleClose = (event: { code?: number; reason?: Buffer | string }) => {
-            const reason = typeof event?.reason === "string"
-                ? event.reason
-                : event?.reason?.toString?.() || "none";
-            rejectOnce(new Error(`WebSocket closed before open. Code: ${event?.code ?? "unknown"}, Reason: ${reason}`));
+        const handleClose = (code: number, reason: Buffer) => {
+            rejectOnce(new Error(`WebSocket closed before open. Code: ${code}, Reason: ${reason.toString() || "none"}`));
         };
 
         socket.on("open", handleOpen);
@@ -155,7 +152,6 @@ async function createSocketAndWaitForOpen(wsUrl: string): Promise<WebSocketType>
  * 3. Sets up event handlers for connection lifecycle (open, close, error, ping)
  * 4. Implements keep-alive mechanism with periodic ping messages
  * 5. Handles automatic reconnection on disconnect
- * 6. Uses circuit breaker protection for connection attempts
  * 
  * Connection Path Format:
  * `ws://{HOST}:{PORT}/{MACHINE_TO_MACHINE_SECRET}/{SERVER_NAME}`
@@ -173,6 +169,7 @@ async function createSocketAndWaitForOpen(wsUrl: string): Promise<WebSocketType>
  */
 export async function connectToWebSocketServer(parentLogger?: serverLogger): Promise<void>{
     const logger = getLogger("webSocketServer-connecting", parentLogger);
+    shuttingDown = false;
     const wsUrl = `ws://${WEBSOCKET.HOST}:${WEBSOCKET.PORT}/${MACHINE_TO_MACHINE_SECRET}/${global.ServerName}`;
     logger.start("Setting up WebSocket instance");
     logger.debug(`WebSocket target host=${WEBSOCKET.HOST}, port=${WEBSOCKET.PORT}, server=${global.ServerName}`);
@@ -187,7 +184,9 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
         try {
             logger.warn(`WebSocket disconnected. Retrying in ${WEBSOCKET.RETRY_TIMER} ms. This connection CANNOT FAIL.`);
             await waitForRetry(WEBSOCKET.RETRY_TIMER);
-            void connectToWebSocketServer(parentLogger);
+            if (!shuttingDown) {
+                void connectToWebSocketServer(parentLogger);
+            }
         } finally {
             reconnectInProgress = false;
         }
@@ -222,12 +221,12 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
 
         try {
             let currentRetryCount = retryCount;
-            let socket: WebSocketType | null = null;
+            let opened: WebSocketType | null = null;
 
-            while (!socket) {
+            while (!opened && !shuttingDown) {
                 try {
                     logger.debug(`Attempting WebSocket connection [${currentRetryCount + 1}/infinite]...`);
-                    socket = await createSocketAndWaitForOpen(wsUrl);
+                    opened = await createSocketAndWaitForOpen(wsUrl);
                 } catch (err: any) {
                     currentRetryCount++;
                     retryCount = currentRetryCount;
@@ -236,16 +235,28 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
                 }
             }
 
+            if (!opened) {
+                return;
+            }
+            const socket = opened;
+            if (shuttingDown) {
+                // Disconnected while the handshake was in flight.
+                socket.close();
+                return;
+            }
+
             WebSocketServerLocal = socket;
             retryCount = 0;
             isConnected = true;
-            shuttingDown = false;
             void uptimeKeeper.markStart("websocket");
 
             logger.debug(`Setting up WebSocket event handlers`);
 
-            socket.on("ping", () => {
-                socket?.pong();
+            // ws answers the server's ping frames automatically; the pongs
+            // tracked here answer our own pings (see the keep-alive below).
+            socket.lastPongAt = Date.now();
+            socket.on("pong", () => {
+                socket.lastPongAt = Date.now();
             });
 
             socket.on("error", (error) => {
@@ -253,14 +264,11 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
                 scheduleReconnectIfNeeded(socket, error.message || String(error));
             });
 
-            socket.on("close", async (event: { code?: number; reason?: Buffer | string }) => {
+            socket.on("close", async (code: number, reason: Buffer) => {
                 const closeLogger = getLogger("webSocketServer-closedConnection");
-                const reason = typeof event?.reason === "string"
-                    ? event.reason
-                    : event?.reason?.toString?.() || "none";
 
                 closeLogger.start();
-                closeLogger.debug(`WebSocket connection closed. Code: ${event?.code ?? "unknown"}, Reason: ${reason}`);
+                closeLogger.debug(`WebSocket connection closed. Code: ${code}, Reason: ${reason.toString() || "none"}`);
                 closeLogger.debug(`WebSocket connection cannot remain closed. Reconnecting...`);
                 closeLogger.finish();
 
@@ -284,8 +292,16 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
             openLogger.info(`WebSocket connected`);
 
             socket.keepAliveInterval = setInterval(() => {
+                const silentFor = Date.now() - (socket.lastPongAt ?? 0);
+                if (silentFor > WEBSOCKET.KEEP_ALIVE_INTERVAL * MISSED_PONGS_BEFORE_TERMINATE) {
+                    openLogger.warn(`No pong from WebSocket server for ${silentFor} ms. Terminating to reconnect.`);
+                    // terminate() emits 'close', whose handler reconnects.
+                    socket.terminate();
+                    return;
+                }
                 try {
-                    if (socket && socket.readyState === WebSocket.OPEN) {
+                    if (socket.readyState === WebSocket.OPEN) {
+                        socket.ping();
                         socket.send(JSON.stringify({
                             code: WebSocketMessageCodes.MACHINE_TO_MACHINE_PING,
                             payload: {
@@ -319,48 +335,6 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
         return;
     }
 
-    if (!shutdownHandlersSetup) {
-        logger.debug("Setting up SIGINT handler");
-        process.on('SIGINT', async () => {
-            const shutdownLogger = getLogger("webSocketServer-shutdown");
-            shutdownLogger.info('Received SIGINT, closing WebSocket connection...');
-            try {
-                if (WebSocketServerLocal) {
-                    shuttingDown = true;
-                    clearKeepAlive(WebSocketServerLocal);
-                    WebSocketServerLocal.close();
-                    WebSocketServerLocal = null;
-                    shutdownLogger.info('WebSocket connection closed successfully');
-                }
-            } catch (error) {
-                shutdownLogger.err('Error closing WebSocket connection');
-            }
-            process.exit(0);
-        });
-        logger.debug("Finished setting up SIGINT handler");
-
-        logger.debug("Setting up SIGTERM handler");
-        process.on('SIGTERM', async () => {
-            const shutdownLogger = getLogger("webSocketServer-shutdown");
-            shutdownLogger.info('Received SIGTERM, closing WebSocket connection...');
-            try {
-                if (WebSocketServerLocal) {
-                    shuttingDown = true;
-                    clearKeepAlive(WebSocketServerLocal);
-                    WebSocketServerLocal.close();
-                    WebSocketServerLocal = null;
-                    shutdownLogger.info('WebSocket connection closed successfully');
-                }
-            } catch (error) {
-                shutdownLogger.err('Error closing WebSocket connection');
-            }
-            process.exit(0);
-        });
-        logger.debug("Finished setting up SIGTERM handler");
-
-        shutdownHandlersSetup = true;
-    }
-
     void establishConnectionLoop().catch((err: any) => {
         logger.err(`connectToWebSocketServer background supervisor failed: ${err.message}`);
     });
@@ -377,7 +351,8 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
  * Disconnect from WebSocket server gracefully
  * 
  * Closes the WebSocket connection and cleans up resources.
- * Clears keep-alive interval and resets connection state.
+ * Clears keep-alive interval and resets connection state, and stops any
+ * pending reconnect. Called by each server's graceful shutdown.
  * 
  * @example
  * ```typescript
@@ -385,8 +360,8 @@ export async function connectToWebSocketServer(parentLogger?: serverLogger): Pro
  * ```
  */
 export async function disconnectFromWebSocketServer(): Promise<void> {
+    shuttingDown = true;
     if (WebSocketServerLocal) {
-        shuttingDown = true;
         clearKeepAlive(WebSocketServerLocal);
         WebSocketServerLocal.close();
         WebSocketServerLocal = null;
@@ -406,40 +381,30 @@ export async function disconnectFromWebSocketServer(): Promise<void> {
  * }
  * ```
  */
-export function isWebSocketConnected(): boolean {
+function isWebSocketConnected(): boolean {
     return isConnected && WebSocketServerLocal !== null && WebSocketServerLocal.readyState === WebSocket.OPEN;
 }
 
 /**
- * Execute WebSocket operation with circuit breaker protection
- * 
- * Wraps any WebSocket operation with the circuit breaker pattern to prevent
- * cascading failures. When the circuit is open, operations fail fast without
- * attempting to reach WebSocket server.
- * 
- * Circuit Breaker States:
- * - CLOSED: Normal operation, operations pass through
- * - OPEN: Circuit is open, operations fail fast (service is down)
- * - HALF_OPEN: Testing recovery, allows limited operations
- * 
- * @param operation - WebSocket operation to execute (async function)
- * @returns Result of the operation
- * @throws Error if circuit is open or operation fails
- * 
- * @example
- * ```typescript
- * // Wrap a WebSocket send operation
- * await executeWithCircuitBreaker(async () => {
- *   if (WebSocketServerLocal) {
- *     WebSocketServerLocal.send(JSON.stringify({ code: 'MESSAGE' }));
- *   }
- * });
- * ```
+ * Push a message to users through the WebSocket server (machine connection).
+ *
+ * Fire-and-forget: a no-op while disconnected; a failed or slow send is
+ * logged and counted by the WebSocket circuit breaker, and while the breaker
+ * is open sends are dropped without touching the socket.
+ *
+ * @param message - Message code, payload and receiving user IDs, serialized as JSON
  */
-export async function executeWithCircuitBreaker<T>(
-    operation: () => Promise<T>
-): Promise<T> {
-    return await webSocketCircuitBreaker.execute(operation);
+export function pushWebsocketMessage<T>(message: WebSocketPush<T>): void {
+    const socket = WebSocketServerLocal;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return;
+    }
+    const data = JSON.stringify(message);
+    webSocketCircuitBreaker.execute(() => new Promise<void>((resolve, reject) => {
+        socket.send(data, (error) => (error ? reject(error) : resolve()));
+    })).catch((error: any) => {
+        getLogger("webSocketServer-send").warn(`Failed to send WebSocket message: ${error?.message ?? error}`);
+    });
 }
 
 /**
@@ -490,68 +455,8 @@ export function getWebSocketHealth(): WebSocketHealth {
         users: 0,
         connected,
         readyState,
-        url: WebSocketServerLocal?.url,
+        // Not the socket URL: its path carries MACHINE_TO_MACHINE_SECRET.
+        url: `ws://${WEBSOCKET.HOST}:${WEBSOCKET.PORT}`,
         circuitBreaker: circuitBreakerStats 
     };
-}
-
-/**
- * Get WebSocket circuit breaker statistics
- * 
- * Returns the current state and statistics of the WebSocket circuit breaker,
- * useful for monitoring and debugging.
- * 
- * @returns Circuit breaker statistics including:
- * - state: Current circuit state (CLOSED, OPEN, HALF_OPEN)
- * - failures: Current failure count
- * - successes: Current success count (in HALF_OPEN state)
- * - totalRequests: Total requests processed
- * - totalFailures: Total failures encountered
- * - totalSuccesses: Total successful operations
- * 
- * @example
- * ```typescript
- * const stats = getWebSocketCircuitBreakerStats();
- * if (stats.state === 'OPEN') {
- *   console.warn('WebSocket circuit breaker is OPEN - service unavailable');
- * }
- * ```
- */
-export function getWebSocketCircuitBreakerStats() {
-    return webSocketCircuitBreaker.getStats();
-}
-
-/**
- * Check if WebSocket circuit breaker is open
- * 
- * Quick check to determine if the circuit breaker is currently open,
- * which means WebSocket operations will fail fast.
- * 
- * @returns true if circuit is open, false otherwise
- * 
- * @example
- * ```typescript
- * if (isWebSocketCircuitBreakerOpen()) {
- *   return { error: 'WebSocket temporarily unavailable' };
- * }
- * ```
- */
-export function isWebSocketCircuitBreakerOpen(): boolean {
-    return webSocketCircuitBreaker.isOpen();
-}
-
-/**
- * Manually reset the WebSocket circuit breaker
- * 
- * Resets the circuit breaker to CLOSED state, clearing all failure counts.
- * Use with caution - only reset if you're certain the service has recovered.
- * 
- * @example
- * ```typescript
- * // After confirming WebSocket server is back online
- * resetWebSocketCircuitBreaker();
- * ```
- */
-export function resetWebSocketCircuitBreaker(): void {
-    webSocketCircuitBreaker.reset();
 }

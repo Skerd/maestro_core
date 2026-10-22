@@ -45,7 +45,7 @@ import {
     RemoveChannelMembersFormResponseType
 } from "armonia/src/modules/core/api/user/private/chats/channels/removeChannelMembers.form.response.type";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 
 const router = Router();
 

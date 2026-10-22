@@ -31,7 +31,7 @@
  */
 
 import {getLogger} from "@coreModule/loggers/serverLog";
-import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
+import {executeWithCircuitBreaker, getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
 
 /** Logical service identifiers tracked by this module. */
 export type ServiceCounterKey =
@@ -106,7 +106,7 @@ export class ServiceCounter {
     async hydrate(): Promise<void> {
         if (!isRedisConnected()) return;
         try {
-            const data = await getRedisClient().hGetAll(REDIS_KEY_PREFIX + this.service);
+            const data = await executeWithCircuitBreaker(() => getRedisClient().hGetAll(REDIS_KEY_PREFIX + this.service));
             this.hydratedCompleted = numericField(data?.completed);
             this.hydratedFailed = numericField(data?.failed);
             this.hydratedTime = numericField(data?.time);
@@ -144,14 +144,14 @@ export class ServiceCounter {
 
         try {
             const ops: Promise<unknown>[] = [];
-            if (c > 0) ops.push(client.hIncrBy(key, "completed", c));
-            if (f > 0) ops.push(client.hIncrBy(key, "failed", f));
-            if (t > 0) ops.push(client.hIncrBy(key, "time", t));
+            if (c > 0) ops.push(executeWithCircuitBreaker(() => client.hIncrBy(key, "completed", c)));
+            if (f > 0) ops.push(executeWithCircuitBreaker(() => client.hIncrBy(key, "failed", f)));
+            if (t > 0) ops.push(executeWithCircuitBreaker(() => client.hIncrBy(key, "time", t)));
             if (ops.length > 0) await Promise.all(ops);
 
             // Read the canonical values back so the local hydrated total
             // reflects every process's contribution, not just our own.
-            const data = await client.hGetAll(key);
+            const data = await executeWithCircuitBreaker(() => client.hGetAll(key));
             this.hydratedCompleted = numericField(data?.completed);
             this.hydratedFailed = numericField(data?.failed);
             this.hydratedTime = numericField(data?.time);

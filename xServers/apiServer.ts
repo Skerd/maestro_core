@@ -40,6 +40,7 @@ import express, {Application, NextFunction, Response} from 'express';
 import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {connectToWebSocketServer} from "@coreModule/connections/connectToWebSocketServer";
+import {closeConnections} from "@coreModule/connections/closeConnections";
 import {
     hydrateAllServiceCounters,
     startServiceCountersFlush
@@ -522,6 +523,7 @@ async function gracefulShutdown(): Promise<void> {
     log.debug("API server shutting down...");
     stopApiHeartbeat();
     await uptimeKeeper.markStop("api");
+    await closeConnections(log);
     process.exit(0);
 }
 

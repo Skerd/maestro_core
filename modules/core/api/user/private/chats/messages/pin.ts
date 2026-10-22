@@ -7,7 +7,7 @@ import {TransactionRequired} from "@coreModule/utilities/middlewares/transaction
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {
     GetMessageSingleFormType
 } from "armonia/src/modules/core/api/user/private/chats/messages/getMessageSingle.form.type";

@@ -17,7 +17,7 @@
  */
 
 import {getLogger} from "@coreModule/loggers/serverLog";
-import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
+import {executeWithCircuitBreaker, getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
 
 const REDIS_KEY = "ws:rooms:messages";
 const logger = getLogger("ws_message_store");
@@ -32,7 +32,7 @@ let hydrated = false;
 export async function hydrateRoomMessages(): Promise<void> { 
     if (!isRedisConnected()) return;
     try {
-        const raw = await getRedisClient().hGetAll(REDIS_KEY);
+        const raw = await executeWithCircuitBreaker(() => getRedisClient().hGetAll(REDIS_KEY));
         const next: Record<string, number> = {};
         for (const [field, value] of Object.entries(raw || {})) {
             const n = Number(value);
@@ -91,7 +91,7 @@ export async function saveRoomMessages(rooms: Record<string, { messages: number 
         }
 
         if (Object.keys(fields).length > 0) {
-            await client.hSet(REDIS_KEY, fields);
+            await executeWithCircuitBreaker(() => client.hSet(REDIS_KEY, fields));
         }
         cachedSnapshot = merged;
         hydrated = true;

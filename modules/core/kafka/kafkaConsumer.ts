@@ -29,7 +29,8 @@
  * @module kafkaConsumer
  */
 
-import {ensureKafkaTopic, getConsumerInstance, getProducerInstance} from "@coreModule/connections/connectToKafka";
+import {ensureKafkaTopic, getConsumerInstance} from "@coreModule/connections/connectToKafka";
+import {publishWithRetry} from "@coreModule/kafka/kafkaProducer";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {KAFKA} from "@coreModule/environment";
 import {
@@ -47,7 +48,7 @@ import {
     SendInvitationEmail,
     SendMfaDisableEmail
 } from "@coreModule/utilities/database/user";
-import {getRedisClient, isRedisConnected} from "@coreModule/connections/connectToRedis";
+import {redisDel, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
 import {ObjectId} from "mongodb";
 import ApiAccess from "@coreModule/database/schemas/apiAccess/apiAccess";
 import {kafkaCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
@@ -195,37 +196,28 @@ async function processApiMetricsEvent(event: ApiAccessEvent): Promise<void> {
  */
 async function sendToDeadLetterQueue(topic: string, message: any, error: Error, log: serverLogger): Promise<void> {
     try {
-        const producer = getProducerInstance();
-        if (!producer) {
-            log.err("Kafka producer not available for DLQ");
-            return;
-        }
-
         const dlqTopic = `${topic}${DLQ_TOPIC_SUFFIX}`;
 
-        await producer.send({
-            topic: dlqTopic,
-            messages: [{
-                key: message.key?.toString() || "unknown",
-                value: JSON.stringify({
-                    originalTopic: topic,
-                    originalPartition: message.partition,
-                    originalOffset: message.offset,
-                    originalMessage: message.value?.toString(),
-                    error: {
-                        message: error.message,
-                        stack: error.stack
-                    },
-                    timestamp: new Date().toISOString(),
-                    retryCount: KAFKA.CONSUMER_MAX_RETRIES
-                }),
-                headers: {
-                    "original-topic": topic,
-                    "error-type": error.constructor.name,
-                    "dlq-timestamp": new Date().toISOString()
-                }
-            }]
-        });
+        await publishWithRetry(dlqTopic, {
+            key: message.key?.toString() || "unknown",
+            value: JSON.stringify({
+                originalTopic: topic,
+                originalPartition: message.partition,
+                originalOffset: message.offset,
+                originalMessage: message.value?.toString(),
+                error: {
+                    message: error.message,
+                    stack: error.stack
+                },
+                timestamp: new Date().toISOString(),
+                retryCount: KAFKA.CONSUMER_MAX_RETRIES
+            }),
+            headers: {
+                "original-topic": topic,
+                "error-type": error.constructor.name,
+                "dlq-timestamp": new Date().toISOString()
+            }
+        }, KAFKA.PRODUCER_MAX_RETRIES, log);
 
         log.warn(`Sent message to DLQ: ${dlqTopic}`);
     } catch (dlqError: any) {
@@ -246,40 +238,18 @@ async function consumeMessageWithRetry(consumerLogger: serverLogger, topic: stri
         consumerLogger.err(`Error processing message from topic ${topic}, partition ${partition}: ${error.message}`);
 
         const retryKey = `kafka:retry:${topic}:${partition}:${message.offset}`;
-        let retryCount = 0;
-
-        if (isRedisConnected()) {
-            try {
-                const cached = await getRedisClient().get(retryKey);
-                retryCount = cached ? parseInt(cached, 10) : 0;
-            } catch (redisError) {
-                consumerLogger.warn(`Failed to get retry count from Redis: ${(redisError as Error).message}`);
-            }
-        }
-
-        retryCount++;
+        // Kafka redelivers the same offset after a rethrow, so the offset
+        // identifies the message across attempts.
+        const cached = await redisGet(retryKey);
+        const retryCount = (cached ? parseInt(cached, 10) : 0) + 1;
 
         if (retryCount >= KAFKA.CONSUMER_MAX_RETRIES) {
             consumerLogger.err(`Message exceeded max retries (${KAFKA.CONSUMER_MAX_RETRIES}). Sending to DLQ.`);
             await sendToDeadLetterQueue(topic, message, error, consumerLogger);
-
-            if (isRedisConnected()) {
-                try {
-                    await getRedisClient().del(retryKey);
-                } catch (redisError) {
-                    consumerLogger.warn(`Failed to clear retry count from Redis: ${(redisError as Error).message}`);
-                }
-            }
+            await redisDel(retryKey);
         }
         else {
-            if (isRedisConnected()) {
-                try {
-                    await getRedisClient().setEx(retryKey, RETRY_COUNT_TTL_SECONDS, retryCount.toString());
-                } catch (redisError) {
-                    consumerLogger.warn(`Failed to store retry count in Redis: ${(redisError as Error).message}`);
-                }
-            }
-
+            await redisSetEx(retryKey, RETRY_COUNT_TTL_SECONDS, retryCount.toString());
             throw error;
         }
     }

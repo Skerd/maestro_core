@@ -1,10 +1,10 @@
 /**
  * Rate Limiting Middleware
  *
- * Redis-backed fixed window. `INCR` is atomic; `EXPIRE` runs only on the first
- * increment so the window is not reset on every request.
+ * Redis-backed fixed window. The increment and its expiry run as one atomic
+ * script (`redisIncrWithExpiry`), so the window is set once and never lost.
  *
- * Redis down:
+ * Redis down, failing, or its circuit breaker open:
  * - Public auth (`failClosed: true`) rejects the request — better to block signup
  *   / password reset than to run unbounded.
  * - Private CRUD (`failClosed` omitted / false) is fail-open so an outage of Redis
@@ -12,7 +12,7 @@
  */
 
 import {NextFunction, Request, Response} from 'express';
-import {getRedisClient, isRedisConnected} from '@coreModule/connections/connectToRedis';
+import {executeWithCircuitBreaker, getRedisClient, redisIncrWithExpiry} from '@coreModule/connections/connectToRedis';
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {CONSTANTS} from "@coreModule/environment";
 
@@ -45,13 +45,6 @@ export function rateLimiter(options: RateLimitOptions) {
     return async (req: Request, res: Response, next: NextFunction) => {
         const languageCode = req.header("language") || CONSTANTS.DEFAULT_LANGUAGE;
 
-        if (!isRedisConnected()) {
-            if (failClosed) {
-                return next(apiValidationException("rate_limit_exceeded", null, null, languageCode));
-            }
-            return next();
-        }
-
         try {
             const limitName = getRateLimitNameFromRequest(req);
 
@@ -60,15 +53,14 @@ export function rateLimiter(options: RateLimitOptions) {
             const redisKey = userId ? `rate_limit:${limitName}:user:${userId}` : `rate_limit:${limitName}:ip:${ip}`;
             const windowSeconds = Math.ceil(windowMs / 1000);
 
-            const count = await getRedisClient().incr(redisKey);
-            if (count === 1) {
-                await getRedisClient().expire(redisKey, windowSeconds);
+            const counter = await redisIncrWithExpiry(redisKey, windowSeconds);
+            if (!counter) {
+                if (failClosed) {
+                    return next(apiValidationException("rate_limit_exceeded", null, null, languageCode));
+                }
+                return next();
             }
-
-            let expiresInSeconds = await getRedisClient().ttl(redisKey);
-            if (expiresInSeconds < 0) {
-                expiresInSeconds = windowSeconds;
-            }
+            const {count, ttlSeconds: expiresInSeconds} = counter;
 
             if (count > max) {
                 throw apiValidationException(
@@ -92,7 +84,7 @@ export function rateLimiter(options: RateLimitOptions) {
                 const isFailure = statusCode >= 400;
 
                 if ((skipSuccessfulRequests && isSuccess) || (skipFailedRequests && isFailure)) {
-                    getRedisClient().decr(redisKey).catch(() => {
+                    executeWithCircuitBreaker(() => getRedisClient().decr(redisKey)).catch(() => {
                         // Ignore errors
                     });
                 }

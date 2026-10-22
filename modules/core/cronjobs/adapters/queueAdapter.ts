@@ -2,6 +2,8 @@ export type CronQueueMessage = {
     jobId: string;
     executionId?: string;
     attempt: number;
+    /** Times the queue consumer has already failed to process this message (absent = 0). */
+    deliveryAttempt?: number;
     company?: string | null;
     handler: string;
     metadata?: Record<string, unknown>;

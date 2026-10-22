@@ -90,7 +90,9 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
         {
             name: "mongoDb",
             connected: services.mongoDb.connected,
-            circuitBreakerState: services.mongoDb.circuitBreaker.state,
+            // MongoDB has no circuit breaker (it is a hard dependency the driver
+            // reconnects itself), so the state mirrors connectivity.
+            circuitBreakerState: services.mongoDb.connected ? "CLOSED" : "OPEN",
             // Mongo's health envelope doesn't expose op-level counters; the
             // mongoDbCounter is reserved for future use.
             completed: 0,

@@ -37,7 +37,7 @@ import {getLogger} from "@coreModule/loggers/serverLog";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
 import {EncryptString, DecryptStringSafe} from "@coreModule/utilities/security/encryption";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {applyMessageReceipts} from "@coreModule/domain/messages/applyMessageReceipts";
 import {generateAssistantReply, AssistantConversationTurn} from "@coreModule/domain/ai/assistantBrain";
 import {recordAssistantResult} from "@coreModule/domain/ai/assistantHealth";

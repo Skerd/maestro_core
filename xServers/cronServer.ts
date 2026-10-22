@@ -8,6 +8,7 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import {connectToKafka} from "@coreModule/connections/connectToKafka";
+import {closeConnections} from "@coreModule/connections/closeConnections";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {CRON, KAFKA} from "@coreModule/environment";
 import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
@@ -62,6 +63,7 @@ async function gracefulShutdown(logger: serverLogger): Promise<void> {
     logger.debug("Cron server shutting down...");
     await schedulerEngine.stop();
     await uptimeKeeper.markStop("cronServer");
+    await closeConnections(logger);
     process.exit(0);
 }
 

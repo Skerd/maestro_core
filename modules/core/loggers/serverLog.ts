@@ -110,23 +110,23 @@ function log(args: logType): string {
 
     if (args.type == "err") {
         console.error(consoleMessage);
-        // WinstonLogger.error(message);
+        WinstonLogger.error(message);
     }
     else if (args.type == "warn") {
         console.warn(consoleMessage);
-        // WinstonLogger.warn(message);
+        WinstonLogger.warn(message);
     }
     else if (args.type == "info") {
         console.info(consoleMessage);
-        // WinstonLogger.info(message);
+        WinstonLogger.info(message);
     }
     else if (args.type == "debug") {
         console.info(consoleMessage);
-        // WinstonLogger.info(message);
+        WinstonLogger.info(message);
     }
     else {
         console.log(consoleMessage);
-        // WinstonLogger.log(message);
+        WinstonLogger.log(message);
     }
     return message;
 }

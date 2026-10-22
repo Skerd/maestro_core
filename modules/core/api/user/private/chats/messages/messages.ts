@@ -55,7 +55,7 @@ import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import {pushWebsocketMessage} from "@coreModule/domain/websocket/pushWebsocketMessage";
+import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {dispatchAiChannelMessage} from "@coreModule/domain/ai/notifyAssistantOffline";
 import {channelMessageReadFilter, isChannelMember} from "@coreModule/utilities/endpoints/messageChannelReadAccess";

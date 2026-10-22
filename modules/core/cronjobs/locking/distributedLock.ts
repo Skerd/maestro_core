@@ -1,4 +1,5 @@
 import {CRON} from "@coreModule/environment";
+import {isRedisConnected} from "@coreModule/connections/connectToRedis";
 import {
     acquireLeaderLock as acquireRedisLeader,
     acquireRedisLock,
@@ -18,10 +19,18 @@ export type DistributedLockHandle = {
     mongo?: MongoLockHandle;
 };
 
+/*
+ * While Redis is connected it is the only lock store: a null from Redis means
+ * another instance holds the lock, and falling back to Mongo then would let
+ * both instances run. Mongo locks are used only when Redis is unreachable.
+ */
+
 export async function acquireJobLock(jobId: string, executionId?: string): Promise<DistributedLockHandle | null> {
     const key = executionId ? `${jobId}:${executionId}` : jobId;
-    const redis = await acquireRedisLock(key);
-    if (redis) return {redis};
+    if (isRedisConnected()) {
+        const redis = await acquireRedisLock(key);
+        return redis ? {redis} : null;
+    }
     const mongo = await acquireMongoLock(key);
     if (mongo) return {mongo};
     return null;
@@ -33,8 +42,10 @@ export async function releaseJobLock(handle: DistributedLockHandle): Promise<voi
 }
 
 export async function tryAcquireSchedulerLeader(): Promise<DistributedLockHandle | null> {
-    const redis = await acquireRedisLeader();
-    if (redis) return {redis};
+    if (isRedisConnected()) {
+        const redis = await acquireRedisLeader();
+        return redis ? {redis} : null;
+    }
     const mongo = await acquireMongoLock("leader", CRON.LEADER_LOCK_TTL_MS, CRON.SERVER_ID);
     return mongo ? {mongo} : null;
 }

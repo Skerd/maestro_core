@@ -26,6 +26,7 @@ import {connectToMongoDb, getMongoDbHealth} from "@coreModule/connections/connec
 import {connectToRedis, getRedisHealth, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
 import {connectToKafka, getKafkaHealth} from "@coreModule/connections/connectToKafka";
 import {getTelegramHealthResolved} from "@coreModule/connections/connectToTelegram";
+import {closeConnections} from "@coreModule/connections/closeConnections";
 
 import {
     AllRoomsUsers,
@@ -206,9 +207,14 @@ function setupGracefulShutdown(parentLogger?: serverLogger): void {
         shuttingDown = true;
         logger.warn(`Received ${signal}; closing WebSocket server...`);
 
-        const exit = (code: number) => {
+        let exiting = false;
+        const exit = async (code: number) => {
+            // Both the close callback and the force-exit timer can land here.
+            if (exiting) return;
+            exiting = true;
             // Stop the cron broadcasters so timers don't keep the loop alive.
             stopBroadcasters();
+            await closeConnections(logger);
             process.exit(code);
         };
 
