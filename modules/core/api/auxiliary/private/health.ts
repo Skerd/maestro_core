@@ -13,6 +13,7 @@
  */
 
 import {NextFunction, Request, Response, Router} from "express";
+import type {PermissionAction} from "mongoose";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
@@ -20,14 +21,16 @@ import {SERVER} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {getMongoDbHealth} from "@coreModule/connections/connectToMongoDb";
 import {getRedisHealth, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
-import {getKafkaHealth} from "@coreModule/connections/connectToKafka";
+import {getKafkaHealth, isKafkaConnected} from "@coreModule/connections/connectToKafka";
 import {getWebSocketHealth} from "@coreModule/connections/connectToWebSocketServer";
 import {getTelegramHealthResolved} from "@coreModule/connections/connectToTelegram";
 import {getAssistantResponderHealth} from "@coreModule/domain/ai/assistantHealth";
 import {getCronSchedulerHealth} from "@coreModule/cronjobs/health/cronSchedulerHealth";
 import {getApiServerHealth} from "@coreModule/api/health/apiServerHealth";
 import {getKafkaServerHealth} from "@coreModule/kafka/kafkaServerHealth";
-import {ServerHealthDto} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
+import {getDeadLetterBacklog, replayDeadLetters} from "@coreModule/kafka/deadLetters";
+import {KafkaDeadLetterReplayDto, ServerHealthDto} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
+import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {HEALTH_SNAPSHOT_KEY} from "@coreModule/utilities/timing/healthSnapshot";
 import ServerHealth1m from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
 import ServerHealth1h from "@coreModule/database/schemas/performance/serverHealth/serverHealth1h";
@@ -49,14 +52,15 @@ const logger = getLogger("health_endpoint");
  */
 const LOCAL_FALLBACK_TTL_SECONDS = 1;
 
-function assertCanReadServerPerformance(req: Request): void {
+/** Viewing needs read on server performance; acting on the servers needs write. */
+function assertCanAccessServerPerformance(req: Request, action: PermissionAction = "read"): void {
     const {actionUserCtx, languageCode} = req.body as AuthenticatedMWType;
-    SchemaGuard.sanitizeFields(ServerPerformance1m, {count: {}}, "read", actionUserCtx, languageCode);
+    SchemaGuard.sanitizeFields(ServerPerformance1m, {count: {}}, action, actionUserCtx, languageCode);
 }
 
 router.get("", authMW("private"), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-        assertCanReadServerPerformance(req);
+        assertCanAccessServerPerformance(req);
     } catch (error) {
         next(error);
         return;
@@ -119,6 +123,41 @@ router.get("", authMW("private"), async (req: Request, res: Response, next: Next
             error: error?.message || "An error occurred while performing health check",
             message: "Health check service is temporarily unavailable. Please try again later."
         });
+    }
+});
+
+// ============================================================================
+// Kafka dead letters — `/auxiliary/health/kafka/dead-letters/replay`
+// ============================================================================
+
+/**
+ * Resends every Kafka dead letter onto its original topic (see kafka/deadLetters).
+ * Changes what the system does, so it needs write permission on server
+ * performance, not just read. Runs on this process's producer.
+ *
+ * Response: `KafkaDeadLetterReplayDto` with the number of letters resent.
+ */
+router.post("/kafka/dead-letters/replay", authMW("private"), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        assertCanAccessServerPerformance(req, "write");
+        const {languageCode} = req.body as AuthenticatedMWType;
+        if (!isKafkaConnected()) {
+            throw apiValidationException("kafka_unavailable", "", null, languageCode);
+        }
+
+        const backlog = await getDeadLetterBacklog();
+        const results = await Promise.all(backlog.map(({topic}) => replayDeadLetters(topic)));
+        if (results.length > 0 && results.every((replayed) => replayed === null)) {
+            throw apiValidationException("kafka_dead_letter_replay_running", "", null, languageCode);
+        }
+
+        const response: KafkaDeadLetterReplayDto = {
+            replayed: results.reduce<number>((sum, replayed) => sum + (replayed ?? 0), 0)
+        };
+        res.status(200).json(response);
+    }
+    catch (error) {
+        next(error);
     }
 });
 
@@ -214,7 +253,7 @@ const SERVICE_NAMES: ServerHealthHistoryServiceName[] = ["mongoDb", "redis", "ka
  */
 router.get("/history", authMW("private"), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-        assertCanReadServerPerformance(req);
+        assertCanAccessServerPerformance(req);
     } catch (error) {
         next(error);
         return;

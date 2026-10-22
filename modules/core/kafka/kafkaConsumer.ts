@@ -18,7 +18,7 @@
  * - Attempts are counted in memory per consumer: the same consumer gets the
  *   offset back; a rebalance in between at worst grants extra attempts
  * - After the last attempt, the message is sent to DLQ topic: `{original_topic}_dlq`;
- *   `yarn kafka:replay-dlq` puts DLQ messages back on their original topic
+ *   they can be resent from the Server Performance page or with `yarn kafka:replay-dlq`
  * - If the DLQ is unreachable the message is redelivered, never committed unhandled
  * 
  * DLQ Message Format:
@@ -34,7 +34,6 @@
  */
 
 import {ensureKafkaTopic, getConsumerInstance} from "@coreModule/connections/connectToKafka";
-import {publishWithRetry} from "@coreModule/kafka/kafkaProducer";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {KAFKA} from "@coreModule/environment";
 import {
@@ -57,12 +56,10 @@ import ApiAccess from "@coreModule/database/schemas/apiAccess/apiAccess";
 import {kafkaCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {KafkaConsumerRegistration} from "@coreModule/kafka/consumerRegistry";
 import {metricsAggregator} from "@coreModule/utilities/timing/metricsAggregator";
-import type {EachMessagePayload, KafkaMessage} from "kafkajs";
+import type {EachMessagePayload} from "kafkajs";
+import {sendToDeadLetterQueue} from "@coreModule/kafka/deadLetters";
 
 const logger = getLogger("kafka_consumer");
-
-/** Suffix appended to topic name for Dead Letter Queue */
-export const DLQ_TOPIC_SUFFIX = '_dlq';
 
 /** Partition pause after a message's first failed attempt; each further failure waits 4x longer. */
 const CONSUMER_RETRY_BASE_DELAY_MS = 5_000;
@@ -103,40 +100,6 @@ async function processApiMetricsEvent(event: ApiAccessEvent): Promise<void> {
     catch (error: any){
         logger.err(`Failed to process api metrics event: ${error.message}`);
     }
-}
-
-/**
- * Send failed message to Dead Letter Queue (DLQ)
- *
- * After a message has exceeded the maximum retry attempts, it is sent to a DLQ
- * topic for manual inspection and replay (`yarn kafka:replay-dlq`). Throws when
- * the DLQ is unreachable, so the caller redelivers the message instead of losing it.
- */
-async function sendToDeadLetterQueue(topic: string, partition: number, message: KafkaMessage, error: Error, attempts: number, log: serverLogger): Promise<void> {
-    const dlqTopic = `${topic}${DLQ_TOPIC_SUFFIX}`;
-
-    await publishWithRetry(dlqTopic, {
-        key: message.key?.toString() || "unknown",
-        value: JSON.stringify({
-            originalTopic: topic,
-            originalPartition: partition,
-            originalOffset: message.offset,
-            originalMessage: message.value?.toString(),
-            error: {
-                message: error.message,
-                stack: error.stack
-            },
-            timestamp: new Date().toISOString(),
-            retryCount: attempts
-        }),
-        headers: {
-            "original-topic": topic,
-            "error-type": error.constructor.name,
-            "dlq-timestamp": new Date().toISOString()
-        }
-    }, KAFKA.PRODUCER_MAX_RETRIES, log);
-
-    log.warn(`Sent message to DLQ: ${dlqTopic}`);
 }
 
 /**

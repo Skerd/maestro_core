@@ -9,12 +9,15 @@
  *   - process identity (`serverId`, `lastStart`)
  *   - consumer registry snapshot (expected / running / list)
  *   - pipeline counters from `kafkaCounter` (completed / failed / totalMs)
+ *   - dead letters waiting to be resent, per topic
  *
  * @module kafka/kafkaServerHealth
  */
 
 import os from "os";
 import {isRedisConnected, redisGet, redisSetEx} from "@coreModule/connections/connectToRedis";
+import {isKafkaConnected} from "@coreModule/connections/connectToKafka";
+import {getDeadLetterBacklog} from "@coreModule/kafka/deadLetters";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {kafkaCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {
@@ -23,6 +26,7 @@ import {
 } from "@coreModule/kafka/consumerRegistry";
 import type {
     KafkaConsumerStatus,
+    KafkaDeadLetterBacklog,
     KafkaServerHealth,
 } from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 
@@ -36,6 +40,28 @@ const STALE_MS = 60_000;
 let startedAt = 0;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 
+/** Latest dead-letter backlog; refreshed beside the heartbeat, never awaited by it. */
+let deadLetters: KafkaDeadLetterBacklog[] = [];
+let deadLettersRefreshing = false;
+
+/**
+ * Refreshes {@link deadLetters} in the background: the admin calls can take
+ * seconds while the broker is unwell, and must not delay the heartbeat.
+ * Keeps the last known backlog when Kafka is down or a refresh fails.
+ */
+function refreshDeadLetters(): void {
+    if (deadLettersRefreshing || !isKafkaConnected()) return;
+    deadLettersRefreshing = true;
+    getDeadLetterBacklog()
+        .then((backlog) => {
+            deadLetters = backlog;
+        })
+        .catch(() => {})
+        .finally(() => {
+            deadLettersRefreshing = false;
+        });
+}
+
 export async function publishKafkaServerHeartbeat(): Promise<void> {
     if (!isRedisConnected()) return;
     try {
@@ -48,6 +74,7 @@ export async function publishKafkaServerHeartbeat(): Promise<void> {
         // Only consumers this process registered — not assistant/cron/ghosts in Redis.
         const consumerList = await getLocalKafkaConsumerStatuses();
         const running = consumerList.filter((c) => c.alive).length;
+        refreshDeadLetters();
 
         await redisSetEx(KAFKA_SERVER_HEARTBEAT_KEY, HEARTBEAT_TTL_SECONDS, JSON.stringify({
             serverId: `${os.hostname()}:${process.pid}`,
@@ -61,6 +88,7 @@ export async function publishKafkaServerHeartbeat(): Promise<void> {
                 running,
                 list: consumerList,
             },
+            deadLetters,
         }));
     }
     catch {
@@ -97,6 +125,7 @@ export async function getKafkaServerHealth(): Promise<KafkaServerHealth> {
         totalMs: 0,
         averageMs: 0,
         consumers: {expected: 0, running: 0, list: []},
+        deadLetters: [],
     };
     try {
         const raw = await redisGet(KAFKA_SERVER_HEARTBEAT_KEY);
@@ -113,6 +142,7 @@ export async function getKafkaServerHealth(): Promise<KafkaServerHealth> {
                 running?: number;
                 list?: KafkaConsumerStatus[];
             };
+            deadLetters?: KafkaDeadLetterBacklog[];
         };
         const completedN = p.completed ?? 0;
         const failedN = p.failed ?? 0;
@@ -135,6 +165,7 @@ export async function getKafkaServerHealth(): Promise<KafkaServerHealth> {
                 running: p.consumers?.running ?? list.filter((c) => c.alive).length,
                 list,
             },
+            deadLetters: p.deadLetters || [],
         };
     }
     catch {

@@ -120,22 +120,33 @@ function getKafkaInstance(): Kafka | null {
 }
 
 /**
+ * Runs `work` with a short-lived admin client, disconnected afterwards.
+ * Throws when Kafka is disabled.
+ */
+export async function withKafkaAdmin<T>(work: (admin: Admin) => Promise<T>): Promise<T> {
+    const kafka = getKafkaInstance();
+    if (!kafka) {
+        throw new Error("Kafka is disabled");
+    }
+    const admin = kafka.admin();
+    await admin.connect();
+    try {
+        return await work(admin);
+    } finally {
+        await admin.disconnect();
+    }
+}
+
+/**
  * Creates the topic when it does not exist yet (a no-op otherwise). Consumers call
  * it before subscribing: a fresh deployment or a new instance prefix has no topics,
  * and subscribing to a missing one fails instead of creating it.
  */
 export async function ensureKafkaTopic(topic: string): Promise<void> {
-    const kafka = getKafkaInstance();
-    if (!kafka) {
+    if (!KAFKA.ENABLED) {
         return;
     }
-    const admin = kafka.admin();
-    await admin.connect();
-    try {
-        await admin.createTopics({topics: [{topic}], waitForLeaders: true});
-    } finally {
-        await admin.disconnect();
-    }
+    await withKafkaAdmin((admin) => admin.createTopics({topics: [{topic}], waitForLeaders: true}));
 }
 
 export function getProducerInstance(): Producer | null {
@@ -179,6 +190,12 @@ export function getConsumerInstance(groupId: string): Consumer | null {
     const consumer = kafka.consumer(consumerConfig);
     registeredConsumers.add(consumer);
     return consumer;
+}
+
+/** Disconnects a short-lived consumer and forgets it, so shutdown does not retry it. */
+export async function releaseConsumerInstance(consumer: Consumer): Promise<void> {
+    registeredConsumers.delete(consumer);
+    await consumer.disconnect();
 }
 
 async function disconnectAllRegisteredConsumers(): Promise<void> {

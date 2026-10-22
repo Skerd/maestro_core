@@ -30,6 +30,7 @@ vi.mock("@coreModule/connections/connectToKafka", () => ({
     getConsumerInstance: () => consumer,
     ensureKafkaTopic: async () => {},
 }));
+vi.mock("@coreModule/connections/connectToRedis", () => ({}));
 vi.mock("@coreModule/kafka/kafkaProducer", () => ({
     publishWithRetry: (...args: unknown[]) => publishWithRetry(...args),
 }));
