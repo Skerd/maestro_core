@@ -4,15 +4,24 @@ import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {computeNextRunAt, getNextRunsIso} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
-import {kafkaQueueAdapter} from "@coreModule/cronjobs/adapters/kafkaQueueAdapter";
 import CronJob from "@coreModule/database/schemas/cronJob/cronJob";
 import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
 import {cronExecutionService} from "@coreModule/database/schemas/cronExecution/cronExecution.service";
 import {cronExecutionsToDTO, cronJobToDTO} from "@coreModule/utilities/mappers/cronJob/cronJobMapper.dto";
-import type {CronJob as CronJobDTO, CronJobMetrics} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.dto";
-import {validateSingleForm, validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import type {
+    CronJob as CronJobDTO,
+    CronJobMetrics,
+    CronJobRunsPreview,
+} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.dto";
+import {validateSingleForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import {
+    cronJobExecutionsFormSchema,
+    previewCronJobRunsFormSchema,
+} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.form.validator";
 import {schemaSanitizer} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {dslFilterMW} from "@coreModule/utilities/middlewares/dslFilterMW";
+
+const RUNS_PREVIEW_COUNT = 5;
 
 function assertCanWriteActive(params: Record<string, any>): void {
     const {actionUserCtx, languageCode} = params;
@@ -31,6 +40,9 @@ function assertCanWriteActive(params: Record<string, any>): void {
 function isPaused(job: {active: boolean; pausedAt?: Date}): boolean {
     return !job.active || job.pausedAt != null;
 }
+
+/** Same rule as `isPaused`, as a query. */
+const PAUSED_FILTER = {$or: [{active: false}, {pausedAt: {$ne: null}}]};
 
 export class CronJobActions {
 
@@ -109,43 +121,36 @@ export class CronJobActions {
         return cronJobToDTO(updated);
     }
 
+    /** Makes the job due now; the scheduler starts it on its next tick, and the schedule then carries on. */
     @action({
         auth: "private",
         schema: validateSingleForm,
         rateLimit: {windowMs: 60000, max: 30},
     })
     async run(params: Record<string, any>): Promise<CronJobDTO> {
-        const {_id, company, logger, languageCode} = params;
+        const {_id, company, logger, languageCode, actionUserCtx} = params;
         logger.start(`Running scheduled action: ${_id}`);
         assertCanWriteActive(params);
 
-        const filter = {_id: new ObjectId(_id), company: company._id};
-        const job = await cronJobService.findOneOrThrow(filter, {logger, languageCode});
+        const job = await cronJobService.findOneOrThrow(
+            {_id: new ObjectId(_id), company: company._id},
+            {logger, languageCode},
+        );
         if (isPaused(job)) {
             throw apiValidationException("cron_job_inactive", "", null, languageCode);
         }
 
-        try {
-            await kafkaQueueAdapter.enqueue({
-                jobId: job._id.toString(),
-                attempt: 1,
-                company: company._id.toString(),
-                handler: job.handler,
-                enqueuedAt: new Date().toISOString(),
-                manual: true,
-            });
-        } catch (e: unknown) {
-            logger.err(`Failed to enqueue scheduled action ${_id}: ${e instanceof Error ? e.message : String(e)}`);
-            throw apiValidationException("cron_job_kafka_unavailable", "", null, languageCode);
-        }
-
-        const fresh = await cronJobService.findOneOrThrow(filter, {logger, languageCode});
-        logger.finish(`Enqueued scheduled action: ${_id}`);
-        return cronJobToDTO(fresh);
+        const updated = await cronJobService.updateByIdOrThrow(
+            job._id,
+            {$set: {nextRunAt: new Date()}},
+            {logger, languageCode, auditUserId: actionUserCtx.userId},
+        );
+        logger.finish(`Queued scheduled action: ${_id}`);
+        return cronJobToDTO(updated);
     }
 
     @action({
-        schema: validateTableForm,
+        schema: cronJobExecutionsFormSchema,
         rateLimit: {windowMs: 60000, max: 60},
         middleware: [
             schemaSanitizer({model: "cronexecutions", requiredModes: ["read"]}),
@@ -153,10 +158,13 @@ export class CronJobActions {
         ],
     })
     async executions(params: Record<string, any>) {
-        const {offset = 0, limit = 50, dslFilterQuery, company, logger, languageCode} = params;
+        const {offset = 0, limit = 50, jobId, dslFilterQuery, company, logger, languageCode} = params;
         const mongoFilter: Record<string, unknown> = {company: company._id};
+        if (jobId) {
+            mongoFilter.jobId = new ObjectId(jobId);
+        }
         if (dslFilterQuery && Object.keys(dslFilterQuery as object).length > 0) {
-            mongoFilter.$and = [...((mongoFilter.$and as unknown[]) ?? []), dslFilterQuery];
+            mongoFilter.$and = [dslFilterQuery];
         }
         const [docs, total] = await Promise.all([
             cronExecutionService.find(
@@ -175,26 +183,24 @@ export class CronJobActions {
 
     @action({auth: "private", rateLimit: {windowMs: 60000, max: 60}})
     async metrics(params: Record<string, any>): Promise<CronJobMetrics> {
-        const companyFilter = {company: params.company._id};
-        const executionCompany = {company: params.company._id};
+        const company = params.company._id;
         const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const opts = {logger: params.logger, languageCode: params.languageCode};
-        const [totalJobs, activeJobs, pausedJobs, runningExecutions, failedLast24h, successLast24h, agg] =
+        const [totalJobs, pausedJobs, runningExecutions, failedLast24h, successLast24h, agg] =
             await Promise.all([
-                cronJobService.count({...companyFilter}, {...opts, withDeleted: false}),
-                cronJobService.count({...companyFilter, active: true, pausedAt: null}, {...opts, withDeleted: false}),
-                cronJobService.count({...companyFilter, pausedAt: {$exists: true}}, {...opts, withDeleted: false}),
-                cronExecutionService.count({...executionCompany, status: "running"}, opts),
-                cronExecutionService.count({...executionCompany, status: "failed", startedAt: {$gte: since}}, opts),
-                cronExecutionService.count({...executionCompany, status: "success", startedAt: {$gte: since}}, opts),
+                cronJobService.count({company}, {...opts, withDeleted: false}),
+                cronJobService.count({company, ...PAUSED_FILTER}, {...opts, withDeleted: false}),
+                cronExecutionService.count({company, status: "running"}, opts),
+                cronExecutionService.count({company, status: {$in: ["failed", "timeout"]}, startedAt: {$gte: since}}, opts),
+                cronExecutionService.count({company, status: "success", startedAt: {$gte: since}}, opts),
                 cronExecutionService.aggregate([
-                    {$match: {...executionCompany, status: "success", startedAt: {$gte: since}, durationMs: {$exists: true}}},
+                    {$match: {company, status: "success", startedAt: {$gte: since}, durationMs: {$exists: true}}},
                     {$group: {_id: null, avg: {$avg: "$durationMs"}}},
                 ], opts),
             ]);
         return {
             totalJobs,
-            activeJobs,
+            activeJobs: totalJobs - pausedJobs,
             pausedJobs,
             runningExecutions,
             failedLast24h,
@@ -203,13 +209,15 @@ export class CronJobActions {
         };
     }
 
-    @action({auth: "private", schema: validateSingleForm})
-    async previewNextRuns(params: Record<string, any>) {
-        const {_id, company, logger, languageCode} = params;
+    @action({auth: "private", schema: previewCronJobRunsFormSchema, rateLimit: {windowMs: 60000, max: 120}})
+    async previewNextRuns(params: Record<string, any>): Promise<CronJobRunsPreview> {
+        const {_id, cronExpression, company, logger, languageCode} = params;
         const job = await cronJobService.findOneOrThrow(
             {_id: new ObjectId(_id), company: company._id},
             {logger, languageCode},
         );
-        return {nextRunsPreview: getNextRunsIso(job, 10)};
+        const schedule = {cronExpression: cronExpression ?? job.cronExpression};
+        const nextRunsPreview = getNextRunsIso(schedule, RUNS_PREVIEW_COUNT);
+        return {valid: nextRunsPreview.length > 0, nextRunsPreview};
     }
 }

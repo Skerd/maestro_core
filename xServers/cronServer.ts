@@ -29,6 +29,7 @@ async function setCronUp(logger: serverLogger): Promise<void> {
     await connectToRedis(logger);
 
     if (CRON.ENABLED) {
+        // Jobs publish emails and events through Kafka; scheduling itself does not need it.
         if (KAFKA.ENABLED) {
             logger.debug("Connecting to Kafka...");
             try {
@@ -36,10 +37,8 @@ async function setCronUp(logger: serverLogger): Promise<void> {
                 logger.debug("Kafka connected!");
             } catch (err: unknown) {
                 const msg = err instanceof Error ? err.message : String(err);
-                logger.warn(`Kafka connect failed; cron execute consumer will start once Kafka reconnects: ${msg}`);
+                logger.warn(`Kafka connect failed; jobs that publish to Kafka will fail until it reconnects: ${msg}`);
             }
-        } else {
-            logger.warn("KAFKA_ENABLED is false — cron execute consumer cannot start");
         }
 
         await loadAllCronHandlers(logger);

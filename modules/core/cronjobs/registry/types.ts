@@ -6,7 +6,8 @@ import {Types} from "mongoose";
 export type CronHandlerContext = {
     job: ICronJob;
     execution: ICronExecution;
-    company: Types.ObjectId | null;
+    /** The company that owns the job row. Jobs are seeded per company, so handlers scope their work to it. */
+    company: Types.ObjectId;
     logger: serverLogger;
     signal: AbortSignal;
     appendLog: (line: string) => void;
@@ -14,21 +15,19 @@ export type CronHandlerContext = {
 
 export type CronHandlerFn = (ctx: CronHandlerContext) => Promise<void>;
 
-export type CronHandlerRegistration = {
-    code: string;
-    handler: CronHandlerFn;
-    version?: string;
-    defaultJob?: Partial<CronJobSeed>;
-};
-
-export type CronJobSeed = {
-    code: string;
+/** Settings for the job row seeded per company; omitted fields take the CronJob schema defaults. */
+export type CronJobDefaults = {
     name: string;
-    handler: string;
     cronExpression: string;
     active?: boolean;
     maxRetries?: number;
     retryDelaySeconds?: number;
     timeoutSeconds?: number;
     priority?: number;
+};
+
+export type CronHandlerRegistration = {
+    code: string;
+    handler: CronHandlerFn;
+    defaultJob: CronJobDefaults;
 };

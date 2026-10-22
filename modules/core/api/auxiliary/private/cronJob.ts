@@ -3,25 +3,16 @@ import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
 import CronJob, {type ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
 import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
 import {cronExecutionService} from "@coreModule/database/schemas/cronExecution/cronExecution.service";
-import {
-    cronJobsToDTO,
-    cronJobToDTO,
-    type CronJobDtoExtras,
-} from "@coreModule/utilities/mappers/cronJob/cronJobMapper.dto";
+import {cronJobsToDTO, cronJobToDTO} from "@coreModule/utilities/mappers/cronJob/cronJobMapper.dto";
 import {cronJobsToSelect} from "@coreModule/utilities/mappers/cronJob/cronJobMapper.select";
 import {editCronJobFormSchema} from "armonia/src/modules/core/api/auxiliary/private/cronJob/editCronJob.form.validator";
 import {CronJobSchemaDef} from "armonia/src/modules/core/api/auxiliary/private/cronJob/cronJob.schema-def";
+import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {buildUpdateDataFromSchemaDef} from "@coreModule/api/buildUpdateDataFromSchemaDef";
 import {computeNextRunAt, getNextRunsIso} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
 import {CronJobActions} from "@coreModule/database/schemas/cronJob/cronJob.actions";
 
 export const basePath = "/api/auxiliary/cron-jobs";
-
-const SCHEDULE_UPDATE_KEYS = ["cronExpression"] as const;
-
-function scheduleFieldsChanged(update: Record<string, unknown>): boolean {
-    return SCHEDULE_UPDATE_KEYS.some((key) => update[key] !== undefined);
-}
 
 export const {router} = createCrudRouter({
     collectionName: "cronjobs",
@@ -38,15 +29,17 @@ export const {router} = createCrudRouter({
     buildCreateData: () => ({}),
     buildUpdateData: async (params, writeFields) => {
         const update = buildUpdateDataFromSchemaDef(CronJobSchemaDef)(params, writeFields);
-        if (Object.keys(update).length === 0) {
-            return update;
-        }
-        if (!scheduleFieldsChanged(update)) {
+        if (update.cronExpression === undefined) {
             return update;
         }
         const existing = params.existing as ICronJob;
         const nextRunAt = computeNextRunAt({...existing.toObject(), ...update}, new Date());
-        if (nextRunAt) {
+        // An expression that never fires would leave the job silently unscheduled.
+        if (!nextRunAt) {
+            throw apiValidationException("cron_job_schedule_invalid", "", null, params.languageCode);
+        }
+        // A paused job has no nextRunAt; resuming computes it.
+        if (existing.active && !existing.pausedAt) {
             update.nextRunAt = nextRunAt;
         }
         return update;
@@ -57,15 +50,9 @@ export const {router} = createCrudRouter({
             params.company._id,
             {logger: params.logger, languageCode: params.languageCode},
         );
-        const extras = new Map<string, CronJobDtoExtras>();
-        for (const doc of docs) {
-            const id = doc._id.toString();
-            extras.set(id, {
-                lastExecution: lastMap.get(id),
-                nextRunsPreview: getNextRunsIso(doc, 5),
-            });
-        }
-        return cronJobsToDTO(docs, extras);
+        return cronJobsToDTO(docs, new Map(
+            docs.map((doc) => [doc._id.toString(), {lastExecution: lastMap.get(doc._id.toString())}]),
+        ));
     },
     enrichSingle: async (doc, params) => {
         const lastMap = await cronExecutionService.latestByJobIds(

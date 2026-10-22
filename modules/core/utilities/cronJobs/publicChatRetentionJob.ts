@@ -37,10 +37,11 @@ export interface PublicChatRetentionResult {
 }
 
 /**
- * Delete abandoned, never-escalated, lead-free public chats older than the
- * retention window.
+ * Delete one company's abandoned, never-escalated, lead-free public chats older
+ * than the retention window.
  */
 export async function runPublicChatRetention(
+    companyId: ObjectId,
     parentLogger?: serverLogger,
     retentionDaysOverride?: number,
 ): Promise<PublicChatRetentionResult> {
@@ -51,6 +52,7 @@ export async function runPublicChatRetention(
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
 
     const candidates = await Channel.find({
+        company: companyId,
         isPublicChat: true,
         "publicChat.lastVisitorActivity": {$lt: cutoff},
         // Never touched by a person...

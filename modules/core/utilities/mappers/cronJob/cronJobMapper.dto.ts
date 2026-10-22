@@ -25,13 +25,10 @@ export function cronExecutionToSummary(doc: ICronExecution): CronExecutionSummar
     };
 }
 
-export function cronExecutionToDTO(doc: ICronExecution, job?: ICronJob): CronExecution {
+export function cronExecutionToDTO(doc: ICronExecution): CronExecution {
     return {
         _id: doc._id.toString(),
         jobId: doc.jobId.toString(),
-        job: job
-            ? {_id: job._id.toString(), code: job.code, name: job.name}
-            : undefined,
         status: doc.status,
         startedAt: doc.startedAt.toISOString(),
         finishedAt: doc.finishedAt?.toISOString(),
@@ -47,8 +44,8 @@ export function cronExecutionToDTO(doc: ICronExecution, job?: ICronJob): CronExe
     };
 }
 
-export function cronExecutionsToDTO(docs: ICronExecution[], jobMap?: Map<string, ICronJob>): CronExecution[] {
-    return docs.map(d => cronExecutionToDTO(d, jobMap?.get(d.jobId.toString())));
+export function cronExecutionsToDTO(docs: ICronExecution[]): CronExecution[] {
+    return docs.map(cronExecutionToDTO);
 }
 
 export type CronJobDtoExtras = {

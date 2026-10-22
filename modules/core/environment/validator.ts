@@ -163,7 +163,6 @@ export function validateConfiguration(): void {
             validateString('KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL', process.env.KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL, true),
             validateString('KAFKA_TOPIC_INVITATION_EMAIL', process.env.KAFKA_TOPIC_INVITATION_EMAIL, true),
             validateString('KAFKA_TOPIC_API_ACCESS', process.env.KAFKA_TOPIC_API_ACCESS, true),
-            validateString('KAFKA_TOPIC_CRON_EXECUTE', process.env.KAFKA_TOPIC_CRON_EXECUTE, true),
             validateString('KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE, false),
             validateString('KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE, false),
             validateString('KAFKA_CONSUMER_GROUP_LOGIN_HISTORY', process.env.KAFKA_CONSUMER_GROUP_LOGIN_HISTORY, true),
@@ -172,7 +171,6 @@ export function validateConfiguration(): void {
             validateString('KAFKA_CONSUMER_GROUP_FORGOT_PASSWORD_EMAIL', process.env.KAFKA_CONSUMER_GROUP_FORGOT_PASSWORD_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_INVITATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_API_ACCESS', process.env.KAFKA_CONSUMER_GROUP_API_ACCESS, true),
-            validateString('KAFKA_CONSUMER_GROUP_CRON_EXECUTE', process.env.KAFKA_CONSUMER_GROUP_CRON_EXECUTE, true),
         ].filter((e): e is ValidationError => e !== null));
 
         if (isModuleEnabled("propertyManagement")) {

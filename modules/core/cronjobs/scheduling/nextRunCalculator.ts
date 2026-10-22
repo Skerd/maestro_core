@@ -4,13 +4,15 @@ import type {ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
 type CronSchedule = Pick<ICronJob, "cronExpression">;
 
 /**
- * Computes the next run time strictly after `from`, in UTC.
+ * Computes the next run time strictly after `from`, in UTC. The zone is passed
+ * to `getNextDateFrom` as well: without it cron uses the process zone, and only
+ * the API server pins TZ=UTC.
  */
 export function computeNextRunAt(job: CronSchedule, from: Date = new Date()): Date | null {
     if (!job.cronExpression) return null;
     try {
         const ct = new CronTime(job.cronExpression, "UTC");
-        return ct.getNextDateFrom(from).toJSDate();
+        return ct.getNextDateFrom(from, "UTC").toJSDate();
     } catch {
         return null;
     }
