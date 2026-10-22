@@ -64,7 +64,11 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
     const session = req.session;
 
     const originHeader = (req.get("Origin") || req.get("Referer") || "").replace(/^https?:\/\//, "")?.split("/")?.shift();
-    const origin = originHeader || (req.app?.get("trust proxy") ? req.hostname : "") || "";
+    let origin = originHeader || (req.app?.get("trust proxy") ? req.hostname : "") || "";
+
+    if( origin.includes(":") ){
+        origin = origin.split(":")[0];
+    }
 
     let actionInitializer = "anonymous";
     req.body.apiCode = req.originalUrl;

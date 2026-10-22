@@ -146,15 +146,20 @@ async function Login(
         // Find company - prioritize specific origin, then wildcard
         const companyIds = user.companies.map((c: any) => c._id || c);
 
-        // First, try to find company with specific origin
-        company = await companyService.findOneOrThrow(
+        // A company that lists this origin wins over one that accepts any origin ("*");
+        // a single $or query returned whichever of the two Mongo read first.
+        company = await companyService.findOne(
             {
                 _id: { $in: companyIds },
                 isActive: true,
-                $or: [
-                    { allowedDomains: { $in: [origin] } },
-                    { allowedDomains: "*" }
-                ],
+                allowedDomains: origin
+            },
+            { session, logger, languageCode }
+        ) ?? await companyService.findOneOrThrow(
+            {
+                _id: { $in: companyIds },
+                isActive: true,
+                allowedDomains: "*"
             },
             { session, logger, languageCode }
         );
