@@ -193,6 +193,10 @@ async function safeGetCachedHealth(): Promise<{ statusCode: number; payload: Ser
             parsed.payload.services.assistant = assistantHealth;
             parsed.payload.services.apiServer = apiServerHealth;
             parsed.payload.services.kafkaServer = kafkaServerHealth;
+            // The WS server reports its own state; the breaker guarding pushes to it lives in this process.
+            if (parsed.payload.services.websocket) {
+                parsed.payload.services.websocket.circuitBreaker = getWebSocketHealth().circuitBreaker;
+            }
         }
         return parsed;
     }

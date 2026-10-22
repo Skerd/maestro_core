@@ -1,55 +1,96 @@
 /**
  * WebSocket Server Implementation
- * 
- * Real-time WebSocket server for client connections with:
- * - JWT-based authentication
- * - Room-based messaging (channels, notifications, etc.)
- * - User presence tracking (online/offline status)
- * - Connection management (multiple connections per user)
- * - Heartbeat/ping-pong for connection health
- * - Redis-backed connection state management
- * - Machine-to-machine connections support
- * 
- * Connection Flow:
- * 1. Client connects with JWT token in query string
- * 2. Server validates JWT token
- * 3. Server extracts user information from token
- * 4. Server creates ClientWebSocket instance with user data
- * 5. Server sets up heartbeat mechanism
- * 6. Server adds connection to user's connection pool
- * 7. Server subscribes user to default rooms
- * 
- * Room Types:
- * - Channel rooms: Real-time chat channels (channel:{channelId})
- * - System rooms: System-wide notifications (allUsersList, allChats, siteActivity)
- * - Data rooms: Server health data (mongoData, webSocketData)
- * 
- * Message Types:
- * - Text messages, reactions, pins, typing indicators
- * - System notifications
- * - User presence updates
- * - Channel updates
- * 
+ *
+ * The realtime server that the panel, the public-website chat widget and the
+ * other maestro processes (machine connections) connect to.
+ *
+ * Connection flow:
+ * 1. The client opens `/<token>/<languageCode>` (nginx strips the `/ws` prefix).
+ * 2. The token is authenticated during the HTTP upgrade, before the socket
+ *    exists, so a frame sent on `open` (sinfonia re-joins its rooms right away)
+ *    always finds its handlers in place.
+ * 3. A rejected token still completes the handshake and is closed with 1008,
+ *    which tells the client not to retry that token.
+ *
+ * Connection kinds:
+ * - user: a panel session. Joins rooms, sends typing indicators and read
+ *   receipts, receives pushes. Closed when its token or session expires, or
+ *   when the session is revoked.
+ * - visitor: a public-website chat visitor, confined to its own chat channel.
+ * - machine: another maestro process, authenticated by `MACHINE_TO_MACHINE_SECRET`.
+ *   Its frames are pushes, forwarded to the users they name.
+ *
+ * Rooms are presence groups. Only `serverHealth` and `serverStats` receive
+ * broadcasts, and joining them needs the same permission as the server
+ * performance REST endpoints.
+ *
  * @module websocket/webSocket
  */
 
+import http, {IncomingMessage} from "http";
+import os from "os";
+import {timingSafeEqual} from "crypto";
+import type {Duplex} from "stream";
 import {ObjectId} from "mongodb";
-import WebSocket, {WebSocketServer} from "ws";
+import WebSocket, {RawData, WebSocketServer} from "ws";
 import {generateRandomString} from "@coreModule/utilities/helpers";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {validateJWTToken} from "@coreModule/utilities/security/jwtValidator";
+import {getTokenSessionId, validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
 import {JWTTokenType} from "armonia/src/modules/core/api/user/public/login/login.form.response.type";
 import {MACHINE_TO_MACHINE_SECRET, WEBSOCKET} from "@coreModule/environment";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
-import {addUserConnection, removeUserConnection,} from "./redisConnectionManager";
-import {WebSocketMessage, WebSocketMessageCodes, WebSocketPush} from "armonia/src/modules/core/websocket/types";
+import SchemaGuard from "@coreModule/database/security/schemaGuard";
+import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
+import {WebSocketMessageCodes, WebSocketPush} from "armonia/src/modules/core/websocket/types";
+import {WebSocketHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
+import {ServerStatsDto} from "armonia/src/modules/core/api/auxiliary/private/serverStats/serverStats.dto";
 import {applyMessageReceipts} from "@coreModule/domain/messages/applyMessageReceipts";
-import {validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
 import {webSocketCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {getStoredRoomMessages} from "@coreModule/utilities/serviceMetrics/wsMessageStore";
 import {getKnownRoomIds, getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
 import {tryResolveVisitorSession, VisitorSession} from "@coreModule/domain/publicChat/visitorSession";
+import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
+
+/** Largest frame a user or visitor may send. A full read-receipt batch (800 ids) is about 22 KB. */
+const CLIENT_MAX_PAYLOAD_BYTES = 64 * 1024;
+
+/** Every connection is pinged this often; one that has not answered the previous ping is terminated. */
+const HEARTBEAT_INTERVAL_MS = 5000;
+
+/**
+ * When a user's last connection closes, the offline transition waits this long.
+ * A browser refresh reconnects within it, so the dashboard never sees a
+ * transient `users: 0` blip.
+ */
+const DISCONNECT_GRACE_MS = 5000;
+
+/**
+ * Maximum simultaneous sockets one visitor token may hold. A visitor legitimately
+ * has one tab open; this bounds a trivial socket-exhaustion attempt.
+ */
+const MAX_VISITOR_CONNECTIONS = 3;
+
+const MAX_ROOMS_PER_CONNECTION = 32;
+
+/** Frames a user or visitor may send per window; the rest are dropped. */
+const MESSAGE_RATE_WINDOW_MS = 10_000;
+const MAX_MESSAGES_PER_WINDOW = 100;
+
+/** How long a channel's member list is reused for typing indicators. */
+const CHANNEL_MEMBERS_TTL_MS = 10_000;
+
+/** Room ids, e.g. site presence rooms from panel routes. Max 64 chars; camelCase allowed. */
+const ROOM_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
+
+/** Rooms the server broadcasts to. Every other room is presence only. */
+export enum Room {
+    SERVER_HEALTH = "serverHealth",
+    SERVER_STATS = "serverStats",
+}
+
+const SERVER_PERFORMANCE_ROOMS: ReadonlySet<string> = new Set([Room.SERVER_HEALTH, Room.SERVER_STATS]);
 
 /**
  * Extended WebSocket type with client-specific metadata
@@ -57,24 +98,25 @@ import {tryResolveVisitorSession, VisitorSession} from "@coreModule/domain/publi
 type ClientWebSocket = WebSocket & {
     /** Unique connection ID */
     id: string;
-    /** User ID from JWT token */
+    /** User ID (the visitor id for a visitor connection) */
     userId: string;
-    /** JWT token for authentication */
-    token: string;
-    /** Heartbeat flag for connection health */
-    isAlive: boolean;
-    /** Username from JWT token */
     username: string;
-    /** User's language code */
     languageCode: string;
-    /** Array of room IDs this connection is subscribed to */
-    rooms: string[];
+    /** Cleared by each heartbeat ping, set again by the pong. */
+    isAlive: boolean;
+    /** Rooms this connection has joined */
+    rooms: Set<string>;
     /** Tail of this connection's JOIN/LEAVE queue (see `queueRoomOperation`). */
     roomOperations?: Promise<void>;
-    /** Heartbeat timer for ping-pong */
-    timer: any,
-    /** Connection death timer (closes connection if no pong received) */
-    deathTimer: any,
+    /** Start and count of the current rate-limit window */
+    rateWindowStart: number;
+    rateWindowCount: number;
+    /** The token's company, for user connections */
+    companyId?: string;
+    /** The token's session, closed on `SESSION_REVOKED` */
+    sessionId?: string | null;
+    /** Epoch ms at which the heartbeat closes the connection (token or session expiry) */
+    expiresAt?: number;
     /** Machine name (for machine-to-machine connections) */
     machineName?: string;
     /** Whether this is a machine-to-machine connection */
@@ -89,245 +131,191 @@ type ClientWebSocket = WebSocket & {
     visitorChannelId?: string;
 }
 
-/** WebSocket server instance (set by updateWebSocketInstance) */
-export let ServerWebSocket: WebSocketServer;
+/** Who a connection is, resolved during the upgrade. */
+type ConnectionIdentity =
+    | {kind: "user"; user: JWTTokenType; sessionId: string | null; expiresAt: number; languageCode: string}
+    | {kind: "visitor"; session: VisitorSession; languageCode: string}
+    | {kind: "machine"; machineName: string}
+    | {kind: "rejected"; reason: string};
+
+let httpServer: http.Server | null = null;
+let heartbeat: NodeJS.Timeout | null = null;
+
+const clientServer = new WebSocketServer({noServer: true, maxPayload: CLIENT_MAX_PAYLOAD_BYTES});
+/** Machine pushes (chat messages, notification batches) can be large and come from a trusted peer, so they keep ws's limit. */
+const machineServer = new WebSocketServer({noServer: true});
 
 /**
- * Map of user IDs to their active WebSocket connections
- * Supports multiple connections per user (multiple tabs/devices)
+ * Open sockets per user ID. Supports multiple connections per user (tabs/devices).
+ * A user's empty set stays during the disconnect grace window, so they still
+ * count as connected.
  */
-export const AllUsersWebSockets: {[userId: string]: ClientWebSocket[]} = {};
+const userSockets = new Map<string, Set<ClientWebSocket>>();
 
-/**
- * Pending disconnect cleanup timers per user. When the last connection for a
- * user closes we schedule the offline transition for `DISCONNECT_GRACE_MS`
- * later, instead of running it immediately. If the user re-establishes a
- * connection during the grace window (e.g. browser refresh) we cancel the
- * timer and the dashboard never sees a transient `users: 0` blip.
- */
-const pendingDisconnectTimers: Record<string, NodeJS.Timeout> = {};
-const DISCONNECT_GRACE_MS = 5000;
+/** Pending offline transitions per user (see `DISCONNECT_GRACE_MS`). */
+const pendingDisconnects = new Map<string, NodeJS.Timeout>();
 
-/**
- * Room metadata type
- */
-type RoomType = {
-    /** Room ID */
-    id: string;
-    /** Room display name */
-    name: string;
-    /** Total messages sent to this room */
-    messages: number,
-    /** Array of users in this room with instance counts */
-    users: {
-        id: string,
-        username: string,
-        instances: number
-    }[]
+/** Sockets per room. A room disappears with its last member. */
+const roomMembers = new Map<string, Set<ClientWebSocket>>();
+
+/** Cumulative messages broadcast per room, starting from the persisted count (see `wsMessageStore`). */
+const roomMessages = new Map<string, number>();
+
+const channelMembers = new Map<string, {ids: string[]; expiresAt: number}>();
+
+function roomMessageCount(room: string): number {
+    return roomMessages.get(room) ?? getStoredRoomMessages(room);
 }
 
-/**
- * Map of room IDs to room metadata
- * Tracks all rooms and their subscribers
- */
-export const AllRoomsUsers: {[room: string]: RoomType} = {};
-
-function buildRoomEntry(room: string, user: JWTTokenType): RoomType {
-    return {
-        id: room,
-        name: getRoomDisplayName(room),
-        messages: getStoredRoomMessages(room),
-        users: [{
-            id: user.id,
-            username: user.username,
-            instances: 1
-        }]
-    };
-}
-
-async function addRoomToAllRoomsUsers(room: string, user: JWTTokenType) {
-    if (AllRoomsUsers[room]) {
-        let found = false;
-        for (const tempUser of AllRoomsUsers[room].users) {
-            if (tempUser.id === user.id) {
-                tempUser.instances++;
-                found = true;
-            }
-        }
-        if (!found) {
-            AllRoomsUsers[room].users.push({
-                id: user.id,
-                username: user.username,
-                instances: 1
-            });
-        }
+/** Every websocket frame the server sends goes through here, so the service counter sees all traffic. */
+function sendFrame(ws: ClientWebSocket, data: string): void {
+    if (ws.readyState !== WebSocket.OPEN) {
         return;
     }
+    ws.send(data, (error) => {
+        if (error) {
+            webSocketCounter.recordFailure(0);
+        }
+        else {
+            webSocketCounter.recordSuccess(0);
+        }
+    });
+}
 
-    // Any room that passed roomLogic should appear in the subscriber map.
-    AllRoomsUsers[room] = buildRoomEntry(room, user);
+/** Sends one `{code, payload}` frame to every open socket of each user. */
+function sendToUsers(userIds: Iterable<string>, code: string, payload: unknown): void {
+    const data = JSON.stringify({code, payload});
+    for (const userId of userIds) {
+        for (const ws of userSockets.get(userId) ?? []) {
+            sendFrame(ws, data);
+        }
+    }
+}
+
+/** Sends one `{code, payload}` frame to every member of `room` and counts it for the room. */
+export function broadcastToRoom(room: Room, code: string, payload: unknown): void {
+    const members = roomMembers.get(room);
+    if (!members?.size) {
+        return;
+    }
+    const data = JSON.stringify({code, payload});
+    for (const ws of members) {
+        sendFrame(ws, data);
+    }
+    roomMessages.set(room, roomMessageCount(room) + members.size);
 }
 
 /**
- * Hydrates `AllRoomsUsers` with placeholder entries for known rooms whose
- * persisted message counters are non-zero. This ensures the broadcaster's
- * `Object.values(AllRoomsUsers)` snapshot is non-empty even before any user
- * has reconnected after a server restart.
- *
- * Placeholder entries have an empty `users` array — they hold history only.
- * They become "real" rooms (with users) when the first subscriber joins.
- *
- * Call {@link registerAllRoomContributions} before this so module rooms are known.
+ * Returns true if the given room currently has at least one subscriber.
+ * Used to gate broadcasters so we never produce traffic when nobody is watching.
  */
-export function hydrateKnownRoomsFromStore(): void {
-    for (const roomId of getKnownRoomIds()) {
-        const stored = getStoredRoomMessages(roomId);
-        if (stored > 0 && !AllRoomsUsers[roomId]) {
-            AllRoomsUsers[roomId] = {
-                id: roomId,
-                name: getRoomDisplayName(roomId),
-                messages: stored,
-                users: []
-            };
-        }
+export function roomHasSubscribers(room: Room): boolean {
+    return (roomMembers.get(room)?.size ?? 0) > 0;
+}
+
+/** Per-room message counters, for `saveRoomMessages`. */
+export function getRoomMessageCounts(): Record<string, number> {
+    return Object.fromEntries(roomMessages);
+}
+
+function joinRoom(ws: ClientWebSocket, room: string): void {
+    ws.rooms.add(room);
+    const members = roomMembers.get(room) ?? new Set<ClientWebSocket>();
+    members.add(ws);
+    roomMembers.set(room, members);
+}
+
+function leaveRoom(ws: ClientWebSocket, room: string): void {
+    ws.rooms.delete(room);
+    const members = roomMembers.get(room);
+    members?.delete(ws);
+    if (members?.size === 0) {
+        roomMembers.delete(room);
     }
 }
-async function removeRoomFromAllRoomsUser(room: string, userId: string) {
-    let toBeDeleted: string[] = [];
-    if( !!AllRoomsUsers[room] ) {
-        let found = false;
-        for( let tempUser of AllRoomsUsers[room].users ){
-            if( tempUser.id === userId ){
-                tempUser.instances --;
-                found = true;
-            }
-        }
-        if( found ) {
-            AllRoomsUsers[room].users = AllRoomsUsers[room].users.filter((x) => x.instances > 0);
-            if( AllRoomsUsers[room].users.length === 0 ){
-                toBeDeleted.push(room);
-            }
-        }
-    }
-    for( let deleteRoom of toBeDeleted ){
-        delete AllRoomsUsers[deleteRoom];
-    }
-    // WebSocketData.rooms = Object.values(AllRoomsUsers);
-}
 
-export enum Room {
-    SERVER_HEALTH = "serverHealth",
-    SERVER_STATS = "serverStats",
-    ADMINISTRATION = "administration",
-    USERS = "users",
-    CHATS = "chats",
-    ALL_CHATS = "allChats",
-    WEBSITE_CHATS = "websiteChats",
-    COMPANY = "company",
-    ACCOUNT = "account",
-    SECURITY = "security",
-    NOTIFICATIONS = "notifications",
-    ACTIVITY = "activity",
-    CONNECTED_APPS = "connectedApps",
-    SERVER_PERFORMANCE = "serverPerformance",
-    COMPANIES_CONFIGURATIONS = "companies_configurations",
-    ROLES_CONFIGURATIONS = "roles_configurations",
-    COUNTRIES_CONFIGURATIONS = "country_configurations",
-    STATES_CONFIGURATIONS = "states_configurations",
-    CITIES_CONFIGURATIONS = "cities_configurations",
-    CURRENCIES_CONFIGURATIONS = "currencies_configurations",
-    SMTP_SERVERS_CONFIGURATIONS = "smtpServers_configurations",
-    MESSAGING_PROVIDERS_CONFIGURATIONS = "messagingProviders_configurations"
-}
-export enum RoomCode {
-    SERVER_HEALTH = "ServerHealthUpdater",
-    SERVER_STATS = "ServerStatsUpdater"
-}
-
-/** Site presence rooms from panel routes (e.g. bookings). Max 64 chars; camelCase allowed. */
-const SITE_ROOM_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
-
-function isSupportedRoom(room: string): boolean {
-    return Object.values(Room).includes(room as Room)
-        || getKnownRoomIds().includes(room)
-        || SITE_ROOM_ID_PATTERN.test(room);
-}
-
-async function roomLogic(room: string, code: string, user: any, logger: serverLogger, ws: ClientWebSocket): Promise<boolean> {
+/**
+ * The server rooms carry the same data as `/auxiliary/health` and
+ * `/auxiliary/stats`, so they need the same read permission. Checked on every
+ * join, so a removed role applies from the next page visit. Fails closed.
+ */
+async function canReadServerPerformance(ws: ClientWebSocket): Promise<boolean> {
     try {
-        if (!isSupportedRoom(room)) {
-            throw {message: "Request room not supported"};
-        }
-
-        if (room === Room.SERVER_HEALTH) {
-            // Optional: push an initial health snapshot on join.
-        }
-        else if (room === Room.SERVER_STATS) {
-            // Optional: push an initial stats snapshot on join.
-        }
+        const companyId = new ObjectId(ws.companyId);
+        const user = await userService.findByIdOrThrow(ws.userId, {languageCode: ws.languageCode});
+        const {isAdmin, permissions} = await user.getCompanyAccess(companyId);
+        SchemaGuard.sanitizeFields(ServerPerformance1m, {count: {}}, "read", {
+            userId: ws.userId,
+            orgId: companyId.toString(),
+            isAdmin,
+            permissions,
+            isSelf: true,
+        }, ws.languageCode);
+        return true;
     }
-    catch (e: any) {
-        logger.err(e.message);
+    catch {
         return false;
     }
-    return true;
 }
 
-async function onJoinRoomMessage(code: string, payload: string[], user: any, logger: serverLogger, ws: ClientWebSocket){
-    logger.updateSpace();
-    logger.debug(`[${code}] Ready to add user [${ws.userId}] to the following rooms: [${payload.join(", ")}]`);
-
-    let concatTheseRooms: string [] = [];
-    let alreadyJoinedRooms: string[] = [];
-    let failedJoinedRooms: string[] = [];
-
-    if( !ws.rooms){
-        ws.rooms = [];
+async function canJoinRoom(room: unknown, ws: ClientWebSocket): Promise<boolean> {
+    if (typeof room !== "string" || !ROOM_ID_PATTERN.test(room)) {
+        return false;
     }
-    for( let newRoom of payload ){
-        if( !ws.rooms.includes(newRoom)){
-            let roomLogicPassed = await roomLogic(newRoom, code, user, logger, ws);
-            if( !roomLogicPassed ){
-                failedJoinedRooms.push(newRoom);
-            }
-            else{
-                await addRoomToAllRoomsUsers(newRoom, user);
-                concatTheseRooms.push(newRoom);
-            }
+    return !SERVER_PERFORMANCE_ROOMS.has(room) || canReadServerPerformance(ws);
+}
+
+async function onJoinRoomMessage(payload: unknown, logger: serverLogger, ws: ClientWebSocket): Promise<void> {
+    const failed: string[] = [];
+    const alreadyJoined: string[] = [];
+    const joined: string[] = [];
+
+    for (const room of Array.isArray(payload) ? payload : []) {
+        if (typeof room === "string" && ws.rooms.has(room)) {
+            alreadyJoined.push(room);
         }
-        else{
-            alreadyJoinedRooms.push(newRoom);
+        else if (ws.rooms.size >= MAX_ROOMS_PER_CONNECTION || !(await canJoinRoom(room, ws))) {
+            failed.push(String(room));
+        }
+        else {
+            joinRoom(ws, room);
+            joined.push(room);
         }
     }
 
-    if( failedJoinedRooms.length > 0 ){
-        logger.debug(`User failed to join rooms: [${failedJoinedRooms.join(", ")}]`);
-    }
-    if( alreadyJoinedRooms.length > 0 ){
-        logger.debug(`User already part of rooms: [${alreadyJoinedRooms.join(", ")}]`);
-    }
-    if( concatTheseRooms.length > 0 ){
-        ws.rooms = ws.rooms.concat(concatTheseRooms);
-        logger.debug(`User added to rooms: [${concatTheseRooms.join(", ")}]`);
-    }
-
-    logger.debug(`[${code} ${user.id}] Added user '${ws.userId}' to the requested rooms`);
-    logger.updateSpace(-1);
-
-    ws.send(JSON.stringify({
+    logger.debug(`User [${ws.userId}] joined [${joined.join(", ")}], already in [${alreadyJoined.join(", ")}], refused [${failed.join(", ")}]`);
+    sendFrame(ws, JSON.stringify({
         code: WebSocketMessageCodes.JOIN_ROOM,
-        payload: {
-            failed: failedJoinedRooms,
-            alreadyJoined: alreadyJoinedRooms,
-            joined: concatTheseRooms
-        }
+        payload: {failed, alreadyJoined, joined}
     }));
-
 }
+
+async function onLeaveRoomMessage(payload: unknown, logger: serverLogger, ws: ClientWebSocket): Promise<void> {
+    const alreadyRemovedRooms: string[] = [];
+    const removed: string[] = [];
+
+    for (const room of Array.isArray(payload) ? payload : []) {
+        if (typeof room === "string" && ws.rooms.has(room)) {
+            leaveRoom(ws, room);
+            removed.push(room);
+        }
+        else {
+            alreadyRemovedRooms.push(String(room));
+        }
+    }
+
+    logger.debug(`User [${ws.userId}] left [${removed.join(", ")}], was not in [${alreadyRemovedRooms.join(", ")}]`);
+    sendFrame(ws, JSON.stringify({
+        code: WebSocketMessageCodes.LEAVE_ROOM,
+        payload: {failed: [], alreadyRemovedRooms, removed}
+    }));
+}
+
 /**
- * Runs one connection's JOIN/LEAVE handlers one at a time. Each handler checks `ws.rooms` and only
- * updates it after awaiting, so overlapping handlers (a quick leave-and-rejoin) could leave the
- * connection out of a room the client still holds. A failed operation does not block later ones.
+ * Runs one connection's JOIN/LEAVE handlers one at a time. A JOIN awaits a
+ * permission check before it updates `ws.rooms`, so overlapping handlers (a
+ * quick leave-and-rejoin) could leave the connection out of a room the client
+ * still holds. A failed operation does not block later ones.
  */
 function queueRoomOperation(ws: ClientWebSocket, operation: () => Promise<void>): Promise<void> {
     const result = (ws.roomOperations ?? Promise.resolve()).then(operation);
@@ -335,53 +323,49 @@ function queueRoomOperation(ws: ClientWebSocket, operation: () => Promise<void>)
     return result;
 }
 
-async function onLeaveRoomMessage(code: string, payload: string[], user: any, logger: serverLogger, ws: ClientWebSocket){
-    logger.updateSpace();
-    logger.debug(`[${code} ${user.id}] Ready to remove user '${ws.userId}' from the following rooms: [${payload.join(", ")}]`);
-    let removeTheseRooms: string [] = [];
-    let alreadyRemovedRooms: string[] = [];
-    let failedLeftRooms: string[] = [];
+/**
+ * Member IDs of a channel, cached briefly: typing indicators arrive in bursts
+ * and each would otherwise be a Mongo read. A membership change (an agent
+ * joining a website chat, a member removed) reaches typing indicators within
+ * `CHANNEL_MEMBERS_TTL_MS`.
+ */
+async function getChannelMemberIds(channelId: string): Promise<string[]> {
+    const now = Date.now();
+    const cached = channelMembers.get(channelId);
+    if (cached && cached.expiresAt > now) {
+        return cached.ids;
+    }
+    const channel = await channelService.findOne({_id: new ObjectId(channelId)}, {}, [], "users");
+    const ids = (channel?.users ?? []).map((user: any) => (user?._id ?? user).toString());
+    channelMembers.set(channelId, {ids, expiresAt: now + CHANNEL_MEMBERS_TTL_MS});
+    return ids;
+}
 
-    if( !ws.rooms){
-        ws.rooms = [];
-    }
-    for( let removeRoom of payload ){
-        if( !ws.rooms.includes(removeRoom) ){
-            alreadyRemovedRooms.push(removeRoom);
+/**
+ * Forwards a typing indicator to the channel's other members. The sender is
+ * always the connection's own user. A user must be a member of the channel; a
+ * visitor's channel comes from its own session (see `onVisitorMessage`).
+ */
+async function relayTyping(code: string, channelId: string, ws: ClientWebSocket, logger: serverLogger): Promise<void> {
+    try {
+        const memberIds = await getChannelMemberIds(channelId);
+        if (!ws.isVisitor && !memberIds.includes(ws.userId)) {
+            logger.debug(`Ignoring typing from ${ws.userId}: not a member of channel ${channelId}`);
+            return;
         }
-        else{
-            let roomLogicPassed = await roomLogic(removeRoom, code, user, logger, ws);
-            if( !roomLogicPassed ){
-                failedLeftRooms.push(removeRoom);
-            }
-            else{
-                await removeRoomFromAllRoomsUser(removeRoom, user.id);
-                removeTheseRooms.push(removeRoom);
-            }
-        }
+        sendToUsers(memberIds.filter((memberId) => memberId !== ws.userId), code, {
+            channelId,
+            userId: ws.userId,
+            typing: code === WebSocketMessageCodes.TYPING_START,
+        });
     }
+    catch (error) {
+        logger.err(`Error sending typing indicator for channel ${channelId}: ${error}`);
+    }
+}
 
-    if( failedLeftRooms.length > 0 ){
-        logger.debug(`User failed to leave rooms: [${failedLeftRooms.join(", ")}]`);
-    }
-    if( alreadyRemovedRooms.length > 0 ){
-        logger.debug(`User already NOT part of rooms: [${alreadyRemovedRooms.join(", ")}]`);
-    }
-    if( removeTheseRooms.length > 0 ){
-        ws.rooms = ws.rooms.filter((room) => !removeTheseRooms.includes(room));
-        logger.debug(`User removed from rooms: [${removeTheseRooms.join(", ")}]`);
-    }
-    logger.debug(`[${code} ${user.id}] Removed user '${ws.userId}' from the requested rooms`);
-    logger.updateSpace(-1);
-
-    ws.send(JSON.stringify({
-        code: WebSocketMessageCodes.LEAVE_ROOM,
-        payload: {
-            failed: failedLeftRooms,
-            alreadyRemovedRooms: alreadyRemovedRooms,
-            removed: removeTheseRooms
-        }
-    }))
+function isTypingCode(code: string): boolean {
+    return code === WebSocketMessageCodes.TYPING_START || code === WebSocketMessageCodes.TYPING_STOP;
 }
 
 /**
@@ -392,254 +376,222 @@ async function onLeaveRoomMessage(code: string, payload: string[], user: any, lo
  * Everything else is ignored rather than errored, so a curious visitor probing
  * codes learns nothing and stays connected.
  */
-async function onVisitorMessage(
-    code: string,
-    rawMessage: string,
-    ws: ClientWebSocket,
-    logger: serverLogger,
-): Promise<void> {
-    const isTyping = [WebSocketMessageCodes.TYPING_START, WebSocketMessageCodes.TYPING_STOP].includes(code as any);
-    if (!isTyping) {
+async function onVisitorMessage(code: string, logger: serverLogger, ws: ClientWebSocket): Promise<void> {
+    // The channel is taken from the CONNECTION, never from the payload, so a
+    // visitor cannot address a channel that is not theirs.
+    if (!isTypingCode(code) || !ws.visitorChannelId) {
         logger.debug(`Ignoring code [${code}] from visitor connection ${ws.userId}`);
         return;
     }
-
-    try {
-        const channelId = ws.visitorChannelId;
-        if (!channelId) {
-            return;
-        }
-
-        // The channel is taken from the CONNECTION, never from the payload, so a
-        // visitor cannot address a channel that is not theirs.
-        const channel = await channelService.findOne(
-            {_id: new ObjectId(channelId), isPublicChat: true},
-            {},
-            {path: "users", select: "_id"},
-            "users",
-        );
-        const recipients = (channel?.users ?? [])
-            .map((user: any) => (user?._id ?? user).toString())
-            .filter((userId: string) => userId !== ws.userId);
-
-        for (const recipientId of recipients) {
-            for (const recipientSocket of AllUsersWebSockets[recipientId] ?? []) {
-                try {
-                    recipientSocket.send(JSON.stringify({
-                        code,
-                        payload: {
-                            channelId,
-                            userId: ws.userId,
-                            typing: code === WebSocketMessageCodes.TYPING_START,
-                        },
-                    }));
-                }
-                catch (error) {
-                    logger.err(`Error sending visitor typing indicator to ${recipientId}: ${error}`);
-                }
-            }
-        }
-    }
-    catch (error) {
-        logger.err(`Error handling visitor websocket message: ${error}`);
-    }
+    await relayTyping(code, ws.visitorChannelId, ws, logger);
 }
 
-async function webSocketOnMessage<T>(message: string, ws: ClientWebSocket){
-    const logger = getLogger("webSocketServer-newMessage");
-    logger.start(`Ready to calculate ${ws.isMachine ? "machine" : "client"}'s websocket request`);
-
-    try{
-        // WSMessageType
-        let receivedData: WebSocketMessage<any> = JSON.parse(message.toString());
-        let code = receivedData.code;
-
-        if( !code || !receivedData.payload ){
-            logger.fail(`No code or payload sent. Who is this? [${ws.userId}]`);
-            ws.send("No code or payload sent. Who are you?");
-            ws.close(1008, "Invalid websocket message");
-            return;
+async function onUserMessage(code: string, payload: any, logger: serverLogger, ws: ClientWebSocket): Promise<void> {
+    if (isTypingCode(code)) {
+        const channelId = payload?.channelId;
+        if (typeof channelId === "string" && ObjectId.isValid(channelId)) {
+            await relayTyping(code, channelId, ws, logger);
         }
-        // Machine connections can send any code (trusted source)
-        // Client connections must use valid codes from the enum
-        if( !ws.isMachine && !Object.values(WebSocketMessageCodes).includes(code) ){
-            logger.fail(`Code is not correct, this cant be. Who is this? [${ws.userId}]`);
-            ws.send("Malicious code detected, net-admin notified.");
-            ws.close(1008, "Invalid websocket message code");
-            return;
-        }
-
-        if( ws.isMachine ){
-            // this will handle all messages sent to this websocket server by all connected services (machines)
-            if( code === WebSocketMessageCodes.MACHINE_TO_MACHINE_PING ){
-                const receivedMessage: WebSocketMessage<{machineName: string}> = JSON.parse(message.toString());
-                logger.debug(`[${receivedMessage.payload.machineName}] pinged and is alive`);
-            }
-            else {
-                // Trusted machine: forward core codes and feature-module codes.
-                const receivedMessage: WebSocketPush<T> = JSON.parse(message.toString());
-                const {code, payload, userIds} = receivedMessage;
-                if (!Array.isArray(userIds)) return;
-                for( let userId of userIds ){
-                    let userWebSockets = AllUsersWebSockets[userId] ?? [];
-                    for( let userWebSocket of userWebSockets ){
-                        try{
-                            userWebSocket.send(JSON.stringify({
-                                code,
-                                payload
-                            }));
-                            // WebSocketData.messages ++;
-                        }catch(error){
-                            logger.err(`Error sending message with code: [${code}] to user ${userId}: ${error}`);
-                        }
-                    }
-                }
-            }
-        }
-        else if( ws.isVisitor ){
-            // An anonymous visitor may do exactly one thing over the socket:
-            // signal typing in its OWN chat. No rooms, no receipts, no reading
-            // another channel. Note `validateJWTToken` below would reject a
-            // visitor token anyway — this branch must stay ahead of it.
-            await onVisitorMessage(code, message, ws, logger);
-        }
-        else {
-            let userFromToken: JWTTokenType;
-            try {
-                userFromToken = validateJWTToken(ws.token, ws.languageCode);
-            } catch (e: any) {
-                // 1008 tells the client not to retry this token; it reconnects once it has a new one.
-                logger.fail(`Connection token not valid, thus the connection action cannot proceed further. Terminating. Error: ${e?.message || e}`);
-                ws.close(1008, "Invalid websocket token");
-                return;
-            }
-            if( [WebSocketMessageCodes.TYPING_START, WebSocketMessageCodes.TYPING_STOP].includes(code) ){
-                try{
-                    const receivedMessage: WebSocketMessage<{channelId: string, userId: string}> = JSON.parse(message.toString());
-                    const {code, payload} = receivedMessage;
-                    if( !payload.channelId || !payload.userId ){
-                        return "";
-                    }
-                    let channelUsers = await channelService.findByIdOrThrow(new ObjectId(payload.channelId), {}, {path: "users", select: "_id"}, "users");
-                    let channelUserIds = channelUsers.users?.map((user) => user._id.toString()) || [];
-                    for( let channelUserId of channelUserIds ){
-                        if( channelUserId !== payload.userId && !!AllUsersWebSockets[channelUserId] ){
-                            for( let userWebSocket of AllUsersWebSockets[channelUserId] ){
-                                try{
-                                    userWebSocket.send(JSON.stringify({
-                                        code: code,
-                                        payload: {
-                                            channelId: payload.channelId,
-                                            userId: payload.userId,
-                                            typing: code === WebSocketMessageCodes.TYPING_START
-                                        }
-                                    }))
-                                }
-                                catch(error){
-                                    logger.err(`Error sending typing indicator to user ${channelUserId}: ${error}`);
-                                }
-                            }
-                        }
-                    }
-                }catch(error){
-                    logger.err(`Error sending typing indicator: ${error}`);
-                }
-            }
-            else if ([WebSocketMessageCodes.MESSAGE_RECEIPT_UPDATE].includes(code) ) {
-                const receivedMessage: WebSocketMessage<{ channelId?: string; messageIds?: string[]; kind?: "delivered" | "read"; }> = JSON.parse(message.toString());
-                const {channelId, messageIds, kind} = receivedMessage.payload;
-                if (channelId && Array.isArray(messageIds) && messageIds.length > 0 && (kind === "delivered" || kind === "read")) {
-                    try {
-                        await applyMessageReceipts({
-                            readerUserId: new ObjectId(userFromToken.id),
-                            channelId,
-                            companyId: new ObjectId(userFromToken.company._id),
-                            messageIds,
-                            kind,
-                            logger,
-                            languageCode: ws.languageCode,
-                            auditUserId: userFromToken.id,
-                            newPushWebsocketMessage: (websocketMessage: any) => {
-                                const {code, userIds, payload} = websocketMessage;
-                                for( let userId of userIds ){
-                                    let userWebSockets = AllUsersWebSockets[userId] ?? [];
-                                    for( let userWebSocket of userWebSockets ){
-                                        try{
-                                            userWebSocket.send(JSON.stringify({
-                                                code,
-                                                payload
-                                            }));
-                                            // WebSocketData.messages ++;
-                                        }catch(error){
-                                            logger.err(`Error sending message with code: [${code}] to user ${userId}: ${error}`);
-                                        }
-                                    }
-                                }
-                            }
-                        });
-                    } catch (err: unknown) {
-                        logger.err?.(`MESSAGE_RECEIPT_UPDATE failed for user ${userFromToken.id}: ${err}`);
-                    }
-                }
-                else {
-                    logger.debug?.(`MESSAGE_RECEIPT_UPDATE ignored: invalid payload from ${ws.userId}`);
-                }
-            }
-            else if (code === WebSocketMessageCodes.JOIN_ROOM) {
-                const receivedMessage: WebSocketMessage<Room[]> = JSON.parse(message.toString());
-                await queueRoomOperation(ws, () => onJoinRoomMessage(code, receivedMessage.payload, userFromToken, logger, ws));
-            }
-            else if( code === WebSocketMessageCodes.LEAVE_ROOM ) {
-                const receivedMessage: WebSocketMessage<Room[]> = JSON.parse(message.toString());
-                await queueRoomOperation(ws, () => onLeaveRoomMessage(code, receivedMessage.payload, userFromToken, logger, ws));
-            }
-        }
-
-        logger.finish(`Calculated ${ws.isMachine ? "machine" : "client"}'s websocket request ${code}`);
     }
-    catch(e: any){
-        // Unparseable frames break protocol (1008, final). Anything else is a server-side failure:
-        // 1011 lets the client reconnect with backoff and rejoin its rooms.
-        const malformed = e instanceof SyntaxError;
-        logger.fail(`${malformed ? "Malformed websocket message" : "Websocket message handling failed"}. Terminating. Error: ${e?.message || e}`);
-        try {
-            ws.close(malformed ? 1008 : 1011, malformed ? "Invalid websocket message" : "Internal error");
-        } catch (closeError) {
-            // Ignore close errors
+    else if (code === WebSocketMessageCodes.MESSAGE_RECEIPT_UPDATE) {
+        const {channelId, messageIds, kind} = payload ?? {};
+        if (typeof channelId !== "string" || !Array.isArray(messageIds) || messageIds.length === 0 || (kind !== "delivered" && kind !== "read")) {
+            logger.debug(`MESSAGE_RECEIPT_UPDATE ignored: invalid payload from ${ws.userId}`);
+            return;
         }
-        return;
+        try {
+            await applyMessageReceipts({
+                readerUserId: new ObjectId(ws.userId),
+                channelId,
+                companyId: new ObjectId(ws.companyId),
+                messageIds,
+                kind,
+                logger,
+                languageCode: ws.languageCode,
+                auditUserId: ws.userId,
+                newPushWebsocketMessage: ({code, userIds, payload}: WebSocketPush<unknown>) => sendToUsers(userIds, code, payload),
+            });
+        }
+        catch (error) {
+            logger.err(`MESSAGE_RECEIPT_UPDATE failed for user ${ws.userId}: ${error}`);
+        }
+    }
+    else if (code === WebSocketMessageCodes.JOIN_ROOM) {
+        await queueRoomOperation(ws, () => onJoinRoomMessage(payload, logger, ws));
+    }
+    else if (code === WebSocketMessageCodes.LEAVE_ROOM) {
+        await queueRoomOperation(ws, () => onLeaveRoomMessage(payload, logger, ws));
+    }
+    else {
+        // Ignored, not closed: a panel deployed ahead of this server may send codes it does not know yet.
+        logger.debug(`Ignoring unknown code [${code}] from ${ws.userId}`);
     }
 }
 
 /**
- * Maximum simultaneous sockets one visitor token may hold. A visitor legitimately
- * has one tab open; this bounds a trivial socket-exhaustion attempt.
+ * Closes the sockets of a revoked session. The `SESSION_REVOKED` notice was
+ * just queued on them, and the close frame follows it.
  */
-const MAX_VISITOR_CONNECTIONS = 3;
+function closeRevokedSession(userIds: string[], sessionId: unknown): void {
+    if (typeof sessionId !== "string") {
+        return;
+    }
+    for (const userId of userIds) {
+        for (const ws of userSockets.get(userId) ?? []) {
+            if (ws.sessionId === sessionId) {
+                ws.close(1008, "Session revoked");
+            }
+        }
+    }
+}
+
+/** A trusted machine forwards core codes and feature-module codes to the users it names. */
+function onMachineMessage(push: Partial<WebSocketPush<any>>, logger: serverLogger, ws: ClientWebSocket): void {
+    if (push.code === WebSocketMessageCodes.MACHINE_TO_MACHINE_PING) {
+        logger.debug(`[${ws.machineName}] pinged and is alive`);
+        return;
+    }
+    if (typeof push.code !== "string" || !Array.isArray(push.userIds)) {
+        return;
+    }
+    sendToUsers(push.userIds, push.code, push.payload);
+    if (push.code === WebSocketMessageCodes.SESSION_REVOKED) {
+        closeRevokedSession(push.userIds, push.payload?.sessionId);
+    }
+}
+
+function withinRateLimit(ws: ClientWebSocket, logger: serverLogger): boolean {
+    const now = Date.now();
+    if (now - ws.rateWindowStart >= MESSAGE_RATE_WINDOW_MS) {
+        ws.rateWindowStart = now;
+        ws.rateWindowCount = 0;
+    }
+    ws.rateWindowCount++;
+    if (ws.rateWindowCount === MAX_MESSAGES_PER_WINDOW + 1) {
+        logger.warn(`Connection ${ws.id} sent more than ${MAX_MESSAGES_PER_WINDOW} frames in ${MESSAGE_RATE_WINDOW_MS} ms; dropping the rest of this window`);
+    }
+    return ws.rateWindowCount <= MAX_MESSAGES_PER_WINDOW;
+}
+
+async function webSocketOnMessage(message: RawData, ws: ClientWebSocket): Promise<void> {
+    const logger = getLogger("webSocketServer-newMessage");
+
+    if (!ws.isMachine && !withinRateLimit(ws, logger)) {
+        return;
+    }
+
+    try {
+        const frame: Partial<WebSocketPush<any>> | null = JSON.parse(message.toString());
+        const code = frame?.code;
+        if (typeof code !== "string") {
+            logger.debug(`Ignoring a frame without a code from ${ws.userId ?? ws.machineName}`);
+            return;
+        }
+
+        if (ws.isMachine) {
+            onMachineMessage(frame!, logger, ws);
+        }
+        else if (ws.isVisitor) {
+            // An anonymous visitor may do exactly one thing over the socket:
+            // signal typing in its OWN chat. No rooms, no receipts, no reading
+            // another channel.
+            await onVisitorMessage(code, logger, ws);
+        }
+        else {
+            await onUserMessage(code, frame!.payload, logger, ws);
+        }
+    }
+    catch (e: any) {
+        // Unparseable frames break protocol (1008, final). Anything else is a server-side failure:
+        // 1011 lets the client reconnect with backoff and rejoin its rooms.
+        const malformed = e instanceof SyntaxError;
+        logger.fail(`${malformed ? "Malformed websocket message" : "Websocket message handling failed"}. Terminating. Error: ${e?.message || e}`);
+        ws.close(malformed ? 1008 : 1011, malformed ? "Invalid websocket message" : "Internal error");
+    }
+}
+
+async function updateOnlineStatus(userId: string, online: boolean, logger: serverLogger): Promise<void> {
+    try {
+        await userService.updateById(new ObjectId(userId), {online}, {logger});
+    }
+    catch (error: any) {
+        logger.err(`Failed to update user online status: ${error.message}`);
+    }
+}
+
+async function onUserConnectionClose(ws: ClientWebSocket, logger: serverLogger): Promise<void> {
+    // Let an in-flight JOIN finish so the rooms it adds are released below.
+    await ws.roomOperations;
+    for (const room of [...ws.rooms]) {
+        leaveRoom(ws, room);
+    }
+
+    const userId = ws.userId;
+    const sockets = userSockets.get(userId);
+    sockets?.delete(ws);
+    if (!sockets || sockets.size > 0) {
+        return;
+    }
+
+    clearTimeout(pendingDisconnects.get(userId));
+    pendingDisconnects.set(userId, setTimeout(() => {
+        pendingDisconnects.delete(userId);
+        // Re-check: a new connection may have arrived during the grace window.
+        if (userSockets.get(userId)?.size) {
+            return;
+        }
+        userSockets.delete(userId);
+        void updateOnlineStatus(userId, false, logger);
+    }, DISCONNECT_GRACE_MS));
+}
+
+function setupUserConnection(ws: ClientWebSocket, identity: Extract<ConnectionIdentity, {kind: "user"}>, logger: serverLogger): void {
+    const {user, sessionId, expiresAt, languageCode} = identity;
+    ws.id = generateRandomString(24) + "_" + user.id;
+    ws.userId = user.id;
+    ws.username = user.username;
+    ws.languageCode = languageCode;
+    ws.companyId = String(user.company._id);
+    ws.sessionId = sessionId;
+    ws.expiresAt = expiresAt;
+
+    ws.on("close", () => void onUserConnectionClose(ws, logger.renew()));
+
+    // If a disconnect was pending for this user (browser refresh, brief
+    // network blip), cancel it: the user is back inside the grace window
+    // so we never need to flip them offline.
+    clearTimeout(pendingDisconnects.get(ws.userId));
+    pendingDisconnects.delete(ws.userId);
+
+    const sockets = userSockets.get(ws.userId);
+    if (sockets) {
+        sockets.add(ws);
+    }
+    else {
+        userSockets.set(ws.userId, new Set([ws]));
+        void updateOnlineStatus(ws.userId, true, logger);
+    }
+
+    ws.send(`Welcome ${ws.userId}. WS connection is ready.`);
+    logger.finish(`Finished setting up connection for user: [${ws.userId}]`);
+}
 
 /**
  * Set up a public-website visitor connection.
  *
  * Deliberately a reduced version of the normal connection setup:
- *   - registers in {@link AllUsersWebSockets} under the visitor id, which is all
+ *   - registers in `userSockets` under the visitor id, which is all
  *     `pushWebsocketMessage({userIds: [visitorId]})` needs to reach the widget;
  *   - joins NO rooms — not its own channel room, and certainly not the system
- *     rooms (`allChats`, `allUsersList`, server-health feeds);
- *   - does NOT touch `user.online` or the Redis connection registry, so an
- *     anonymous visitor never appears in presence or the admin dashboards.
+ *     rooms (server-health feeds);
+ *   - does NOT touch `user.online`, so an anonymous visitor never appears in presence.
  */
-async function setupVisitorConnection(
-    ws: ClientWebSocket,
-    session: VisitorSession,
-    token: string,
-    languageCode: string,
-    logger: serverLogger,
-): Promise<void> {
-    const visitorId = session.visitorUser._id.toString();
-    const channelId = session.visitorChannel._id.toString();
+function setupVisitorConnection(ws: ClientWebSocket, identity: Extract<ConnectionIdentity, {kind: "visitor"}>, logger: serverLogger): void {
+    const visitorId = identity.session.visitorUser._id.toString();
+    const channelId = identity.session.visitorChannel._id.toString();
 
-    const existing = AllUsersWebSockets[visitorId] ?? [];
-    if (existing.length >= MAX_VISITOR_CONNECTIONS) {
+    const sockets = userSockets.get(visitorId) ?? new Set<ClientWebSocket>();
+    if (sockets.size >= MAX_VISITOR_CONNECTIONS) {
         logger.fail(`Visitor ${visitorId} exceeded ${MAX_VISITOR_CONNECTIONS} connections; refusing`);
         ws.close(1008, "Too many connections");
         return;
@@ -647,295 +599,273 @@ async function setupVisitorConnection(
 
     ws.id = generateRandomString(24) + "_" + visitorId;
     ws.userId = visitorId;
-    ws.token = token;
-    ws.isAlive = true;
     ws.username = `visitor:${visitorId}`;
-    ws.languageCode = languageCode;
-    ws.rooms = [];
+    ws.languageCode = identity.languageCode;
     ws.isVisitor = true;
     ws.visitorChannelId = channelId;
 
-    ws.timer = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.ping();
-        }
-        ws.deathTimer = setTimeout(() => {
-            ws.isAlive = false;
-            ws.close();
-        }, 5000);
-    }, 5000);
-
-    ws.on("pong", () => {
-        if (ws.deathTimer) {
-            clearTimeout(ws.deathTimer);
-        }
-    });
-
     ws.on("close", () => {
-        clearInterval(ws.timer);
-        if (ws.deathTimer) {
-            clearTimeout(ws.deathTimer);
+        sockets.delete(ws);
+        if (sockets.size === 0 && userSockets.get(visitorId) === sockets) {
+            userSockets.delete(visitorId);
         }
-        const sockets = AllUsersWebSockets[visitorId];
-        if (sockets) {
-            AllUsersWebSockets[visitorId] = sockets.filter((socket) => socket.id !== ws.id);
-            if (AllUsersWebSockets[visitorId].length === 0) {
-                delete AllUsersWebSockets[visitorId];
-            }
-        }
-        ws.terminate();
     });
 
-    ws.on("message", async (message: any) => {
-        await webSocketOnMessage(message, ws);
-    });
-
-    AllUsersWebSockets[visitorId] = [...existing, ws];
+    sockets.add(ws);
+    userSockets.set(visitorId, sockets);
 
     ws.send(`Welcome visitor. WS connection is ready.`);
     logger.finish(`Finished setting up visitor connection for chat [${channelId}]`);
 }
 
-export async function webSocketOnNewConnection(ws: ClientWebSocket, req: any){
+function setupMachineConnection(ws: ClientWebSocket, machineName: string, logger: serverLogger): void {
+    ws.id = generateRandomString(24) + "_machine";
+    ws.username = machineName;
+    ws.machineName = machineName;
+    ws.isMachine = true;
+    ws.on("close", (code) => logger.renew().debug(`Machine connection [${machineName}] closed with ${code}`));
 
-    const logger = getLogger("webSocketServer-newConnection");
-    logger.start(`New connection inbound from ${req.socket.remoteAddress}, ready to setup the connection`);
-    logger.debug(`Getting token from cookies in connection header`);
+    ws.send(`Welcome machine. WS connection is ready.`);
+    logger.finish(`A new machine to machine connection was made by [${machineName}]`);
+}
 
-    const splitUrl = req.url.split("/").filter((segment: string) => segment.length > 0);
-    if (splitUrl.length < 2) {
-        logger.fail(`The connection url is not correct, thus the connection cannot proceed further. Terminating.`);
-        ws.send(`The connection url is not correct, thus the connection cannot proceed further. Terminating.`);
-        ws.close();
-        return;
+function isMachineSecret(token: string): boolean {
+    const expected = Buffer.from(MACHINE_TO_MACHINE_SECRET ?? "");
+    const given = Buffer.from(token);
+    return expected.length > 0 && given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+/** Resolves who is connecting from `/<token>/<languageCode>`. Never throws. */
+async function authenticateUpgrade(url: string): Promise<ConnectionIdentity> {
+    const [token, languageCode] = url.split("/").filter((segment) => segment.length > 0);
+    if (!token || !languageCode) {
+        return {kind: "rejected", reason: "Invalid websocket url"};
     }
 
-    const token: string = splitUrl[0] as string;
-    const languageCode = splitUrl[1] as string || "en-US";
-    if (token) {
-        // Public-website chat visitor? Checked first and cheaply: a visitor token
-        // carries `type: "publicChat"`, which validateJWTToken below rejects
-        // outright, so the two paths can never be confused for one another.
-        const visitorSession = await tryResolveVisitorSession({token, languageCode});
-        if (visitorSession) {
-            await setupVisitorConnection(ws, visitorSession, token, languageCode, logger);
-            return;
-        }
-
-        try{
-            let userFromToken: JWTTokenType = validateJWTToken(token, languageCode);
-            const {id, username} = userFromToken;
-            await validateActiveUserSession(
-                userFromToken,
-                new ObjectId(id),
-                new ObjectId(userFromToken.company._id),
-                {languageCode}
-            );
-
-            ws.id = generateRandomString(24) + "_" + id;
-            ws.userId = id;
-            ws.token = token;
-            ws.isAlive = true;
-            ws.username = username;
-            ws.languageCode = languageCode;
-            ws.rooms = [];
-
-            ws.timer = setInterval(() => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.ping();
-                }
-                ws.deathTimer = setTimeout(() => {
-                    ws.isAlive = false;
-                    ws.close();
-                    logger.renew().debug(`Connection is dead for ${ws.userId ?? "unknown connection"}`)
-                }, 5000);
-            }, 5000);
-
-            ws.on('pong', () => {
-                if (ws.deathTimer) {
-                    clearTimeout(ws.deathTimer);
-                }
-            });
-            ws.on("close", async () => {
-                clearInterval(ws.timer);
-                if (ws.deathTimer) {
-                    clearTimeout(ws.deathTimer);
-                }
-                // Let an in-flight JOIN finish so the rooms it adds are released below.
-                await ws.roomOperations;
-                if (AllUsersWebSockets[ws.userId]) {
-                    const filterThese: string[] = [];
-                    for (const userWebSocket of AllUsersWebSockets[ws.userId]) {
-                        if (userWebSocket.id === ws.id) {
-                            filterThese.push(ws.id);
-                            for (const room of ws.rooms) {
-                                await removeRoomFromAllRoomsUser(room, ws.userId);
-                            }
-                        }
-                    }
-                    AllUsersWebSockets[ws.userId] = AllUsersWebSockets[ws.userId].filter(
-                        (userWebSocket) => !filterThese.includes(userWebSocket.id)
-                    );
-                }
-                if (AllUsersWebSockets[ws.userId] && AllUsersWebSockets[ws.userId].length === 0) {
-                    // Defer the actual offline transition. A browser refresh
-                    // closes the socket and reopens it within ~100ms — without
-                    // this grace window the dashboard would briefly observe
-                    // `users: 0` and `rooms: []`.
-                    if (pendingDisconnectTimers[ws.userId]) {
-                        clearTimeout(pendingDisconnectTimers[ws.userId]);
-                    }
-                    const userIdForCleanup = ws.userId;
-                    const wsIdForCleanup = ws.id;
-                    pendingDisconnectTimers[userIdForCleanup] = setTimeout(async () => {
-                        delete pendingDisconnectTimers[userIdForCleanup];
-                        // Re-check: a new connection may have arrived during the grace window.
-                        if (AllUsersWebSockets[userIdForCleanup] && AllUsersWebSockets[userIdForCleanup].length > 0) {
-                            return;
-                        }
-                        delete AllUsersWebSockets[userIdForCleanup];
-                        try {
-                            await userService.updateById(
-                                new ObjectId(userIdForCleanup),
-                                {online: false},
-                                {logger}
-                            );
-                        }
-                        catch (error: any) {
-                            logger.err(`Failed to update user online status: ${error.message}`);
-                        }
-                        await removeUserConnection(wsIdForCleanup, logger);
-                    }, DISCONNECT_GRACE_MS);
-                }
-                ws.terminate();
-            });
-            ws.on('message', async (message: any) => {
-                await webSocketOnMessage(message, ws);
-            });
-
-            // If a disconnect was pending for this user (browser refresh, brief
-            // network blip), cancel it: the user is back inside the grace window
-            // so we never need to flip them offline.
-            if (pendingDisconnectTimers[ws.userId]) {
-                clearTimeout(pendingDisconnectTimers[ws.userId]);
-                delete pendingDisconnectTimers[ws.userId];
-            }
-
-            const isResumingExistingPresence = Array.isArray(AllUsersWebSockets[ws.userId]) && AllUsersWebSockets[ws.userId].length > 0;
-
-            if (isResumingExistingPresence) {
-                AllUsersWebSockets[ws.userId].push(ws);
-            }
-            else {
-                AllUsersWebSockets[ws.userId] = [ws];
-
-                try {
-                    await userService.updateById(
-                        new ObjectId(ws.userId),
-                        {online: true},
-                        {logger}
-                    );
-                }
-                catch (error: any) {
-                    logger.err(`Failed to update user online status: ${error.message}`);
-                }
-
-                await addUserConnection(
-                    ws.id,
-                    ws.userId,
-                    {
-                        serverId: "globalServer",
-                        username: ws.username,
-                        languageCode: ws.languageCode,
-                        rooms: ws.rooms || [],
-                        machineName: ws.machineName,
-                        isMachine: ws.isMachine
-                    },
-                    logger
-                );
-            }
-
-            ws.send(`Welcome ${ws.userId}. WS connection is ready.`);
-
-            logger.finish(`Finished setting up connection for user: [${ws.userId}]`);
-        }
-        catch (e){
-            if( token === MACHINE_TO_MACHINE_SECRET ){
-                logger.debug("A new machine to machine connection was made.");
-                ws.machineName = languageCode;
-                ws.isMachine = true;
-                ws.on('message', async (message: any) => {
-                    await webSocketOnMessage(message, ws);
-                });
-
-                ws.timer = setInterval(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.ping();
-                    }
-                    ws.deathTimer = setTimeout(() => {
-                        ws.isAlive = false;
-                        clearInterval(ws.timer);
-                        if (ws.deathTimer) {
-                            clearTimeout(ws.deathTimer);
-                        }
-                        ws.terminate();
-                        logger.renew().debug(`Connection is dead for machine connection [${ws.machineName}]`)
-                    }, 1000);
-                }, 5000);
-                ws.on('pong', () => {
-                    if (ws.deathTimer) {
-                        clearTimeout(ws.deathTimer);
-                    }
-                });
-
-                ws.send(`Welcome machine. WS connection is ready.`);
-                logger.finish();
-            }
-            else{
-                logger.fail(`Failed to validate token, thus the connection cannot proceed further. Terminating.`);
-                ws.close(1008, "Invalid websocket token");
-            }
-        }
+    // The URL's second segment is the machine's name on a machine connection.
+    if (isMachineSecret(token)) {
+        return {kind: "machine", machineName: languageCode};
     }
-    else{
-        logger.fail(`No token found in connection cookies, thus the connection cannot proceed further. Terminating.`);
-        ws.close(1008, "Missing websocket token");
+
+    // A visitor token carries `type: "publicChat"`, which validateJWTToken
+    // rejects outright, so the two paths can never be confused for one another.
+    const visitorSession = await tryResolveVisitorSession({token, languageCode});
+    if (visitorSession) {
+        return {kind: "visitor", session: visitorSession, languageCode};
+    }
+
+    try {
+        const user = validateJWTToken(token, languageCode);
+        const session = await validateActiveUserSession(
+            user,
+            new ObjectId(user.id),
+            new ObjectId(user.company._id),
+            {languageCode}
+        );
+        const {exp} = user as JWTTokenType & {exp?: number};
+        const tokenExpiresAt = typeof exp === "number" ? exp * 1000 : Infinity;
+        const sessionExpiresAt = session.expiresAt ? new Date(session.expiresAt).getTime() : Infinity;
+        return {
+            kind: "user",
+            user,
+            sessionId: getTokenSessionId(user),
+            expiresAt: Math.min(tokenExpiresAt, sessionExpiresAt),
+            languageCode,
+        };
+    }
+    catch {
+        return {kind: "rejected", reason: "Invalid websocket token"};
     }
 }
 
-export function updateWebSocketInstance(newWebSocket: WebSocketServer): void {
-    ServerWebSocket = newWebSocket;
+function setupConnection(ws: ClientWebSocket, identity: ConnectionIdentity): void {
+    const logger = getLogger("webSocketServer-newConnection");
+
+    // Without a listener, ws re-throws a protocol error (a malformed or
+    // oversized frame) and the whole process crashes. ws closes the socket itself.
+    ws.on("error", (error) => logger.renew().debug(`Websocket protocol error on ${ws.id ?? "a rejected connection"}: ${error.message}`));
+
+    if (identity.kind === "rejected") {
+        logger.fail(`${identity.reason}, thus the connection cannot proceed further. Terminating.`);
+        ws.close(1008, identity.reason);
+        return;
+    }
+
+    ws.isAlive = true;
+    ws.rooms = new Set();
+    ws.rateWindowStart = 0;
+    ws.rateWindowCount = 0;
+    ws.on("pong", () => {
+        ws.isAlive = true;
+    });
+    ws.on("message", (message: RawData) => void webSocketOnMessage(message, ws));
+
+    if (identity.kind === "machine") {
+        setupMachineConnection(ws, identity.machineName, logger);
+    }
+    else if (identity.kind === "visitor") {
+        setupVisitorConnection(ws, identity, logger);
+    }
+    else {
+        setupUserConnection(ws, identity, logger);
+    }
+}
+
+function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const logger = getLogger("webSocketServer-newConnection");
+    logger.start(`New connection inbound from ${req.socket.remoteAddress}, ready to setup the connection`);
+
+    // The raw socket can fail while the token is checked; ws installs its own handler in handleUpgrade.
+    const onSocketError = () => socket.destroy();
+    socket.on("error", onSocketError);
+
+    void authenticateUpgrade(req.url ?? "")
+        .catch((): ConnectionIdentity => ({kind: "rejected", reason: "Invalid websocket token"}))
+        .then((identity) => {
+            socket.removeListener("error", onSocketError);
+            if (socket.destroyed) {
+                logger.debug("Client left before its connection was authenticated");
+                return;
+            }
+            const server = identity.kind === "machine" ? machineServer : clientServer;
+            server.handleUpgrade(req, socket, head, (ws) => setupConnection(ws as ClientWebSocket, identity));
+        });
+}
+
+/**
+ * Pings every connection and terminates the ones that did not answer the
+ * previous ping, and closes connections whose token or session has expired.
+ * Runs every `HEARTBEAT_INTERVAL_MS`; exported for tests.
+ */
+export function sweepConnections(now = Date.now()): void {
+    for (const ws of [...clientServer.clients, ...machineServer.clients] as ClientWebSocket[]) {
+        if (ws.readyState !== WebSocket.OPEN) {
+            continue;
+        }
+        if (ws.expiresAt !== undefined && now >= ws.expiresAt) {
+            ws.close(1008, "Websocket session expired");
+            continue;
+        }
+        if (!ws.isAlive) {
+            ws.terminate();
+            continue;
+        }
+        ws.isAlive = false;
+        ws.ping();
+    }
+    for (const [channelId, entry] of channelMembers) {
+        if (entry.expiresAt <= now) {
+            channelMembers.delete(channelId);
+        }
+    }
+}
+
+/**
+ * Binds the WebSocket server to `port` and resolves only once it is listening.
+ * Rejects on a bind failure (e.g. EADDRINUSE), so the caller can retry.
+ */
+export function startWebSocketServer(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const server = http.createServer((_req, res) => {
+            res.writeHead(426, {"Content-Type": "text/plain"});
+            res.end("Upgrade Required");
+        });
+        const onBindError = (error: Error) => {
+            server.close();
+            reject(error);
+        };
+        server.once("error", onBindError);
+        server.on("upgrade", onUpgrade);
+        server.listen(port, () => {
+            server.off("error", onBindError);
+            // Permanent handler installed after the bind, so later runtime errors are logged instead of crashing the process.
+            server.on("error", (error: Error) => getLogger("webSocketServer").err(`WebSocket server runtime error: ${error.message}`));
+            httpServer = server;
+            heartbeat = setInterval(() => sweepConnections(), HEARTBEAT_INTERVAL_MS);
+            resolve();
+        });
+    });
+}
+
+/** Closes every connection with 1001 (clients reconnect to the next server) and stops listening. */
+export async function stopWebSocketServer(): Promise<void> {
+    if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+    }
+    for (const timer of pendingDisconnects.values()) {
+        clearTimeout(timer);
+    }
+    pendingDisconnects.clear();
+    for (const ws of [...clientServer.clients, ...machineServer.clients]) {
+        ws.close(1001, "Server shutting down");
+    }
+
+    const server = httpServer;
+    httpServer = null;
+    if (server) {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+}
+
+/** Room ids worth showing: rooms with members, and known rooms with broadcast history. */
+function listRoomIds(): string[] {
+    const ids = new Set(roomMembers.keys());
+    for (const id of getKnownRoomIds()) {
+        if (roomMessageCount(id) > 0) {
+            ids.add(id);
+        }
+    }
+    return [...ids];
+}
+
+/** Connected users and room presence, as shown in Server Stats → User activity. */
+export function getWebSocketPresenceStats(): ServerStatsDto["websocket"] {
+    let totalConnections = 0;
+    for (const sockets of userSockets.values()) {
+        totalConnections += sockets.size;
+    }
+
+    const rooms = listRoomIds().map((id) => {
+        const members = roomMembers.get(id) ?? new Set<ClientWebSocket>();
+        const users = new Map<string, {id: string; username: string; instances: number}>();
+        for (const ws of members) {
+            const entry = users.get(ws.userId) ?? {id: ws.userId, username: ws.username, instances: 0};
+            entry.instances++;
+            users.set(ws.userId, entry);
+        }
+        return {
+            id,
+            name: getRoomDisplayName(id),
+            userCount: users.size,
+            totalInstances: members.size,
+            messages: roomMessageCount(id),
+            users: [...users.values()],
+        };
+    });
+
+    return {
+        totalUsers: userSockets.size,
+        totalConnections,
+        totalRooms: rooms.length,
+        rooms,
+    };
 }
 
 /**
  * Returns the in-process WebSocket server health.
  *
- * This getter is meant to be called from the WS server process — i.e., the
- * process that *owns* the `WebSocketServer`. It introspects the local server
- * instance, the connection registry, and the room registry and returns the
- * shape consumed by `ServerHealthFormResponseType.services.websocket`.
- *
- * Different from `getWebSocketHealth()` in `connectToWebSocketServer.ts` which
- * reports the *outbound* M2M client connection used by the API process to
- * reach the WS server. That getter is meaningless inside the WS server itself.
+ * Meant to be called from the WS server process, which owns the server and the
+ * connection and room state. Different from `getWebSocketHealth()` in
+ * `connectToWebSocketServer.ts`, which reports the *outbound* M2M client
+ * connection (and its circuit breaker) used by the other processes to reach
+ * this server.
  */
-export function getLocalWebSocketServerHealth(): import("armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto").WebSocketHealth {
-    const { uptimeKeeper } = require("@coreModule/utilities/uptime/uptimeKeeper");
-    const { webSocketCircuitBreaker } = require("@coreModule/utilities/circuitBreaker");
-    const os = require("os") as typeof import("os");
-
-    const listening = !!ServerWebSocket && (ServerWebSocket as any).address?.() != null;
-    const totalUsers = Object.keys(AllUsersWebSockets).length;
+export function getLocalWebSocketServerHealth(): WebSocketHealth {
+    const listening = httpServer?.listening ?? false;
     // Total messages is sourced from the persistent service counter so that
-    // the dashboard's KPI tile survives WS server restarts. The per-room
-    // counters in `AllRoomsUsers` (used by the stats endpoint for the
-    // breakdown) are persisted separately via `wsMessageStore`.
+    // the dashboard's KPI tile survives WS server restarts.
     const counterStats = webSocketCounter.getStats();
-    const roomNames = Object.values(AllRoomsUsers).map((room) => {
-        room.name = getRoomDisplayName(room.id);
-        return room.name;
-    });
-
     const port = WEBSOCKET?.PORT;
     const host = os.hostname();
     return {
@@ -945,11 +875,10 @@ export function getLocalWebSocketServerHealth(): import("armonia/src/modules/cor
         readyState: listening ? 1 : 3,
         url: port ? `ws://${host}:${port}` : `ws://${host}`,
         serverId: `${host}:${process.pid}`,
-        users: totalUsers,
-        rooms: roomNames,
+        users: userSockets.size,
+        rooms: listRoomIds().map(getRoomDisplayName),
         messages: counterStats.completedJobs,
         failedJobs: counterStats.failedJobs,
         totalTime: counterStats.totalTime,
-        circuitBreaker: webSocketCircuitBreaker.getStats()
-    }; 
+    };
 }

@@ -118,7 +118,8 @@ function extractSnapshots(health: ServerHealthFormResponseType): {
         {
             name: "websocket",
             connected: services.websocket.connected,
-            circuitBreakerState: services.websocket.circuitBreaker.state,
+            // The WS server's own report has no breaker; the connection state stands in, as for Mongo.
+            circuitBreakerState: services.websocket.circuitBreaker?.state ?? (services.websocket.connected ? "CLOSED" : "OPEN"),
             // For the WS service we treat sent messages as completed jobs.
             completed: services.websocket.messages,
             failed: services.websocket.failedJobs || 0,

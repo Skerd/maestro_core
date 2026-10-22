@@ -19,7 +19,6 @@
 
 import mongoose from "mongoose";
 import {CronJob} from "cron";
-import {WebSocketServer} from "ws";
 
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {connectToMongoDb, getMongoDbHealth} from "@coreModule/connections/connectToMongoDb";
@@ -29,18 +28,17 @@ import {getTelegramHealthResolved} from "@coreModule/connections/connectToTelegr
 import {closeConnections} from "@coreModule/connections/closeConnections";
 
 import {
-    AllRoomsUsers,
-    AllUsersWebSockets,
+    broadcastToRoom,
     getLocalWebSocketServerHealth,
-    hydrateKnownRoomsFromStore,
+    getRoomMessageCounts,
+    getWebSocketPresenceStats,
     Room,
-    RoomCode,
-    ServerWebSocket,
-    updateWebSocketInstance,
-    webSocketOnNewConnection
+    roomHasSubscribers,
+    startWebSocketServer,
+    stopWebSocketServer
 } from "@coreModule/websocket/webSocket";
 import {registerAllRoomContributions} from "@coreModule/websocket/registerAllRoomContributions";
-import {getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
+import {WebSocketFEMessageCodes} from "armonia/src/modules/core/websocket/types";
 import User from "@coreModule/database/schemas/user/user";
 
 import {SERVER, WEBSOCKET} from "@coreModule/environment";
@@ -52,7 +50,12 @@ import {ServerStatsDto} from "armonia/src/modules/core/api/auxiliary/private/ser
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {metricsAggregator} from "@coreModule/utilities/timing/metricsAggregator";
 import {STATS_SNAPSHOT_KEY, StatsSnapshotEnvelope} from "@coreModule/utilities/timing/statsSnapshotPublisher";
-import {HEALTH_SNAPSHOT_KEY, HEALTH_SNAPSHOT_TTL_SECONDS} from "@coreModule/utilities/timing/healthSnapshot";
+import {
+    HEALTH_SNAPSHOT_KEY,
+    HEALTH_SNAPSHOT_TTL_SECONDS,
+    WEBSOCKET_PRESENCE_SNAPSHOT_KEY,
+    WEBSOCKET_PRESENCE_SNAPSHOT_TTL_SECONDS
+} from "@coreModule/utilities/timing/healthSnapshot";
 import {
     hydrateAllServiceCounters,
     startServiceCountersFlush,
@@ -94,69 +97,6 @@ function updateServerConfiguration(parentLogger?: serverLogger): void {
 }
 
 /**
- * Sends data to all WebSocket clients subscribed to the given room.
- *
- * Uses the `{code, payload}` envelope shape the FE evaluator already expects
- * (see `webSocketContext.tsx`). Per-room message counters are incremented for
- * the user activity panel.
- */
-export function sendOnlineData(code: string, payload: unknown, room: string): void {
-    const targetRoom = AllRoomsUsers[room];
-    if (!targetRoom) return;
-
-    const serialized = JSON.stringify({ code, payload });
-    for (const userWebSockets of Object.values(AllUsersWebSockets)) {
-        for (const ws of userWebSockets) {
-            if (ws.readyState !== 1) continue;
-            if (!ws.rooms?.includes(room)) continue;
-            try {
-                ws.send(serialized);
-                targetRoom.messages++;
-                // Each successful send is also a "completed job" for the
-                // websocket service, persisted via the cross-process counter
-                // so the dashboard's KPI tile survives restarts.
-                webSocketCounter.recordSuccess(0);
-            }
-            catch (err: any) {
-                webSocketCounter.recordFailure(0);
-                getLogger("sendOnlineData").err(`Failed to send online data to user: ${err?.message}`);
-            }
-        }
-    }
-}
-
-/**
- * Binds a `ws.WebSocketServer` to the given port and resolves only once it is
- * actually listening. Rejects if the bind fails (e.g. EADDRINUSE).
- *
- * IMPORTANT: `new WebSocketServer({ port })` does NOT throw synchronously when
- * the port is already in use. The error is reported via the asynchronous
- * `error` event on the underlying http server. A naive try/catch around the
- * constructor therefore reports success while the bind is silently failing.
- *
- * This helper bridges the two-event lifecycle ("listening" vs "error") into a
- * single Promise so the caller's await/retry loop works correctly.
- */
-function listenWebSocketServer(port: number): Promise<WebSocketServer> {
-    return new Promise((resolve, reject) => {
-        const wss = new WebSocketServer({ port });
-        const onError = (err: Error) => {
-            wss.off("listening", onListening);
-            // Best-effort cleanup so we don't leak a half-bound underlying http server.
-            try { wss.close(); }
-            catch { /* ignore */ }
-            reject(err);
-        };
-        const onListening = () => {
-            wss.off("error", onError);
-            resolve(wss);
-        };
-        wss.once("error", onError);
-        wss.once("listening", onListening);
-    });
-}
-
-/**
  * Opens the WebSocket server instance with infinite retries (critical service).
  *
  * Retries every `WEBSOCKET.RETRY_TIMER` ms on bind failure. EADDRINUSE is the
@@ -169,15 +109,7 @@ async function openWebSocketServer(parentLogger?: serverLogger): Promise<void> {
 
     while (true) {
         try {
-            const wss = await listenWebSocketServer(WEBSOCKET.PORT);
-            updateWebSocketInstance(wss);
-            wss.on("connection", webSocketOnNewConnection);
-            // Permanent error handler installed AFTER successful bind so any
-            // future runtime errors (network blips, malformed clients, …) are
-            // logged instead of crashing the process.
-            wss.on("error", (err: Error) => {
-                logger.err(`WebSocket server runtime error: ${err?.message}`);
-            });
+            await startWebSocketServer(WEBSOCKET.PORT);
             logger.finish(`WebSocket server listening on :${WEBSOCKET.PORT}`);
             return;
         }
@@ -218,9 +150,7 @@ function setupGracefulShutdown(parentLogger?: serverLogger): void {
             process.exit(code);
         };
 
-        if (!ServerWebSocket) return exit(0);
-
-        // Force-exit ceiling: if `close()` doesn't fire its callback within
+        // Force-exit ceiling: if the server doesn't finish closing within
         // 3 seconds (rare but possible if a client refuses to disconnect),
         // bail out anyway so the OS releases the FD.
         const forceExit = setTimeout(() => {
@@ -228,7 +158,7 @@ function setupGracefulShutdown(parentLogger?: serverLogger): void {
             exit(0);
         }, 3000);
 
-        ServerWebSocket.close(() => {
+        void stopWebSocketServer().then(() => {
             clearTimeout(forceExit);
             logger.warn("WebSocket server closed; exiting");
             exit(0);
@@ -241,23 +171,14 @@ function setupGracefulShutdown(parentLogger?: serverLogger): void {
 }
 
 /**
- * Returns true if the given room currently has at least one subscriber.
- * Used to gate broadcasters so we never produce traffic when nobody is watching.
- */
-function roomHasSubscribers(room: Room): boolean {
-    const r = AllRoomsUsers[room];
-    return !!r && r.users.length > 0;
-}
-
-/**
  * Sets up the WebSocket server.
  *
  * Initialization order matters:
  *  1. Mongo (required for everything else).
  *  2. Hydrate UptimeKeeper from Mongo so first health response is accurate.
- *  3. Open WS server.
- *  4. Reset users' online flag.
- *  5. Connect Redis (snapshot publisher needs it).
+ *  3. Reset users' online flag.
+ *  4. Connect Redis (snapshot publisher needs it).
+ *  5. Open WS server.
  *  6. Connect Kafka producer + start metrics consumer (needs Kafka).
  *  7. Mark this process as started for the "websocketServer" service.
  *  8. Start aggregator + persistence + snapshot publisher + rollup crons.
@@ -297,13 +218,10 @@ async function setWebSocketServerUp(logger: serverLogger): Promise<void> {
     await hydrateAllServiceCounters();
     await hydrateRoomMessages();
     await registerAllRoomContributions(logger);
-    hydrateKnownRoomsFromStore();
     startServiceCountersFlush();
 
     logger.debug(`Opening websocket server instance`);
     await openWebSocketServer(logger);
-
-    await User.updateMany({ online: true }, { $set: { online: false }});
 
     // Connect the Kafka producer in this process. Strictly speaking the metrics
     // consumer doesn't need the producer, but `getKafkaHealth()` reads the
@@ -358,7 +276,7 @@ setWebSocketServerUp(initLogger)
                     JSON.stringify({ statusCode, payload: data })
                 );
                 if (roomHasSubscribers(Room.SERVER_HEALTH)) {
-                    sendOnlineData(RoomCode.SERVER_HEALTH, data, Room.SERVER_HEALTH);
+                    broadcastToRoom(Room.SERVER_HEALTH, WebSocketFEMessageCodes.SERVER_HEALTH_UPDATER, data);
                 }
             }
             catch (err: any) {
@@ -369,12 +287,18 @@ setWebSocketServerUp(initLogger)
         serverStatsBroadcaster = new CronJob(STATS_BROADCAST_CRON, async () => {
             // Persist per-room message counters every stats tick so refreshes
             // and restarts can re-read the cumulative count.
-            void saveRoomMessages(AllRoomsUsers as Record<string, { messages: number }>);
+            void saveRoomMessages(getRoomMessageCounts());
+            // Always publish so the REST `/auxiliary/stats` endpoint can report presence.
+            void redisSetEx(
+                WEBSOCKET_PRESENCE_SNAPSHOT_KEY,
+                WEBSOCKET_PRESENCE_SNAPSHOT_TTL_SECONDS,
+                JSON.stringify(getWebSocketPresenceStats())
+            );
 
             if (!roomHasSubscribers(Room.SERVER_STATS)) return;
             try {
                 const data = await getStatsData();
-                sendOnlineData(RoomCode.SERVER_STATS, data, Room.SERVER_STATS);
+                broadcastToRoom(Room.SERVER_STATS, WebSocketFEMessageCodes.SERVER_STATS_UPDATER, data);
             }
             catch (err: any) {
                 getLogger("serverStatsBroadcaster").err(`Error in server stats broadcaster: ${err?.message}`);
@@ -454,35 +378,11 @@ export async function getHealthData(): Promise<ServerHealthFormResponseType> {
  * UI every time we push live updates.
  *
  * We therefore prefer the Redis snapshot (same source of truth as REST) and
- * only attach WebSocket presence from this process (`AllUsersWebSockets` /
- * `AllRoomsUsers`). Falls back to in-memory `digest()` when Redis is cold.
+ * only attach WebSocket presence from this process
+ * (`getWebSocketPresenceStats`). Falls back to in-memory `digest()` when Redis is cold.
  */
 export async function getStatsData(): Promise<ServerStatsDto> {
-    const webSocketStats = {
-        totalUsers: Object.keys(AllUsersWebSockets).length,
-        totalConnections: Object.values(AllUsersWebSockets).reduce(
-            (sum, connections) => sum + connections.length,
-            0
-        ),
-        totalRooms: Object.keys(AllRoomsUsers).length,
-        rooms: Object.values(AllRoomsUsers).map((room) => {
-            const name = getRoomDisplayName(room.id);
-            // Keep in-memory entry in sync so health / later snapshots also show labels.
-            room.name = name;
-            return {
-                id: room.id,
-                name,
-                userCount: room.users.length,
-                totalInstances: room.users.reduce((sum, u) => sum + u.instances, 0),
-                messages: room.messages,
-                users: room.users.map((u) => ({
-                    id: u.id,
-                    username: u.username,
-                    instances: u.instances
-                }))
-            };
-        })
-    };
+    const webSocketStats = getWebSocketPresenceStats();
 
     try {
         const raw = await redisGet(STATS_SNAPSHOT_KEY);

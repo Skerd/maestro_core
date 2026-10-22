@@ -37,3 +37,13 @@ export const HEALTH_SNAPSHOT_TTL_SECONDS = 5;
 
 /** TTL for {@link TELEGRAM_HEALTH_SNAPSHOT_KEY}; publisher refreshes on an interval below this. */
 export const TELEGRAM_HEALTH_SNAPSHOT_TTL_SECONDS = 30;
+
+/**
+ * Redis key for the WS server's presence (users and rooms), published on every
+ * stats tick (5s) so REST `/auxiliary/stats` can return it: the API process has
+ * no websocket connections of its own.
+ */
+export const WEBSOCKET_PRESENCE_SNAPSHOT_KEY = "health:websocketPresence";
+
+/** TTL for {@link WEBSOCKET_PRESENCE_SNAPSHOT_KEY}. */
+export const WEBSOCKET_PRESENCE_SNAPSHOT_TTL_SECONDS = 15;

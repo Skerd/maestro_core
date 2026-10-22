@@ -19,7 +19,7 @@ import {getRegisteredRoomCount} from "@coreModule/websocket/roomRegistry";
 const REGISTER_FN_PATTERN = /^register.*RoomContributions?$/i;
 const BOOTSTRAP_FILENAME = "registerAllRoomContributions.ts";
 
-/** Only contribution entry files — not redisConnectionManager, webSocket, etc. */
+/** Only contribution entry files — not webSocket, roomRegistry, etc. */
 function isRoomSourceFile(filename: string): boolean {
     return /roomContribution/i.test(filename)
         && filename.endsWith(".ts")
@@ -50,8 +50,8 @@ export async function registerAllRoomContributions(parentLogger?: serverLogger):
     const logger = getLogger("websocket_rooms", parentLogger);
     logger.start("Registering websocket room contributions...");
 
-    // webSocket.ts lives in modules/core/websocket → modules root is ../../..
-    const modulesPath = path.resolve(__dirname, "../../..");
+    // This file lives in modules/core/websocket → modules root is ../..
+    const modulesPath = path.resolve(__dirname, "../..");
     if (!fs.existsSync(modulesPath)) {
         logger.err(`Modules directory does not exist: ${modulesPath}`);
         logger.finish("Finished registering websocket room contributions!");

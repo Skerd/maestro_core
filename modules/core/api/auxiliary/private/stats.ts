@@ -20,10 +20,9 @@ import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/aut
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
 import {getLogger} from "@coreModule/loggers/serverLog";
-import {AllRoomsUsers, AllUsersWebSockets} from "@coreModule/websocket/webSocket";
-import {getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
 import {redisGet} from "@coreModule/connections/connectToRedis";
 import {STATS_SNAPSHOT_KEY, StatsSnapshotEnvelope} from "@coreModule/utilities/timing/statsSnapshotPublisher";
+import {WEBSOCKET_PRESENCE_SNAPSHOT_KEY} from "@coreModule/utilities/timing/healthSnapshot";
 import ServerPerformance1h from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1h";
 import ServerPerformance1d from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1d";
 import {
@@ -56,11 +55,10 @@ router.get("", authMW("private"), async (req: Request, res: Response, next: Next
         const window = parseWindow(req.query.window);
         const page = clampInt(req.query.page, 1, Number.MAX_SAFE_INTEGER, DEFAULT_PAGE);
         const limit = clampInt(req.query.limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
-        const webSocketStats = computeWebSocketStats();
 
         if (window === "live") {
             assertCanReadServerPerformance(req, ServerPerformance1m);
-            const live = await readLiveSnapshot();
+            const [live, webSocketStats] = await Promise.all([readLiveSnapshot(), readWebSocketPresence()]);
             if (live) {
                 res.status(200).json(buildResponse(live, webSocketStats, page, limit));
                 return;
@@ -70,7 +68,7 @@ router.get("", authMW("private"), async (req: Request, res: Response, next: Next
 
         const historicalWindow = window === "live" ? "1h" : window;
         assertCanReadServerPerformance(req, modelForWindow(historicalWindow));
-        const aggregated = await readHistoricalAggregate(historicalWindow);
+        const [aggregated, webSocketStats] = await Promise.all([readHistoricalAggregate(historicalWindow), readWebSocketPresence()]);
         res.status(200).json(buildResponse(aggregated, webSocketStats, page, limit));
     } catch (error: unknown) {
         const status = error && typeof error === "object" && "status" in error ? error.status : undefined;
@@ -242,37 +240,18 @@ async function readHistoricalAggregate(window: HistoricalWindow): Promise<{
 }
 
 /**
- * Live websocket presence — read from the in-process WS state. Note: this only
- * reflects the API process' own view; in a multi-process deployment the real
- * websocket presence lives in the WS process. The live broadcast is the
- * authoritative source for these numbers; this read path remains for the
- * REST endpoint's structural completeness.
+ * Live websocket presence, as last published by the WS server process (the
+ * only process holding the connections). Empty while no snapshot is available.
  */
-function computeWebSocketStats(): ServerStatsDto["websocket"] {
-    return {
-        totalUsers: Object.keys(AllUsersWebSockets).length,
-        totalConnections: Object.values(AllUsersWebSockets).reduce(
-            (sum, connections) => sum + connections.length,
-            0
-        ),
-        totalRooms: Object.keys(AllRoomsUsers).length,
-        rooms: Object.values(AllRoomsUsers).map((room) => {
-            const name = getRoomDisplayName(room.id);
-            room.name = name;
-            return {
-                id: room.id,
-                name,
-                userCount: room.users.length,
-                totalInstances: room.users.reduce((sum, u) => sum + u.instances, 0),
-                messages: room.messages,
-                users: room.users.map((u) => ({
-                    id: u.id,
-                    username: u.username,
-                    instances: u.instances
-                }))
-            };
-        })
-    };
+async function readWebSocketPresence(): Promise<ServerStatsDto["websocket"]> {
+    const empty = {totalUsers: 0, totalConnections: 0, totalRooms: 0, rooms: []};
+    try {
+        const raw = await redisGet(WEBSOCKET_PRESENCE_SNAPSHOT_KEY);
+        return raw ? JSON.parse(raw) as ServerStatsDto["websocket"] : empty;
+    }
+    catch {
+        return empty;
+    }
 }
 
 function toEndpointStat(s: {

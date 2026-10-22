@@ -1,11 +1,9 @@
 /**
  * Per-Room Message Counters Persistence
  *
- * Persists the cumulative `AllRoomsUsers[room].messages` counter to Redis so
- * the dashboard's per-room "messages" column survives:
- *  - WS server restarts (e.g. dev hot reload, deploys)
- *  - Page refreshes that empty a room (room is removed from in-memory map
- *    when the last subscriber disconnects, taking the counter with it)
+ * Persists the cumulative per-room broadcast counters (`getRoomMessageCounts`
+ * in `websocket/webSocket`) to Redis so the dashboard's per-room "messages"
+ * column survives WS server restarts (e.g. dev hot reload, deploys).
  *
  * Storage layout: a single Redis hash keyed by `ws:rooms:messages` with
  * one field per room id and a numeric stringified value for the counter.
@@ -47,9 +45,8 @@ export async function hydrateRoomMessages(): Promise<void> {
 }
 
 /**
- * Returns the stored cumulative message count for a freshly created room
- * entry. Used by `addRoomToAllRoomsUsers` so a recreated room resumes from
- * its previous counter value rather than 0.
+ * Returns the stored cumulative message count for a room, so a room's counter
+ * resumes from its previous value after a restart rather than 0.
  *
  * Returns 0 if the room has never been seen, the cache hasn't been
  * hydrated yet, or Redis was unavailable on hydrate.
@@ -61,24 +58,20 @@ export function getStoredRoomMessages(roomId: string): number {
 
 /**
  * Persists the current per-room counters back to Redis as monotonic-up
- * counters. Counters are never decreased, never deleted: a room that has
- * been emptied (all users left, removed from `AllRoomsUsers`) keeps its
- * historical message count. The next subscriber to that room will hydrate
- * the previous count via `getStoredRoomMessages`.
+ * counters. Counters are never decreased, never deleted.
  *
  * Best-effort: on Redis error the in-memory cache is unchanged so the
  * next save retries the same payload.
  */
-export async function saveRoomMessages(rooms: Record<string, { messages: number }>): Promise<void> {
+export async function saveRoomMessages(rooms: Record<string, number>): Promise<void> {
     if (!isRedisConnected()) return;
     try {
         const client = getRedisClient();
         const fields: Record<string, string> = {};
         const merged: Record<string, number> = {...cachedSnapshot};
 
-        for (const [roomId, room] of Object.entries(rooms)) {
-            if (!room) continue;
-            const liveCount = Math.max(0, room.messages | 0);
+        for (const [roomId, messages] of Object.entries(rooms)) {
+            const liveCount = Math.max(0, messages | 0);
             const storedCount = cachedSnapshot[roomId] ?? 0;
             // Counters move monotonically upward only; in-memory state may be
             // a partial reflection of total history (e.g. after restart) so we
