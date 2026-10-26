@@ -14,7 +14,12 @@ export interface RequestContextStore {
         orgId?: string;
         permissions?: string[];
         isSelf?: boolean;
+        modules?: string[];
     };
+    /** Module whose router is handling the request; set at mount time by RouteRegistry.applyRoutes. */
+    routeModule?: string;
+    /** Public requests from the portal: the company the page is about (`x-site-company`, slug or id). */
+    siteCompany?: string;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContextStore>();

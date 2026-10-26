@@ -29,6 +29,7 @@ import "@coreModule/database/schemas/cronJob/cronJob";
 import "@coreModule/database/schemas/cronExecution/cronExecution";
 import MessagingProvider from "@coreModule/database/schemas/messagingProvider/messagingProvider";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {registerModelModules} from "@coreModule/utilities/modules/modelModules";
 import {createUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {createCompanies} from "@coreModule/database/schemas/company/company.defaults";
 import {
@@ -102,8 +103,9 @@ export async function loadOptionalModuleBootstraps(parentLogger?: serverLogger):
                 continue;
             }
             bootstraps.push(bootstrap);
+            registerModelModules(moduleEntry.name, bootstrap.models ?? []);
             if (Array.isArray(bootstrap.defaultRoles) && bootstrap.defaultRoles.length > 0) {
-                registerDefaultRoles(bootstrap.defaultRoles);
+                registerDefaultRoles(bootstrap.defaultRoles, moduleEntry.name);
             }
             logger.debug(`Loaded moduleBootstrap for [${moduleEntry.name}]`);
         } catch (error: any) {

@@ -232,6 +232,17 @@ export const SHOP_ROOT_DOMAIN = (process.env.SHOP_ROOT_DOMAIN || "")
     .replace(/^\*\./, "")
     .replace(/\.$/, "");
 
+/**
+ * Host of the central portal that lists every eligible company's shop, clinics, rentals and
+ * properties (`portal.arpeggio.al`). Empty = no portal on this deployment.
+ */
+export const PORTAL_ROOT_DOMAIN = (process.env.PORTAL_ROOT_DOMAIN || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.$/, "");
+
 /** Browser origin for a deployed Sinfonia app. Falls back to CLIENT_HOST (core/panel). */
 export function clientHostFor(appId: string = "core"): string {
     const mapped = CLIENT_SIDE.URLS[appId];

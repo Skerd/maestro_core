@@ -49,6 +49,9 @@ import fs from "fs";
 import jwt from "jsonwebtoken";
 import path from "path";
 import {ObjectId} from "mongodb";
+import {isPortalOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
+import type {ClientSession} from "mongoose";
+import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
@@ -120,6 +123,23 @@ router.post(
     asyncHandler(Login)
 );
 /**
+ * The company a sign-in is for. On the portal, accounts sign in to the platform owner only
+ * (portal accounts belong to it). Elsewhere a company that lists the origin wins over one
+ * that accepts any origin ("*"); a single $or query returned whichever Mongo read first.
+ */
+async function findLoginCompany(
+    companyIds: ObjectId[],
+    origin: string,
+    opts: { session: ClientSession; logger: serverLogger; languageCode: string },
+): Promise<ICompany> {
+    if (isPortalOrigin(origin)) {
+        return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, isPlatformOwner: true }, opts);
+    }
+    return await companyService.findOne({ _id: { $in: companyIds }, isActive: true, allowedDomains: origin }, opts)
+        ?? await companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, allowedDomains: "*" }, opts);
+}
+
+/**
  * Resolves company by origin, verifies password and MFA, updates lastLogin and resets attempts, returns JWT (or MFA status). Uses user's ID for audit.
  *
  * @param params - Transaction, form (username, password, mfaCode?), origin, logger, session, languageCode, deviceId, userAgent, requestIp, requestSource.
@@ -143,26 +163,8 @@ async function Login(
     let company: ICompany;
 
     try{
-        // Find company - prioritize specific origin, then wildcard
         const companyIds = user.companies.map((c: any) => c._id || c);
-
-        // A company that lists this origin wins over one that accepts any origin ("*");
-        // a single $or query returned whichever of the two Mongo read first.
-        company = await companyService.findOne(
-            {
-                _id: { $in: companyIds },
-                isActive: true,
-                allowedDomains: origin
-            },
-            { session, logger, languageCode }
-        ) ?? await companyService.findOneOrThrow(
-            {
-                _id: { $in: companyIds },
-                isActive: true,
-                allowedDomains: "*"
-            },
-            { session, logger, languageCode }
-        );
+        company = await findLoginCompany(companyIds, origin, { session, logger, languageCode });
 
         await user.checkAccountAccessibility(company._id, languageCode);
 
@@ -377,28 +379,7 @@ async function LoginThirdParty(
 
         // Get user profile and find company
         const companyIds = user.companies.map((c: any) => c._id || c);
-
-        try {
-            // First, try to find company with specific origin
-            company = await companyService.findOneOrThrow(
-                {
-                    _id: { $in: companyIds },
-                    allowedDomains: origin,
-                    isActive: true
-                },
-                { session, logger, languageCode }
-            );
-        } catch (error) {
-            // If not found, fall back to wildcard
-            company = await companyService.findOneOrThrow(
-                {
-                    _id: { $in: companyIds },
-                    allowedDomains: "*",
-                    isActive: true
-                },
-                { session, logger, languageCode }
-            );
-        }
+        company = await findLoginCompany(companyIds, origin, { session, logger, languageCode });
 
         // Verify account accessibility
         await user.checkAccountAccessibility(company._id, languageCode);

@@ -47,9 +47,18 @@ export const coreDefaultRoles: DefaultRoleDefinition[] = [
 
 const registeredPacks: DefaultRoleDefinition[] = [];
 const registeredSlugs = new Set<string>();
+const moduleBySlug = new Map<string, string>();
 
-export function registerDefaultRoles(roles: DefaultRoleDefinition[]): void {
+/**
+ * Registers a module's default role pack. Bootstraps call this at import time without a
+ * module; the module loader (ensureModuleDefaultRoles) calls it again with the module
+ * name, which tags the pack so companies only get roles for their modules.
+ */
+export function registerDefaultRoles(roles: DefaultRoleDefinition[], moduleName?: string): void {
     for (const role of roles) {
+        if (moduleName) {
+            moduleBySlug.set(role.slug, moduleName);
+        }
         if (registeredSlugs.has(role.slug)) {
             continue;
         }
@@ -60,6 +69,15 @@ export function registerDefaultRoles(roles: DefaultRoleDefinition[]): void {
 
 export function getDefaultRoles(): DefaultRoleDefinition[] {
     return [...coreDefaultRoles, ...registeredPacks];
+}
+
+/** Core roles plus the packs of the given modules (untagged packs are always included). */
+export function getDefaultRolesForModules(modules: string[]): DefaultRoleDefinition[] {
+    const allowed = new Set(modules);
+    return getDefaultRoles().filter((role) => {
+        const moduleName = moduleBySlug.get(role.slug);
+        return !moduleName || allowed.has(moduleName);
+    });
 }
 
 export function defaultRoleSlug(companyName: string, role: DefaultRoleDefinition): string {

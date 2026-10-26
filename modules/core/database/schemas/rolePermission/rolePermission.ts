@@ -7,7 +7,9 @@ export interface IRolePermission extends Document {
     name: string,
     group: string,
     tag: string,
-    alwaysActive: boolean
+    alwaysActive: boolean,
+    /** Module owning the model the tag comes from; hidden from companies without it. */
+    module: string
 }
 
 const RolePermissionSchema = new Schema<IRolePermission>(
@@ -46,6 +48,16 @@ const RolePermissionSchema = new Schema<IRolePermission>(
         alwaysActive: {
             type: SchemaTypes.Boolean,
             required: true,
+            permissions: {
+                self: {
+                    publicRead: true,
+                    write: "no-permission"
+                }
+            }
+        },
+        module: {
+            type: SchemaTypes.String,
+            default: "core",
             permissions: {
                 self: {
                     publicRead: true,

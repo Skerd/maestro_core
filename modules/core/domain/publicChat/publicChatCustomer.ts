@@ -21,7 +21,11 @@ import {userService} from "@coreModule/database/schemas/user/user.service";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {IChannel} from "@coreModule/database/schemas/channel/channel";
 import {IUser} from "@coreModule/database/schemas/user/user";
+import type {ICompany} from "@coreModule/database/schemas/company/company";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
+import {companyService} from "@coreModule/database/schemas/company/company.service";
+import {isPortalOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
+import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 
 export interface PublicChatCustomer {
     user: IUser;
@@ -58,6 +62,41 @@ export async function tryResolvePublicChatCustomer(params: {
     catch {
         return null;
     }
+}
+
+/**
+ * The signed-in customer a public request may act as for `company`. Their session must be
+ * for that company, or, on the portal only, for the platform owner (portal accounts
+ * belong to it). Company sites never accept another company's accounts.
+ */
+export async function publicCustomerFor(
+    customer: PublicChatCustomer | undefined,
+    company: ICompany,
+    origin: string,
+): Promise<IUser | undefined> {
+    if (!customer) return undefined;
+    if (customer.companyId.equals(company._id as ObjectId)) return customer.user;
+    if (!isPortalOrigin(origin)) return undefined;
+    const platformAccount = await companyService.findOne({_id: customer.companyId, isPlatformOwner: true, isActive: true});
+    return platformAccount ? customer.user : undefined;
+}
+
+/**
+ * The portal account behind a portal request: signed in, and belonging to the platform
+ * owner. Anything else (another origin, no or a company account) is refused.
+ */
+export async function requirePortalAccount(
+    customer: PublicChatCustomer | undefined,
+    origin: string,
+    languageCode: string,
+): Promise<IUser> {
+    const platform = isPortalOrigin(origin) && customer
+        ? await companyService.findOne({_id: customer.companyId, isPlatformOwner: true, isActive: true})
+        : null;
+    if (!platform || !customer) {
+        throw apiValidationException("no_token", "token", null, languageCode);
+    }
+    return customer.user;
 }
 
 /** The customer's most recent conversation that is still open, if any. */

@@ -316,6 +316,7 @@ export function validateConfiguration(): void {
         validateString('CLIENT_NAME', process.env.CLIENT_NAME, true),
         validateString('SINFONIA_CLIENT_URLS', process.env.SINFONIA_CLIENT_URLS, !isDevEnv),
         validateString('SHOP_ROOT_DOMAIN', process.env.SHOP_ROOT_DOMAIN, false),
+        validateString('PORTAL_ROOT_DOMAIN', process.env.PORTAL_ROOT_DOMAIN, false),
         validateString('AD_CAMPAIGN_API_BASE_URL', process.env.AD_CAMPAIGN_API_BASE_URL, !isDevEnv),
         validateString('AD_CAMPAIGN_REDIRECT_ALL_TO', process.env.AD_CAMPAIGN_REDIRECT_ALL_TO, false),
         validateBoolean('AD_CAMPAIGN_ALLOW_NONPROD_SEND', process.env.AD_CAMPAIGN_ALLOW_NONPROD_SEND, false),

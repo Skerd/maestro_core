@@ -16,6 +16,8 @@ import type {
 } from "@coreModule/domain/ai/tools/assistantTool.types";
 
 const registry = new Map<string, AssistantTool>();
+/** Owning module per tool name, stamped by registerAllAssistantTools. Unstamped = core. */
+const moduleByTool = new Map<string, string>();
 
 /**
  * A tool's effective audience. Fail closed: anything that did not explicitly
@@ -30,6 +32,12 @@ export function toolAudience(tool: AssistantTool): AssistantAudience {
 export function isToolAllowedFor(tool: AssistantTool, audience: AssistantReplyAudience): boolean {
     const declared = toolAudience(tool);
     return declared === "both" || declared === audience;
+}
+
+/** Whether a company with `modules` gets this tool. */
+function isToolInModules(tool: AssistantTool, modules: readonly string[]): boolean {
+    const moduleName = moduleByTool.get(tool.name);
+    return !moduleName || moduleName === "core" || modules.includes(moduleName);
 }
 
 /**
@@ -50,17 +58,26 @@ export function registerAssistantTool(tool: AssistantTool): void {
 export function getAssistantTool(
     name: string,
     audience: AssistantReplyAudience,
+    modules: readonly string[],
 ): AssistantTool | undefined {
     const tool = registry.get(name);
-    if (!tool || !isToolAllowedFor(tool, audience)) {
+    if (!tool || !isToolAllowedFor(tool, audience) || !isToolInModules(tool, modules)) {
         return undefined;
     }
     return tool;
 }
 
-/** Tools available to the given audience, in registration order. */
-export function getAssistantTools(audience: AssistantReplyAudience): AssistantTool[] {
-    return [...registry.values()].filter((tool) => isToolAllowedFor(tool, audience));
+/** Tools available to the given audience of a company with `modules`, in registration order. */
+export function getAssistantTools(audience: AssistantReplyAudience, modules: readonly string[]): AssistantTool[] {
+    return [...registry.values()].filter((tool) => isToolAllowedFor(tool, audience) && isToolInModules(tool, modules));
+}
+
+export function listAssistantToolNames(): string[] {
+    return [...registry.keys()];
+}
+
+export function setAssistantToolModule(name: string, moduleName: string): void {
+    moduleByTool.set(name, moduleName);
 }
 
 /** Number of registered tools. */
@@ -71,4 +88,5 @@ export function getAssistantToolCount(): number {
 /** Clear the registry (tests only). */
 export function clearAssistantTools(): void {
     registry.clear();
+    moduleByTool.clear();
 }

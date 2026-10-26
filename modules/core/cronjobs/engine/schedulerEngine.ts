@@ -8,12 +8,25 @@ import {listCronHandlerRegistrations} from "@coreModule/cronjobs/registry/handle
 import {publishSchedulerHeartbeat} from "@coreModule/cronjobs/health/cronSchedulerHealth";
 import {DEFAULT_TIMEOUT_SECONDS, jobRunner} from "@coreModule/cronjobs/engine/jobRunner";
 import {CATCH_UP_MAX, selectRunCount} from "@coreModule/cronjobs/engine/missedRunPolicy";
+import {companyIdsWithModule} from "@coreModule/utilities/modules/companyModules";
 
 /** Extra time past a job's own timeout before a "running" execution counts as abandoned. */
 const STUCK_GRACE_MS = 120_000;
 
 function errorMessage(e: unknown): string {
     return e instanceof Error ? e.message : String(e);
+}
+
+/** Core handlers run for every company; a module's handlers only for companies with that module. */
+async function runnableJobClauses(): Promise<Record<string, unknown>[]> {
+    const codesByModule = new Map<string, string[]>();
+    for (const {code, module} of listCronHandlerRegistrations()) {
+        const key = module ?? "core";
+        codesByModule.set(key, [...(codesByModule.get(key) ?? []), code]);
+    }
+    return Promise.all([...codesByModule].map(async ([moduleName, codes]) => moduleName === "core"
+        ? {handler: {$in: codes}}
+        : {handler: {$in: codes}, company: {$in: await companyIdsWithModule(moduleName)}}));
 }
 
 /**
@@ -73,12 +86,16 @@ export class SchedulerEngine {
 
     private async runDueJobs(log: serverLogger): Promise<void> {
         const now = new Date();
+        const runnable = await runnableJobClauses();
+        if (runnable.length === 0) return;
         const dueJobs = await CronJobModel.find({
             active: true,
             pausedAt: null,
             nextRunAt: {$lte: now},
-            // Jobs of a module that is disabled on this deployment have no handler here.
-            handler: {$in: listCronHandlerRegistrations().map((r) => r.code)},
+            // Jobs of a module that is disabled on this deployment have no handler here, and a
+            // module's jobs only run for companies that have the module. Filtered in the query
+            // so skipped jobs never fill the batch.
+            $or: runnable,
         }).noDeleted()
             .sort({priority: -1, nextRunAt: 1})
             .limit(CRON.SCHEDULER_BATCH_SIZE)

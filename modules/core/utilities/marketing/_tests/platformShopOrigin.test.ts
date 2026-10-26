@@ -37,4 +37,21 @@ describe("platformShopOrigin", () => {
         expect(isPlatformShopOrigin("http://localhost:5174")).toBe(true);
         expect(isPlatformShopOrigin("http://ecommerce.localhost")).toBe(false);
     });
+
+    it("recognises the portal, which is also an all-sellers shop", async () => {
+        vi.stubEnv("SHOP_ROOT_DOMAIN", "arpeggio.al");
+        vi.stubEnv("PORTAL_ROOT_DOMAIN", "portal.arpeggio.al");
+        const {isPlatformShopOrigin, isPortalOrigin} = await import("../platformShopOrigin");
+        expect(isPortalOrigin("https://portal.arpeggio.al/car-rental")).toBe(true);
+        expect(isPortalOrigin("https://www.portal.arpeggio.al")).toBe(true);
+        expect(isPortalOrigin("https://rental.arpeggio.al")).toBe(false);
+        expect(isPlatformShopOrigin("https://portal.arpeggio.al")).toBe(true);
+    });
+
+    it("has no portal when PORTAL_ROOT_DOMAIN is empty", async () => {
+        vi.stubEnv("PORTAL_ROOT_DOMAIN", "");
+        const {isPortalOrigin} = await import("../platformShopOrigin");
+        expect(isPortalOrigin("http://localhost:5212")).toBe(false);
+        expect(isPortalOrigin("")).toBe(false);
+    });
 });

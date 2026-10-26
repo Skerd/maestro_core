@@ -17,6 +17,7 @@ import {ObjectId} from "mongodb";
 import {validateJWTToken} from "@coreModule/utilities/security/jwtValidator";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
+import {effectiveCompanyModules, isModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
 
 export type NotAuthenticatedMWType = {
     apiCode: string,
@@ -84,7 +85,9 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         logger.updateServer("API");
         if (isPublic) {
             req.body.logger = logger;
-            return next();
+            // Read by resolveCompanyByOrigin, which only honours it on the portal origin.
+            const siteCompany = req.header('x-site-company') || undefined;
+            return requestContext.run({...requestContext.getStore(), siteCompany}, () => next());
         }
 
         if (!token) {
@@ -102,9 +105,10 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         req.body.userInfo = user;
         req.body.actionUserInfo = user;
 
-        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive");
+        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive modules isPlatformOwner");
         req.body.company = company;
-        const {isAdmin, permissions} = await user.getCompanyAccess(company._id);
+        const modules = effectiveCompanyModules(company);
+        const {isAdmin, permissions} = await user.getCompanyAccess(company._id, modules);
 
         if( !company.isActive && !isAdmin ){
             throw apiValidationException("company_is_inactive", "company", null, languageCode);
@@ -118,18 +122,24 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
             throw apiValidationException("user_must_have_at_least_one_role", "roles", null, languageCode);
         }
 
+        const routeModule = requestContext.getStore()?.routeModule;
+        if (routeModule && !isModuleEnabledForCompany(company, routeModule)) {
+            throw apiValidationException("module_not_enabled", "module", null, languageCode);
+        }
+
         req.body.actionUserCtx = {
             userId: user._id.toString(),
             orgId: company._id.toString(),
             isAdmin,
             permissions,
-            isSelf: true
+            isSelf: true,
+            modules,
         };
 
         logger.updateActionInitializer(actionInitializer);
         req.body.logger = logger;
 
-        return requestContext.run({ actionUserCtx: req.body.actionUserCtx }, () => next());
+        return requestContext.run({ ...requestContext.getStore(), actionUserCtx: req.body.actionUserCtx }, () => next());
     } catch (error: any) {
         logger.start()
         logger.fail(error);

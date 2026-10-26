@@ -9,6 +9,7 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {listCronHandlerRegistrations, setCronHandlerModule} from "@coreModule/cronjobs/registry/handlerRegistry";
 
 const REGISTER_FN_PATTERN = /^register.*CronHandlers?$/i;
 const CRON_HANDLER_DIR = "utilities/cron";
@@ -81,7 +82,13 @@ export async function loadAllCronHandlers(parentLogger?: serverLogger): Promise<
                 }
 
                 for (const {name, fn} of registerFns) {
+                    const before = new Set(listCronHandlerRegistrations().map((r) => r.code));
                     fn();
+                    for (const registration of listCronHandlerRegistrations()) {
+                        if (!before.has(registration.code)) {
+                            setCronHandlerModule(registration.code, moduleEntry.name);
+                        }
+                    }
                     handlerCount += 1;
                     logger.debug(`Registered ${name} from ${filePath}`);
                 }

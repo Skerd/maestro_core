@@ -46,6 +46,7 @@ import {
     startServiceCountersFlush
 } from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {registerAllNotificationHandlers} from "@coreModule/domain/notifications/registerAllNotificationHandlers";
+import {registerAllPortalProviders} from "@coreModule/domain/portal/registerAllPortalProviders";
 import {randomUUID} from "crypto";
 import {requestTimeout, requestValidator} from "@coreModule/utilities/middlewares/requestValidator";
 import {metricsMiddleware} from "@coreModule/utilities/middlewares/metricsMW";
@@ -378,7 +379,7 @@ async function registerEndpoints(application: Application, parentLogger: serverL
         logger.updateSpace(1);
         logger.debug(`Registering api endpoints for [${moduleEntry.name}/api]...`);
         const apiRegistry = await createRouteRegistry(logger, apiBasePath);
-        apiRegistry.applyRoutes(application);
+        apiRegistry.applyRoutes(application, moduleEntry.name);
         logger.debug(`Finished registering ${apiRegistry.getRouteCount()} api endpoints!`);
         logger.updateSpace(-1);
     }
@@ -485,6 +486,8 @@ application.listen(SERVER.PORT, async () => {
     logger.debug("Registering all notification handlers...");
     await registerAllNotificationHandlers(logger);
     logger.debug("Finished registering all notification handlers!");
+
+    await registerAllPortalProviders(logger);
 
     logger.debug("Setting up request ID middleware...");
     setupRequestIdMiddleware(application, logger);

@@ -1,5 +1,6 @@
 /**
- * Discovers and runs per-module company demo seed hooks.
+ * Discovers and runs per-module company demo seed hooks, for the company's modules only,
+ * so each vertical's demo data lands in the companies that have that vertical.
  * Each optional module may export `database/companyDemoSeed.ts` with:
  *   - seedCompanyDemoData(logger, company)
  *   - companyDemoSeedOrder (optional number, lower runs first)
@@ -8,7 +9,7 @@
 import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import {getEnabledModuleNames, isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {effectiveCompanyModules} from "@coreModule/utilities/modules/companyModules";
 
 const SEED_FILENAME = "companyDemoSeed.ts";
 
@@ -25,8 +26,8 @@ export async function runModuleCompanyDemoSeeds(
     const modulesRoot = path.resolve(__dirname, "../../..");
     const seeds: Array<{moduleName: string; order: number; run: () => Promise<void>}> = [];
 
-    for (const moduleName of getEnabledModuleNames()) {
-        if (moduleName === "core" || !isModuleEnabled(moduleName)) {
+    for (const moduleName of effectiveCompanyModules(company)) {
+        if (moduleName === "core") {
             continue;
         }
 

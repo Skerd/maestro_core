@@ -3,6 +3,7 @@ import mongoose, {FieldPermissions, ModelPermissions} from "mongoose";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
 import Role from "@coreModule/database/schemas/role/role";
+import {getModelModule} from "@coreModule/utilities/modules/modelModules";
 
 export async function createRolePermissions(parentLogger?: serverLogger) {
     const logger = getLogger("mongoDbInitialization-createSchemaPermissions", parentLogger);
@@ -10,6 +11,8 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
 
     let permissions: Record<string, FieldPermissions>[] = [];
     let modelPermissions: Record<string, ModelPermissions>[] = [];
+    // Owning module of the model at the same index in `permissions` / `modelPermissions`.
+    const permissionModules: string[] = [];
 
     const modelNames = mongoose.modelNames();
     for (const modelName of modelNames) {
@@ -20,6 +23,7 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
         if( !!normalizedPermissions ){
             permissions.push(normalizedPermissions.permissions);
             modelPermissions.push(normalizedPermissions.modelPermissions);
+            permissionModules.push(getModelModule(modelName));
         }
     }
 
@@ -27,11 +31,17 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
         name: string,
         group: string,
         tag: string,
-        alwaysActive: boolean
+        alwaysActive: boolean,
+        module: string
     }[] = [];
     let allTags: string[] = [];
+    const tagsByModule = new Map<string, string[]>();
+    const recordTagModule = (tag: string, moduleName: string) => {
+        tagsByModule.set(moduleName, [...(tagsByModule.get(moduleName) ?? []), tag]);
+    };
 
-    for (const permissionObj of permissions) {
+    for (const [index, permissionObj] of permissions.entries()) {
+        const moduleName = permissionModules[index];
         for (let [fieldName, fieldPermissions] of Object.entries(permissionObj)) {
             for (const scope of ["self", "others"]) {
                 if( !fieldPermissions[scope] ) continue;
@@ -56,16 +66,19 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
                             name: `${actionName} ${fieldName}`,
                             tag,
                             group: schemaName,
-                            alwaysActive
+                            alwaysActive,
+                            module: moduleName
                         });
                         allTags.push(tag);
+                        recordTagModule(tag, moduleName);
                     }
                 }
             }
         }
     }
 
-    for (const permissionObj of modelPermissions) {
+    for (const [index, permissionObj] of modelPermissions.entries()) {
+        const moduleName = permissionModules[index];
         for (let [fieldName, fieldPermissions] of Object.entries(permissionObj)) {
             for (const scope of ["self", "others"]) {
                 if( !fieldPermissions[scope] ) continue;
@@ -81,9 +94,11 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
                             name: `${actionName} ${schemaName}`,
                             tag,
                             group: schemaName,
-                            alwaysActive: false
+                            alwaysActive: false,
+                            module: moduleName
                         });
                         allTags.push(tag);
+                        recordTagModule(tag, moduleName);
                     }
                 }
             }
@@ -113,6 +128,11 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
             }
         );
         logger.debug(`Added new permissions to admin roles=${adminRoleUpdateResult.modifiedCount}`);
+    }
+
+    // Existing rows (including ones written before `module` existed) follow their model's module.
+    for (const [moduleName, tags] of tagsByModule) {
+        await RolePermission.updateMany({tag: {$in: tags}, module: {$ne: moduleName}}, {$set: {module: moduleName}});
     }
 
     logger.debug(`Created=${potentialPermissions.length}, Already Present=${alreadyFoundPermissionTags.length}`);

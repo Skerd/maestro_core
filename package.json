@@ -36,6 +36,7 @@
     "migrate:sync-ecommerce-indexes": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/syncECommerceIndexes.ts",
     "migrate:order-reservations": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/moveReservationsToOrders.ts",
     "migrate:sync-company-default-roles": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/syncCompanyDefaultRoles.ts",
+    "migrate:backfill-company-modules": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/backfillCompanyModules.ts",
     "resync:role-permissions": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/resyncRolePermissions.ts --execute",
     "kafka:replay-dlq": "ts-node --transpile-only -r tsconfig-paths/register scripts/replayKafkaDeadLetters.ts",
     "api:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/apiServer.ts",
@@ -54,10 +55,12 @@
     "dev:carRental": "node ../scripts/dev/arpeggio.mjs up carRental --only api,websocket,kafka,cron",
     "dev:dentalClinic": "node ../scripts/dev/arpeggio.mjs up dentalClinic --only api,websocket,kafka,cron",
     "dev:propertyManagement": "node ../scripts/dev/arpeggio.mjs up propertyManagement --only api,websocket,kafka,cron",
+    "dev:all": "node ../scripts/dev/arpeggio.mjs up all --only api,websocket,kafka,cron",
     "reset:ecommerce": "node ../scripts/dev/arpeggio.mjs reset ecommerce",
     "reset:carRental": "node ../scripts/dev/arpeggio.mjs reset carRental",
     "reset:dentalClinic": "node ../scripts/dev/arpeggio.mjs reset dentalClinic",
-    "reset:propertyManagement": "node ../scripts/dev/arpeggio.mjs reset propertyManagement"
+    "reset:propertyManagement": "node ../scripts/dev/arpeggio.mjs reset propertyManagement",
+    "reset:all": "node ../scripts/dev/arpeggio.mjs reset all"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

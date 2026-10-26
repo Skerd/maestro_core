@@ -17,3 +17,15 @@ export function getCronHandler(code: string): CronHandlerRegistration | undefine
 export function listCronHandlerRegistrations(): CronHandlerRegistration[] {
     return [...handlers.values()];
 }
+
+export function setCronHandlerModule(code: string, moduleName: string): void {
+    const registration = handlers.get(code);
+    if (registration) {
+        registration.module = moduleName;
+    }
+}
+
+/** Whether a company with `modules` gets jobs for this handler. */
+export function cronHandlerAllowed(registration: CronHandlerRegistration, modules: readonly string[]): boolean {
+    return !registration.module || registration.module === "core" || modules.includes(registration.module);
+}

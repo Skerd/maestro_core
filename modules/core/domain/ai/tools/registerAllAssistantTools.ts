@@ -16,7 +16,7 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
-import {getAssistantToolCount} from "@coreModule/domain/ai/tools/toolRegistry";
+import {getAssistantToolCount, listAssistantToolNames, setAssistantToolModule} from "@coreModule/domain/ai/tools/toolRegistry";
 
 const REGISTER_FN_PATTERN = /^register.*AssistantTools?$/i;
 const BOOTSTRAP_FILENAME = "registerAllAssistantTools.ts";
@@ -109,7 +109,13 @@ export async function registerAllAssistantTools(parentLogger?: serverLogger): Pr
                 }
 
                 for (const {name, fn} of registerFns) {
+                    const before = new Set(listAssistantToolNames());
                     fn();
+                    for (const toolName of listAssistantToolNames()) {
+                        if (!before.has(toolName)) {
+                            setAssistantToolModule(toolName, moduleEntry.name);
+                        }
+                    }
                     logger.debug(`Registered assistant tools via ${name} from ${filePath}`);
                 }
             } catch (error: any) {

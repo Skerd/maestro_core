@@ -27,6 +27,7 @@ import {AI_ASSISTANT, ANTHROPIC} from "@coreModule/environment";
 import {OllamaChatMessage, OllamaTool, OllamaToolCall} from "@coreModule/domain/ai/ollamaClient";
 import {assistantChat} from "@coreModule/domain/ai/assistantModelClient";
 import {getAssistantTool, getAssistantTools} from "@coreModule/domain/ai/tools/toolRegistry";
+import {getCompanyModules} from "@coreModule/utilities/modules/companyModules";
 import type {
     AssistantReplyAudience,
     AssistantTool,
@@ -253,13 +254,15 @@ function serializeToolResult(result: unknown): string {
 async function dispatchToolCall(
     call: OllamaToolCall,
     ctx: AssistantToolContext,
+    modules: readonly string[],
     logger?: serverLogger
 ): Promise<string> {
     const name = call.function?.name;
     // Resolved through the audience filter: a model that names a tool it was
     // never offered (hallucination or injection) gets "unknown tool", not the
     // tool. This is defence in depth behind the offered-tool list.
-    const tool = name ? getAssistantTool(name, ctx.audience) : undefined;
+    // Tools of modules the company does not have are unknown too.
+    const tool = name ? getAssistantTool(name, ctx.audience, modules) : undefined;
 
     if (!tool) {
         logger?.warn?.(
@@ -322,7 +325,8 @@ export async function generateAssistantReply(
             : (AI_ASSISTANT.MODEL_LIGHT || AI_ASSISTANT.MODEL))
         : undefined;
 
-    const ollamaTools = getAssistantTools(audience).map(toOllamaTool);
+    const modules = await getCompanyModules(context.companyId);
+    const ollamaTools = getAssistantTools(audience, modules).map(toOllamaTool);
     const toolCtx: AssistantToolContext = {
         companyId: context.companyId,
         userId: context.userId,
@@ -369,7 +373,7 @@ export async function generateAssistantReply(
             ...(message.raw !== undefined ? { raw: message.raw } : {})
         });
         for (const call of toolCalls) {
-            const resultText = await dispatchToolCall(call, toolCtx, logger);
+            const resultText = await dispatchToolCall(call, toolCtx, modules, logger);
             // `tool_call_id` pairs the result to its call for Claude; Ollama
             // pairs positionally and ignores it.
             messages.push({ role: "tool", content: resultText, tool_call_id: call.id });

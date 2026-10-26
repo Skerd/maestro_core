@@ -122,7 +122,7 @@ export async function impersonateUserMW(req: Request, res: Response, next: NextF
         body.user = swap.user;
         body.actionInitializer = `${body.actionInitializer || ""}${swap.actionInitializerSuffix}`;
         body.logger?.updateActionInitializer?.(body.actionInitializer);
-        return requestContext.run({actionUserCtx: body.actionUserCtx}, () => next());
+        return requestContext.run({...requestContext.getStore(), actionUserCtx: body.actionUserCtx}, () => next());
     } catch (error) {
         next(error);
     }

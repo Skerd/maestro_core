@@ -46,6 +46,7 @@ import {addModelData} from "@coreModule/database/collections";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets";
 import {getRolesAccess} from "@coreModule/utilities/security/roleAccessCache";
+import {getCompanyModules} from "@coreModule/utilities/modules/companyModules";
 
 let userService: any;
 let roleService: any;
@@ -190,7 +191,8 @@ export interface IUser extends Document, ILifeCyclePluginFields {
     getUnsuccessfulLogins: (companyId: ObjectId) => Promise<number>,
     isUserActive: (companyId: ObjectId) => Promise<boolean>,
     changeAccountStatus: (companyId: ObjectId, status: boolean, session?: ClientSession) => Promise<void>,
-    getCompanyAccess: (companyId: ObjectId) => Promise<{isAdmin: boolean, permissions: string[]}>;
+    /** `modules` = the company's effective modules when the caller already has them; looked up otherwise. */
+    getCompanyAccess: (companyId: ObjectId, modules?: readonly string[]) => Promise<{isAdmin: boolean, permissions: string[]}>;
 
     getCompanyRolePermissions: (companyId: ObjectId) => Promise<string[]>;
     companyRoleHasPermission: (companyId: ObjectId, permission: string) => Promise<boolean>;
@@ -1701,7 +1703,7 @@ UserSchema.methods.changeAccountStatus = async function (companyId: ObjectId, st
  * callers that need both (authMW does, on every private request) should ask once rather
  * than resolve the roles twice. Backed by the Redis role cache.
  */
-UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId): Promise<{isAdmin: boolean, permissions: string[]}> {
+UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId, modules?: readonly string[]): Promise<{isAdmin: boolean, permissions: string[]}> {
     const companyRole = findCompanyRole(this.roles, companyId);
     const roleIds = companyRole?.roles?.map((role) => role._id) ?? [];
     if (!roleIds.length) {
@@ -1710,7 +1712,8 @@ UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId): Prom
 
     // Resolved through the Redis-backed role cache: populating the permission refs here
     // hydrated thousands of documents on every private request just to read their tags.
-    const {isAdmin, tags} = await getRolesAccess(roleIds);
+    // Permissions of modules the company does not have are left out, admins included.
+    const {isAdmin, tags} = await getRolesAccess(roleIds, modules ?? await getCompanyModules(companyId));
     return {isAdmin, permissions: tags};
 }
 

@@ -44,7 +44,7 @@ router.get(
  * @returns User id, username, company, email, name, surname, timezone, maxClearance, permissions.
  */
 async function validateToken(params: AuthenticatedMWType): Promise<ValidateTokenFormResponseType> {
-    const {logger, userInfo, company} = params;
+    const {logger, userInfo, company, actionUserCtx} = params;
     try {
         logger.start("Validating token...");
         logger.finish(`Finished validating token!`);
@@ -52,7 +52,8 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
         return {
             id: userInfo._id.toString(),
             username: userInfo.username,
-            company: {_id: company._id, name: company.name},
+            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"]},
+            isPlatformAdmin: company.isPlatformOwner === true && actionUserCtx.isAdmin,
             email: userInfo.username,
             maxClearance: 0,
             name: userInfo.name,

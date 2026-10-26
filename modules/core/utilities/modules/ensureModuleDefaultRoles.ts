@@ -6,7 +6,7 @@
 import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import {getEnabledModuleNames, isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModules";
 import {
     registerDefaultRoles,
     type DefaultRoleDefinition,
@@ -30,7 +30,7 @@ export async function ensureModuleDefaultRolesRegistered(parentLogger?: serverLo
     const modulesRoot = path.resolve(__dirname, "../../..");
 
     for (const moduleName of getEnabledModuleNames()) {
-        if (moduleName === "core" || !isModuleEnabled(moduleName)) {
+        if (moduleName === "core") {
             continue;
         }
 
@@ -46,7 +46,7 @@ export async function ensureModuleDefaultRolesRegistered(parentLogger?: serverLo
             if (!Array.isArray(pack) || pack.length === 0) {
                 continue;
             }
-            registerDefaultRoles(pack);
+            registerDefaultRoles(pack, moduleName);
             logger.debug(`Registered ${pack.length} default role(s) from [${moduleName}]`);
         } catch (error: any) {
             logger.err(`Failed to load default roles from ${bootstrapFile}`, error);

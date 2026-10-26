@@ -4,6 +4,7 @@ import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {Router} from "express";
 import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collections";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
+import {isModelInModules} from "@coreModule/utilities/modules/modelModules";
 import type {ViewConfig, ViewConfiguration, ViewNode} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
 import type {SanitizedFields} from "armonia/src/modules/core/types";
 
@@ -30,6 +31,7 @@ async function getAllViewConfigs(params: ViewConfigParams): Promise<ViewConfigur
     for (const [collectionName, entry] of Object.entries(COLLECTED_DATA)) {
         const { model, readFields, writeFields, views } = entry;
         if (!model || !readFields || !views) continue;
+        if (!isModelInModules(model.modelName, actionUserCtx.modules ?? [])) continue;
 
         try {
             const sanitizedRead = SchemaGuard.sanitizeFields(model, readFields, "read", actionUserCtx, languageCode);
@@ -83,6 +85,7 @@ async function getSingleViewConfig(params: SingleViewConfigParams): Promise<View
 
     const entry = getModelCollectedData(model);
     if (!entry?.views?.[viewKey] || !entry.model || !entry.readFields) return null;
+    if (!isModelInModules(entry.model.modelName, actionUserCtx.modules ?? [])) return null;
 
     const sanitizedRead = SchemaGuard.sanitizeFields(entry.model, entry.readFields, "read", actionUserCtx, languageCode);
     if (Object.keys(sanitizedRead).length === 0) return null;

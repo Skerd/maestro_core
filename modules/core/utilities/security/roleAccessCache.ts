@@ -33,15 +33,25 @@ import {ObjectId} from "mongodb";
 import {isRedisConnected, redisDel, redisMGet, redisSetEx} from "@coreModule/connections/connectToRedis";
 import {REDIS} from "@coreModule/environment";
 
-/** Access facts derived from a single role document. */
+/** Combined access facts for a set of roles. */
 export type RoleAccess = {
-    /** Whether this role grants administrator status. */
+    /** Whether any role grants administrator status. */
     isAdmin: boolean;
-    /** Permission tags (e.g. `projects[read:self:name]`) this role carries. */
+    /** Permission tags (e.g. `projects[read:self:name]`) the roles carry. */
     tags: string[];
 };
 
-const KEY_PREFIX = "role_access:";
+/**
+ * Access facts of a single role, as cached. Tags are grouped by the module that owns them,
+ * so a company's disabled modules can be filtered out after the cache lookup and a change
+ * to a company's modules never invalidates role entries.
+ */
+type CachedRoleAccess = {
+    isAdmin: boolean;
+    tagsByModule: Record<string, string[]>;
+};
+
+const KEY_PREFIX = "role_access:v2:";
 
 const cacheKey = (roleId: string): string => `${KEY_PREFIX}${roleId}`;
 
@@ -58,7 +68,7 @@ const toIdString = (roleId: ObjectId | string | { _id: ObjectId }): string =>
  * @param roleIds - Role ids to resolve (already de-duplicated by the caller)
  * @returns Map of role id string -> access facts. Missing/deleted roles are absent.
  */
-async function loadRoleAccessFromDb(roleIds: ObjectId[]): Promise<Map<string, RoleAccess>> {
+async function loadRoleAccessFromDb(roleIds: ObjectId[]): Promise<Map<string, CachedRoleAccess>> {
     const Role = mongoose.model("Role");
     const RolePermission = mongoose.model("RolePermission");
 
@@ -67,7 +77,7 @@ async function loadRoleAccessFromDb(roleIds: ObjectId[]): Promise<Map<string, Ro
         .select("_id isAdmin permissions")
         .lean();
 
-    const result = new Map<string, RoleAccess>();
+    const result = new Map<string, CachedRoleAccess>();
     if (!roles.length) {
         return result;
     }
@@ -84,26 +94,29 @@ async function loadRoleAccessFromDb(roleIds: ObjectId[]): Promise<Map<string, Ro
     const permissionDocs = allPermissionIds.size > 0
         ? await RolePermission
             .find({_id: {$in: [...allPermissionIds].map((id) => new ObjectId(id))}})
-            .select("_id tag")
+            .select("_id tag module")
             .lean()
         : [];
 
-    const tagById = new Map<string, string>();
+    const permissionById = new Map<string, {tag: string; module: string}>();
     for (const permission of permissionDocs as any[]) {
         if (permission.tag) {
-            tagById.set(permission._id.toString(), permission.tag);
+            permissionById.set(permission._id.toString(), {tag: permission.tag, module: permission.module ?? "core"});
         }
     }
 
     for (const role of roles as any[]) {
-        const tags = new Set<string>();
+        const tagsByModule: Record<string, Set<string>> = {};
         for (const permissionId of (role.permissions ?? [])) {
-            const tag = tagById.get(permissionId.toString());
-            if (tag) {
-                tags.add(tag);
+            const permission = permissionById.get(permissionId.toString());
+            if (permission) {
+                (tagsByModule[permission.module] ??= new Set()).add(permission.tag);
             }
         }
-        result.set(role._id.toString(), {isAdmin: role.isAdmin === true, tags: [...tags]});
+        result.set(role._id.toString(), {
+            isAdmin: role.isAdmin === true,
+            tagsByModule: Object.fromEntries(Object.entries(tagsByModule).map(([moduleName, tags]) => [moduleName, [...tags]])),
+        });
     }
 
     return result;
@@ -116,20 +129,21 @@ async function loadRoleAccessFromDb(roleIds: ObjectId[]): Promise<Map<string, Ro
  * those are written back individually so other role combinations reuse them.
  *
  * @param roleIds - Roles held by the user in the company being accessed
- * @returns `isAdmin` true when any role is an admin role, and the union of all permission tags
+ * @param modules - The company's effective modules; tags of other modules are left out
+ * @returns `isAdmin` true when any role is an admin role, and the union of the allowed permission tags
  *
  * @example
  * ```typescript
- * const {isAdmin, tags} = await getRolesAccess(companyRole.roles.map((r) => r._id));
+ * const {isAdmin, tags} = await getRolesAccess(companyRole.roles.map((r) => r._id), companyModules);
  * ```
  */
-export async function getRolesAccess(roleIds: (ObjectId | string)[]): Promise<RoleAccess> {
+export async function getRolesAccess(roleIds: (ObjectId | string)[], modules: readonly string[]): Promise<RoleAccess> {
     const uniqueIds = [...new Set((roleIds ?? []).map(toIdString))];
     if (uniqueIds.length === 0) {
         return {isAdmin: false, tags: []};
     }
 
-    const resolved = new Map<string, RoleAccess>();
+    const resolved = new Map<string, CachedRoleAccess>();
     const misses: string[] = [];
 
     if (isRedisConnected()) {
@@ -141,8 +155,8 @@ export async function getRolesAccess(roleIds: (ObjectId | string)[]): Promise<Ro
                 return;
             }
             try {
-                const parsed = JSON.parse(raw) as RoleAccess;
-                resolved.set(id, {isAdmin: parsed.isAdmin === true, tags: parsed.tags ?? []});
+                const parsed = JSON.parse(raw) as CachedRoleAccess;
+                resolved.set(id, {isAdmin: parsed.isAdmin === true, tagsByModule: parsed.tagsByModule ?? {}});
             } catch {
                 // Corrupt entry: treat as a miss and let the DB path overwrite it.
                 misses.push(id);
@@ -165,8 +179,13 @@ export async function getRolesAccess(roleIds: (ObjectId | string)[]): Promise<Ro
     const tags = new Set<string>();
     for (const access of resolved.values()) {
         isAdmin = isAdmin || access.isAdmin;
-        for (const tag of access.tags) {
-            tags.add(tag);
+        for (const [moduleName, moduleTags] of Object.entries(access.tagsByModule)) {
+            if (moduleName !== "core" && !modules.includes(moduleName)) {
+                continue;
+            }
+            for (const tag of moduleTags) {
+                tags.add(tag);
+            }
         }
     }
 

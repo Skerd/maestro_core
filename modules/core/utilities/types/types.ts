@@ -4,4 +4,6 @@ export interface UserContext {
   isAdmin: boolean;
   permissions: string[];
   isSelf: boolean;
+  /** The company's effective modules (set by authMW). */
+  modules?: string[];
 }

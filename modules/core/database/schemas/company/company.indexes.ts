@@ -11,6 +11,8 @@ export function applyCompanyIndexes(CompanySchema: Schema): void {
     CompanySchema.index({parentCompany: 1});
     CompanySchema.index({isActive: 1});
     CompanySchema.index({isDefaultForSignUp: 1});
+    CompanySchema.index({isPlatformOwner: 1}, {unique: true, partialFilterExpression: {isPlatformOwner: true}});
+    CompanySchema.index({modules: 1});
     CompanySchema.index({"addresses.city": 1});
     CompanySchema.index({"addresses.country": 1});
     CompanySchema.index({allowedDomains: 1});

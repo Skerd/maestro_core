@@ -4,6 +4,8 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import User from "@coreModule/database/schemas/user/user";
 import {ensureModuleDefaultRolesRegistered} from "@coreModule/utilities/modules/ensureModuleDefaultRoles";
+import Country from "@coreModule/database/schemas/country/country";
+import City from "@coreModule/database/schemas/city/city";
 
 export const defaultCompaniesValues: any = {
     address: {
@@ -17,7 +19,27 @@ export const defaultCompaniesValues: any = {
             longitude: 19.80706909189647
         }
     },
+    // The first company is the parent of the rest and the platform owner: its admins
+    // grant every company its modules. Each vertical demo company gets its own modules,
+    // so its demo data lands only there. `"*"` keeps panel login on localhost working;
+    // `<slug>.localhost` gives each public site an exact origin match.
     companies: [
+        {
+            "name": "Platform",
+            "email": "platform@arpeggio.com",
+            "description": "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.",
+            "website": "https://platformarpeggio.al",
+            "phoneNumber": "+355 696666666",
+            "linkedin": "https://www.linkedin.com/company/platformarpeggio",
+            "instagram": "https://www.instagram.com/platformarpeggio",
+            "facebook": "https://www.facebook.com/platformarpeggio",
+            "vat": "Z000000000Z",
+            "isActive": true,
+            "isPlatformOwner": true,
+            "isDefaultForSignUp": true,
+            "allowedDomains": ["*"],
+            "modules": ["core"]
+        },
         {
             "name": "eCommerce",
             "email": "ecommerce@arpeggio.com",
@@ -29,11 +51,81 @@ export const defaultCompaniesValues: any = {
             "facebook": "https://www.facebook.com/ecommercearpeggio",
             "vat": "Z123456789Z",
             "isActive": true,
-            "isDefaultForSignUp": true,
-            "allowedDomains": ["*"]
+            "shopSlug": "store",
+            "shopListedOnPortal": true,
+            "allowedDomains": ["*", "store.localhost"],
+            "modules": ["core", "finance", "eCommerce"]
+        },
+        {
+            "name": "Dental Clinic",
+            "email": "clinic@arpeggio.com",
+            "description": "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.",
+            "website": "https://clinicarpeggio.al",
+            "phoneNumber": "+355 696666666",
+            "linkedin": "https://www.linkedin.com/company/clinicarpeggio",
+            "instagram": "https://www.instagram.com/clinicarpeggio",
+            "facebook": "https://www.facebook.com/clinicarpeggio",
+            "vat": "Z223456789Z",
+            "isActive": true,
+            "shopSlug": "clinic",
+            "allowedDomains": ["*", "clinic.localhost"],
+            "modules": ["core", "finance", "dentalClinic"]
+        },
+        {
+            "name": "Car Rental",
+            "email": "rental@arpeggio.com",
+            "description": "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.",
+            "website": "https://rentalarpeggio.al",
+            "phoneNumber": "+355 696666666",
+            "linkedin": "https://www.linkedin.com/company/rentalarpeggio",
+            "instagram": "https://www.instagram.com/rentalarpeggio",
+            "facebook": "https://www.facebook.com/rentalarpeggio",
+            "vat": "Z323456789Z",
+            "isActive": true,
+            "shopSlug": "rental",
+            "allowedDomains": ["*", "rental.localhost"],
+            "modules": ["core", "finance", "carRental"]
+        },
+        {
+            "name": "Estates",
+            "email": "estates@arpeggio.com",
+            "description": "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.",
+            "website": "https://estatesarpeggio.al",
+            "phoneNumber": "+355 696666666",
+            "linkedin": "https://www.linkedin.com/company/estatesarpeggio",
+            "instagram": "https://www.instagram.com/estatesarpeggio",
+            "facebook": "https://www.facebook.com/estatesarpeggio",
+            "vat": "Z423456789Z",
+            "isActive": true,
+            "shopSlug": "estates",
+            "allowedDomains": ["*", "estates.localhost"],
+            "modules": ["core", "propertyManagement", "propertyDevelopment"]
         },
     ]
 };
+
+/**
+ * Gives a demo company the default address, from its own country and city records (seeded
+ * per company by `addCompanyDemoData`). Its city is what the portal's "where" search matches.
+ */
+async function addDefaultAddress(company: any): Promise<void> {
+    if (company.addresses?.length) return;
+    const {address} = defaultCompaniesValues;
+    const [country, city] = await Promise.all([
+        Country.findOne({company: company._id, code: address.countryCode}).select("_id"),
+        City.findOne({company: company._id, name: address.cityName}).select("_id"),
+    ]);
+    if (!country || !city) return;
+    company.addresses = [{
+        street: address.street,
+        postalCode: address.postalCode,
+        country: country._id,
+        city: city._id,
+        latitude: address.geoLocation.latitude,
+        longitude: address.geoLocation.longitude,
+    }];
+    await company.save();
+}
 
 export async function createCompanies(parentLogger?: serverLogger, demoData: boolean = false){
     let logger = getLogger("mongoDbInitialization-createCompanies", parentLogger);
@@ -60,6 +152,7 @@ export async function createCompanies(parentLogger?: serverLogger, demoData: boo
                 await currentCompany.createDefaultRoles(logger);
                 if( demoData ){
                     await currentCompany.addCompanyDemoData(logger);
+                    await addDefaultAddress(currentCompany);
                 }
                 logger.debug("Finished creating needed company data!");
 
@@ -71,6 +164,7 @@ export async function createCompanies(parentLogger?: serverLogger, demoData: boo
                 await currentCompany.createDefaultRoles(logger);
                 if( demoData ){
                     await currentCompany.addCompanyDemoData(logger);
+                    await addDefaultAddress(currentCompany);
                 }
                 logger.debug("Finished creating needed company data!");
             }

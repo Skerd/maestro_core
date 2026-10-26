@@ -29,6 +29,7 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
+import {isPortalOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
 import {resolveVisitorContext} from "@coreModule/utilities/middlewares/visitorAuthMW";
 import {generateVisitorToken} from "@coreModule/utilities/security/visitorToken";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
@@ -182,6 +183,10 @@ async function startPublicChatSession(
     const {origin, languageCode, logger, requestIp, userAgent, visitorToken, entryUrl, referrer, context} = params;
     logger.start("Opening public chat session...");
 
+    // No visitor chat on the central portal yet: it speaks for many companies at once.
+    if (isPortalOrigin(origin)) {
+        throw apiValidationException("public_chat_not_enabled", "company", null, languageCode);
+    }
     const company = await resolveCompanyByOrigin(origin, languageCode);
     assertPublicChatEnabled(company, languageCode);
 

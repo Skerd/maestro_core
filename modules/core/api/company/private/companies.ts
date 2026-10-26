@@ -6,7 +6,7 @@ import {
     BasicCompanyInfoFormResponseType,
     Company as CompanyData
 } from "armonia/src/modules/core/api/company/private/company/company.dto";
-import {companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
+import {COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import Company from "@coreModule/database/schemas/company/company";
@@ -92,7 +92,7 @@ async function getCompanies(params: GetCompaniesType): Promise<TableResponse<Com
                 company._id,
                 { logger, languageCode },
                 perCompanyPopulate.populate || [],
-                perCompanyPopulate.select + " company"
+                `${perCompanyPopulate.select} company ${COMPANY_MODULE_FIELDS}`
             );
             return companyToDTO(fullCompany);
         })

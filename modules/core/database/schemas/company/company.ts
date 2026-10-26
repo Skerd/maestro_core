@@ -32,7 +32,7 @@ import {CompanyBlankSnippet} from "./company.snippets";
 import {companyViews} from "./company.views";
 import {
     defaultRoleSlug,
-    getDefaultRoles,
+    getDefaultRolesForModules,
     resolveDefaultRolePermissionIds,
     roleHasPermissionPack,
     type DefaultRoleDefinition,
@@ -49,6 +49,7 @@ import {
     type ShopProvisionStatus,
 } from "armonia/src/modules/core/api/company/private/company/shopSlug";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
+import {closeCompanyModules, effectiveCompanyModules, invalidateCompanyModules} from "@coreModule/utilities/modules/companyModules";
 
 function documentObjectId(ref: unknown): ObjectId | null {
     if (ref == null) return null;
@@ -103,6 +104,14 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     isActive: boolean;
     isDefaultForSignUp: boolean;
     allowedDomains: string[];
+    /** Granted modules (dependency-closed). Unset = every installed module. See companyModules.ts. */
+    modules?: string[];
+    /** Admins of this company manage every company's modules. At most one company. */
+    isPlatformOwner: boolean;
+    /** Set by the platform owner: the company is left off the portal and the shop apex. */
+    hiddenFromPortal: boolean;
+    /** The company's own opt-in to list its shop on the portal and the shop apex. */
+    shopListedOnPortal: boolean;
     publicAiChat?: {
         enabled: boolean;
         greeting?: string;
@@ -308,6 +317,34 @@ const CompanySchema: Schema = new Schema(
             default: [],
             required: true
         },
+        modules: {
+            type: [SchemaTypes.String],
+            default: undefined,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        isPlatformOwner: {
+            type: SchemaTypes.Boolean,
+            default: false,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        hiddenFromPortal: {
+            type: SchemaTypes.Boolean,
+            default: false,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        shopListedOnPortal: {
+            type: SchemaTypes.Boolean,
+            default: false,
+        },
         publicAiChat: {
             type: {
                 enabled: {
@@ -349,10 +386,18 @@ const CompanySchema: Schema = new Schema(
 CompanySchema.pre("save", function (next) {
     this.$locals = this.$locals || {};
     this.$locals.companyWasNew = this.isNew;
+    this.$locals.modulesChanged = !this.isNew && (this.isModified("modules") || this.isModified("isActive"));
+    // Stored dependency-closed, so `{modules: "<name>"}` queries match every company that has it.
+    if (this.isModified("modules") && Array.isArray(this.modules)) {
+        this.modules = closeCompanyModules(this.modules);
+    }
     next();
 });
 
 CompanySchema.post("save", async function (doc) {
+    if (doc.$locals.modulesChanged) {
+        await invalidateCompanyModules(String(doc._id));
+    }
     if (doc.$locals.companyWasNew) {
         const session = doc.$session();
         await doc.createDefaultRoles(undefined, session ?? undefined);
@@ -370,7 +415,7 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
 
     try{
         await ensureModuleDefaultRolesRegistered(logger);
-        const seededRoles = getDefaultRoles();
+        const seededRoles = getDefaultRolesForModules(effectiveCompanyModules(this));
 
         if( seededRoles.length === 0 ){
             logger.debug(`No default roles found`);
@@ -620,7 +665,7 @@ CompanySchema.methods.ensureAiChannels = async function (session?: ClientSession
 };
 
 CompanySchema.methods.seedCronJobs = async function (session?: ClientSession | null) {
-    await seedCronJobsForCompany(this._id, session ?? undefined);
+    await seedCronJobsForCompany(this._id, effectiveCompanyModules(this), session ?? undefined);
 };
 
 CompanySchema.statics.findRobotId = async function (
@@ -656,5 +701,5 @@ normalizeSchemaPermissions(Company);
 export default Company;
 
 addModelData(Company, companyViews);
-validateSchemaDefAgainstMongoose(CompanySchema, CompanySchemaDef, "Company", ["isDefaultForSignUp"]);
+validateSchemaDefAgainstMongoose(CompanySchema, CompanySchemaDef, "Company", ["isDefaultForSignUp", "modules", "isPlatformOwner", "hiddenFromPortal"]);
 

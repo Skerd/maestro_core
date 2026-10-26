@@ -5,9 +5,10 @@
  * Eliminates the need for manual route registration.
  */
 
-import {Application, Router} from 'express';
+import {Application, NextFunction, Request, Response, Router} from 'express';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {registerRawBodyPrefix} from '@coreModule/utilities/endpoints/rawBodyRouteRegistry';
+import {requestContext} from '@coreModule/utilities/endpoints/requestContext';
 import path from 'path';
 import fs from 'fs';
 
@@ -208,9 +209,14 @@ export class RouteRegistry {
     }
 
     /**
-     * Apply all registered routes to Express application
+     * Apply all registered routes to Express application. Every request reaching one of the
+     * routers is tagged with `moduleName` (request context `routeModule`), which authMW and
+     * the public company resolver check against the company's modules. A router that falls
+     * through leaves the next mount to re-tag the request.
      */
-    applyRoutes(app: Application): void {
+    applyRoutes(app: Application, moduleName: string): void {
+        const tagRouteModule = (_req: Request, _res: Response, next: NextFunction) =>
+            requestContext.run({...requestContext.getStore(), routeModule: moduleName}, () => next());
         const totalRoutes = Array.from(this.routes.values()).reduce((sum, modules) => sum + modules.length, 0);
         this.logger?.start(`Applying ${totalRoutes} routes across ${this.routes.size} paths to Express app...`);
         
@@ -220,7 +226,7 @@ export class RouteRegistry {
         sortedRoutes.forEach(([routePath, modules]) => {
             try {
                 modules.forEach((module, index) => {
-                    app.use(routePath, module.router);
+                    app.use(routePath, tagRouteModule, module.router);
                     if (modules.length > 1) {
                         this.logger?.debug(`Applied route: ${routePath} (router ${index + 1}/${modules.length})`);
                     } else {

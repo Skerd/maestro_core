@@ -27,9 +27,14 @@ function permissionRefId(permission: unknown): string {
     return String(permission);
 }
 
-async function catalogPermissions(params: {logger: AuthenticatedMWType["logger"]; languageCode: string}) {
+/** Permissions of the company's modules only: the rest are neither listed, granted nor revoked. */
+function companyPermissionClause(params: {actionUserCtx: AuthenticatedMWType["actionUserCtx"]}) {
+    return {module: {$in: params.actionUserCtx.modules ?? ["core"]}};
+}
+
+async function catalogPermissions(params: Pick<AuthenticatedMWType, "logger" | "languageCode" | "actionUserCtx">) {
     return rolePermissionService.find(
-        {},
+        companyPermissionClause(params),
         {logger: params.logger, languageCode: params.languageCode},
         undefined,
         "_id group tag",
@@ -53,7 +58,7 @@ export const {router} = createCrudRouter({
         const {permissions, name, description, company, languageCode, logger, session} = params;
         const enabledIds = Object.keys(permissions).filter((permissionId) => permissions[permissionId]);
         const foundPermissions = await rolePermissionService.find(
-            {_id: {$in: enabledIds}},
+            {_id: {$in: enabledIds}, ...companyPermissionClause(params)},
             {session, logger, languageCode},
             undefined,
             "_id",
@@ -98,7 +103,7 @@ export const {router} = createCrudRouter({
             const [dbPermissions, dbDeletePermissions] = await Promise.all([
                 permissionChanges.add.length > 0
                     ? rolePermissionService.find(
-                        {_id: {$in: permissionChanges.add}},
+                        {_id: {$in: permissionChanges.add}, ...companyPermissionClause(params)},
                         {session, logger, languageCode},
                         undefined,
                         "_id",
@@ -106,7 +111,7 @@ export const {router} = createCrudRouter({
                     : Promise.resolve([]),
                 permissionChanges.remove.length > 0
                     ? rolePermissionService.find(
-                        {_id: {$in: permissionChanges.remove}},
+                        {_id: {$in: permissionChanges.remove}, ...companyPermissionClause(params)},
                         {session, logger, languageCode},
                         undefined,
                         "_id",
@@ -142,9 +147,9 @@ export const {router} = createCrudRouter({
             {session: params.session, logger: params.logger, languageCode: params.languageCode},
         );
     },
-    enrichList: async (docs, params) => rolesToDTO(docs, await catalogPermissions({logger: params.logger, languageCode: params.languageCode})),
-    enrichSingle: async (doc, params) => roleToDTO(doc, await catalogPermissions({logger: params.logger, languageCode: params.languageCode})),
-    enrichUpdate: async (doc, params) => roleToDTO(doc, await catalogPermissions({logger: params.logger, languageCode: params.languageCode})),
+    enrichList: async (docs, params) => rolesToDTO(docs, await catalogPermissions(params)),
+    enrichSingle: async (doc, params) => roleToDTO(doc, await catalogPermissions(params)),
+    enrichUpdate: async (doc, params) => roleToDTO(doc, await catalogPermissions(params)),
 });
 
 router.post(
@@ -163,11 +168,12 @@ async function getPermissions(params: GetPermissionsType & PermissionsFormType):
     logger.start("Serving permissions...");
 
     const opts = {logger, languageCode};
+    const filter = companyPermissionClause(params);
 
     // Catalog endpoint: grouping by model is wrong if docs are paginated mid-group.
     const [permissions, total] = await Promise.all([
-        rolePermissionService.find({}, opts, undefined, "_id group tag"),
-        rolePermissionService.count({}, opts),
+        rolePermissionService.find(filter, opts, undefined, "_id group tag"),
+        rolePermissionService.count(filter, opts),
     ]);
 
     const grouped = permissions.reduce((acc, perm) => {

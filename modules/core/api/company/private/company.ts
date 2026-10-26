@@ -12,7 +12,7 @@ import {
     createCompanyFormSchema
 } from "armonia/src/modules/core/api/company/private/company/createCompany.form.validator";
 import {editCompanyFormSchema} from "armonia/src/modules/core/api/company/private/company/editCompany.form.validator";
-import {companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
+import {COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {mediaService} from "@coreModule/database/schemas/media/media.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
@@ -160,11 +160,13 @@ async function getCompany(params: GetCompanyType): Promise<CompanyData> {
     logger.start(`Fetching company info...`);
     const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Company.schema);
 
+    // Modules are platform-managed facts, not permission-gated fields: always loaded so an
+    // unselected list never reads as "every module".
     const companyData = await companyService.findByIdOrThrow(
         company._id,
         { logger, languageCode },
         populate.populate || [],
-        populate.select
+        populate.select && `${populate.select} ${COMPANY_MODULE_FIELDS}`
     );
 
     logger.finish(`Finished fetching company info!`);
@@ -317,6 +319,8 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
             allowedDomains: shopHostAssignment.allowedDomains.length > 0 ? shopHostAssignment.allowedDomains : ["none.none.com"],
             addresses: await validateAndMapAddresses(addresses, newCompanyId, {languageCode, session, logger}),
             parentCompany: company._id,
+            // The platform owner grants further modules (PUT /api/platform/companies/modules/:id).
+            modules: ["core"],
             ...(publicAiChat ? {publicAiChat} : {}),
         } as any,
         { session, logger, languageCode, auditUserId: actionUserCtx.userId }
@@ -368,7 +372,7 @@ type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & Media
  * @returns Success message
  */
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, shopSlug, allowedDomains, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, shopSlug, allowedDomains, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -438,6 +442,9 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
             existingCompany.shopHost,
         );
         existingCompany.allowedDomains = nextDomains.length > 0 ? nextDomains : ["none.none.com"];
+    }
+    if (shopListedOnPortal !== undefined && sanitizedWriteFields.shopListedOnPortal) {
+        existingCompany.shopListedOnPortal = shopListedOnPortal;
     }
     if (publicAiChat !== undefined && sanitizedWriteFields.publicAiChat) {
         const nextPublicAiChat = {

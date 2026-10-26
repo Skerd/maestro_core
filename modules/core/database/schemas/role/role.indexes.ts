@@ -4,7 +4,7 @@ export function applyRoleIndexes(RoleSchema: Schema): void {
     // Primary field indexes
     RoleSchema.index({name: 1});
     RoleSchema.index({company: 1});
-    RoleSchema.index({slug: 1}, {unique: true});
+    RoleSchema.index({slug: 1});
 
     // Boolean flag indexes
     RoleSchema.index({isAdmin: 1});
@@ -21,7 +21,7 @@ export function applyRoleIndexes(RoleSchema: Schema): void {
     RoleSchema.index({company: 1, name: 1});
     RoleSchema.index({company: 1, isAdmin: 1});
     RoleSchema.index({company: 1, isSignupDefault: 1});
-    RoleSchema.index({company: 1, slug: 1});
+    RoleSchema.index({company: 1, slug: 1}, {unique: true}); // Slugs embed the company name, which is not unique
     RoleSchema.index({company: 1, permissions: 1});
     RoleSchema.index({isAdmin: 1, isSignupDefault: 1});
     RoleSchema.index({company: 1, isAdmin: 1, isSignupDefault: 1});

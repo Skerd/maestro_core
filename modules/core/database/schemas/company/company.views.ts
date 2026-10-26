@@ -316,7 +316,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
     {
         render: "#TitleWithCollapse",
         props: {title: "generalInfo"},
-        permissions: {writeAny: ["name", "shopSlug", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
+        permissions: {writeAny: ["name", "shopSlug", "shopListedOnPortal", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
         children: [
             {
                 render: "#FormGrid",
@@ -324,6 +324,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                 children: [
                     {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}, permissions: {read: "name", write: "name"}},
                     {render: "#Field", field: {name: "shopSlug", widget: "#Input", label: "form.shopSlugLabel", placeholder: "form.shopSlugPlaceholder"}, permissions: {read: "shopSlug", write: "shopSlug"}},
+                    {render: "#Field", field: {name: "shopListedOnPortal", widget: "#Switch", label: "form.shopListedOnPortalLabel"}, permissions: {read: "shopListedOnPortal", write: "shopListedOnPortal"}},
                     {render: "#Field", field: {name: "email", widget: "#Input", label: "form.emailLabel", placeholder: "form.emailPlaceholder", required: true}, permissions: {read: "email", write: "email"}},
                     {
                         render: "#Field",

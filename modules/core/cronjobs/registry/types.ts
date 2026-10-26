@@ -30,4 +30,6 @@ export type CronHandlerRegistration = {
     code: string;
     handler: CronHandlerFn;
     defaultJob: CronJobDefaults;
+    /** Owning module, stamped by loadAllCronHandlers. Jobs only run for companies that have it. */
+    module?: string;
 };
