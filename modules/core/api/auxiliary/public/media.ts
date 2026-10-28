@@ -5,7 +5,7 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {serveMedia} from "@coreModule/utilities/media/serveMedia";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
-import {isPlatformShopOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
+import {isPortalZoneOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 
 const router = Router();
 
@@ -25,8 +25,8 @@ async function servePublicMediaFile(
     const logger = getLogger("serve_public_media_file");
     const {languageCode, origin} = params;
 
-    // Platform apex lists every seller — public media must not be scoped to one Origin tenant.
-    if (isPlatformShopOrigin(origin)) {
+    // The portal zone shows every company's items (a cart spans sellers) — public media must not be scoped to one Origin tenant.
+    if (isPortalZoneOrigin(origin)) {
         return serveMedia({
             mediaId: queryParams.mediaId,
             req,

@@ -26,7 +26,7 @@ export async function createSmtpServers(
             authType: "login" as const,
             username: "noreply@example.test",
             fromEmail: "noreply@example.test",
-            fromName: "Pronix Demo",
+            fromName: "Arpeggio Demo",
             company: company._id,
             createdBy: company.createdBy,
         };

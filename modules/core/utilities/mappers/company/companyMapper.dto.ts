@@ -44,17 +44,17 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
         instagram: company.instagram,
         facebook: company.facebook,
         vat: company.vat,
-        shopSlug: company.shopSlug,
-        shopHost: company.shopHost,
-        shopProvision: company.shopProvision
+        siteSlug: company.siteSlug,
+        siteHost: company.siteHost,
+        siteProvision: company.siteProvision
             ? {
-                status: company.shopProvision.status,
-                checkedAt: company.shopProvision.checkedAt?.toISOString(),
-                lastError: company.shopProvision.lastError,
+                status: company.siteProvision.status,
+                checkedAt: company.siteProvision.checkedAt?.toISOString(),
+                lastError: company.siteProvision.lastError,
                 steps: {
-                    slug: company.shopProvision.steps?.slug ?? false,
-                    domain: company.shopProvision.steps?.domain ?? false,
-                    reachable: company.shopProvision.steps?.reachable ?? false,
+                    slug: company.siteProvision.steps?.slug ?? false,
+                    domain: company.siteProvision.steps?.domain ?? false,
+                    reachable: company.siteProvision.steps?.reachable ?? false,
                 },
             }
             : undefined,

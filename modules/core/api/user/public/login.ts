@@ -49,7 +49,7 @@ import fs from "fs";
 import jwt from "jsonwebtoken";
 import path from "path";
 import {ObjectId} from "mongodb";
-import {isPortalOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
+import {isPortalZoneOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 import type {ClientSession} from "mongoose";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
@@ -88,8 +88,8 @@ function oauthRedirectUri(origin: string | undefined, platform: "google" | "appl
     if (!originHost || originHost === coreHost) {
         return configured ?? "";
     }
-    const shopHost = clientHostFor("shop");
-    const mapped = hostOnly(shopHost) === originHost ? shopHost : "";
+    const portalHost = clientHostFor("portal");
+    const mapped = hostOnly(portalHost) === originHost ? portalHost : "";
     const base = originBaseUrl(origin, mapped);
     return base ? `${base}/login/${platform}` : (configured ?? "");
 }
@@ -123,8 +123,8 @@ router.post(
     asyncHandler(Login)
 );
 /**
- * The company a sign-in is for. On the portal, accounts sign in to the platform owner only
- * (portal accounts belong to it). Elsewhere a company that lists the origin wins over one
+ * The company a sign-in is for. In the portal zone (apex and company sites), accounts sign in
+ * to the platform owner only (portal accounts belong to it). Elsewhere a company that lists the origin wins over one
  * that accepts any origin ("*"); a single $or query returned whichever Mongo read first.
  */
 async function findLoginCompany(
@@ -132,7 +132,7 @@ async function findLoginCompany(
     origin: string,
     opts: { session: ClientSession; logger: serverLogger; languageCode: string },
 ): Promise<ICompany> {
-    if (isPortalOrigin(origin)) {
+    if (isPortalZoneOrigin(origin)) {
         return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, isPlatformOwner: true }, opts);
     }
     return await companyService.findOne({ _id: { $in: companyIds }, isActive: true, allowedDomains: origin }, opts)

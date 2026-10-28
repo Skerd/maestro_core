@@ -7,7 +7,8 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {dateToISOString, mapMedia, mapSnippet, objectIdToString} from "@coreModule/utilities/mappers/common.mapper";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
 import {publicMediaUrl, publicMediaUrls} from "@coreModule/utilities/media/publicMediaUrl";
-import {isPlatformShopOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
+import {isPortalApexOrigin} from "@coreModule/utilities/marketing/portalOrigin";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import Company from "@coreModule/database/schemas/company/company";
 import {blogPostService} from "@coreModule/database/schemas/blogPost/blogPost.service";
 import {blogCategoryService} from "@coreModule/database/schemas/blogCategory/blogCategory.service";
@@ -34,7 +35,7 @@ const POST_POPULATE = [
     "imageGallery",
     "category",
     "createdBy",
-    {path: "company", select: "name logo shopSlug shopHost"},
+    {path: "company", select: "name logo siteSlug siteHost"},
 ] as const;
 
 const router = Router();
@@ -70,16 +71,16 @@ function mapPublicSeller(company: unknown): PublicBlogSeller | undefined {
         _id: ObjectId;
         name?: unknown;
         logo?: unknown;
-        shopSlug?: unknown;
-        shopHost?: unknown;
+        siteSlug?: unknown;
+        siteHost?: unknown;
     };
     const name = typeof row.name === "string" ? row.name.trim() : "";
     if (!name) return undefined;
     const seller: PublicBlogSeller = {_id: objectIdToString(row._id), name};
     const logo = mapMedia(row.logo);
     if (logo?._id) seller.logo = logo._id;
-    if (typeof row.shopSlug === "string" && row.shopSlug.trim()) seller.shopSlug = row.shopSlug.trim();
-    if (typeof row.shopHost === "string" && row.shopHost.trim()) seller.shopHost = row.shopHost.trim();
+    if (typeof row.siteSlug === "string" && row.siteSlug.trim()) seller.siteSlug = row.siteSlug.trim();
+    if (typeof row.siteHost === "string" && row.siteHost.trim()) seller.siteHost = row.siteHost.trim();
     return seller;
 }
 
@@ -129,6 +130,23 @@ router.post(
     asyncHandler(publicBlogSingle),
 );
 
+/**
+ * The apex with no named company spans every active company. A company host, or an apex
+ * page that names one company (`x-site-company`), is that company only.
+ */
+async function publicBlogCompanyFilter(origin: string, languageCode: string): Promise<Record<string, unknown>> {
+    if (blogSpansCompanies(origin)) {
+        const ids = (await Company.find({isActive: true}, {_id: 1}).noDeleted().lean()).map((row) => row._id);
+        return {company: {$in: ids}};
+    }
+    const company = await resolveCompanyByOrigin(origin, languageCode);
+    return {company: company._id};
+}
+
+function blogSpansCompanies(origin: string): boolean {
+    return isPortalApexOrigin(origin) && !requestContext.getStore()?.siteCompany;
+}
+
 /** Collapse same slug across sellers so platform chips stay unique. */
 function dedupeCategoriesBySlug(categories: IBlogCategory[]): IBlogCategory[] {
     const seen = new Set<string>();
@@ -146,22 +164,14 @@ async function listPublicBlog(params: PublicBlogParams): Promise<PublicBlogFormR
     const {origin, languageCode, logger, categorySlug, limit, page = 1} = params;
     logger.start("Loading public blog posts...");
 
-    const platform = isPlatformShopOrigin(origin);
-    const company = platform ? null : await resolveCompanyByOrigin(origin, languageCode);
-    const companyFilter: Record<string, unknown> = company
-        ? {company: company._id}
-        : {
-              company: {
-                  $in: (await Company.find({isActive: true}, {_id: 1}).noDeleted().lean()).map((row) => row._id),
-              },
-          };
+    const companyFilter = await publicBlogCompanyFilter(origin, languageCode);
     const categories = await blogCategoryService.find(
         companyFilter,
         {logger, languageCode},
         undefined,
         undefined,
         {name: 1},
-        platform ? 500 : 100,
+        blogSpansCompanies(origin) ? 500 : 100,
     );
 
     const postFilter: Record<string, unknown> = {published: true, ...companyFilter};
@@ -208,18 +218,9 @@ async function publicBlogSingle(params: PublicBlogSingleParams): Promise<PublicB
     const {origin, languageCode, logger, slug} = params;
     logger.start(`Loading public blog post [${slug}]...`);
 
-    const platform = isPlatformShopOrigin(origin);
-    const filter: Record<string, unknown> = {slug, published: true};
-    if (!platform) {
-        const company = await resolveCompanyByOrigin(origin, languageCode);
-        filter.company = company._id;
-    } else {
-        filter.company = {
-            $in: (await Company.find({isActive: true}, {_id: 1}).noDeleted().lean()).map((row) => row._id),
-        };
-    }
+    const filter: Record<string, unknown> = {slug, published: true, ...await publicBlogCompanyFilter(origin, languageCode)};
 
-    if (platform) {
+    if (blogSpansCompanies(origin)) {
         const matches = await blogPostService.find(
             filter,
             {logger, languageCode},

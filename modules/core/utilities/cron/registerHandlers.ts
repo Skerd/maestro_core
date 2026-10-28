@@ -8,6 +8,7 @@
 import {registerCronHandler} from "@coreModule/cronjobs/registry/handlerRegistry";
 import {runPublicChatRetention} from "@coreModule/utilities/cronJobs/publicChatRetentionJob";
 import {runOrphanUploadCleanup} from "@coreModule/utilities/cronJobs/orphanUploadCleanupJob";
+import {runSiteHostProbe} from "@coreModule/utilities/cronJobs/siteHostProbeJob";
 
 export function registerCorePlatformCronHandlers(): void {
     registerCronHandler({
@@ -37,6 +38,19 @@ export function registerCorePlatformCronHandlers(): void {
             cronExpression: "0 0 4 * * *",
             priority: 40,
             timeoutSeconds: 1800,
+        },
+    });
+
+    registerCronHandler({
+        code: "core.siteHostProbe",
+        handler: async ctx => {
+            await runSiteHostProbe(ctx);
+        },
+        defaultJob: {
+            // Stops probing once the site answers as this company.
+            name: "Site host probe",
+            cronExpression: "0 */1 * * * *",
+            priority: 15,
         },
     });
 }

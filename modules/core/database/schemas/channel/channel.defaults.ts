@@ -30,7 +30,7 @@ export async function createChannels(
         const owner = users.find((u) => u.username === "echo@echo.com") ?? users[0];
         const payload = {
             name: CORE_DEMO_CHANNEL_NAME,
-            description: "Internal Pronix ops chat (demo).",
+            description: "Internal Arpeggio ops chat (demo).",
             users: users.map((u) => u._id),
             owner: owner._id,
             adminUsers: [owner._id],

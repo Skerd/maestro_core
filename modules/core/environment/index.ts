@@ -223,24 +223,17 @@ export const CLIENT_SIDE = {
     URLS: parseSinfoniaClientUrls(process.env.SINFONIA_CLIENT_URLS),
 };
 
-/** Zone for company shops (`{slug}.arpeggio.al`). Empty in local dev without a public zone. */
-export const SHOP_ROOT_DOMAIN = (process.env.SHOP_ROOT_DOMAIN || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/^\*\./, "")
-    .replace(/\.$/, "");
-
 /**
- * Host of the central portal that lists every eligible company's shop, clinics, rentals and
- * properties (`portal.arpeggio.al`). Empty = no portal on this deployment.
+ * Apex of the portal zone (`arpeggio.al`): the apex lists every eligible company's shop,
+ * clinics, rentals and properties, and `{siteSlug}.{root}` is one company's own site.
+ * Empty = no portal on this deployment.
  */
 export const PORTAL_ROOT_DOMAIN = (process.env.PORTAL_ROOT_DOMAIN || "")
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/.*$/, "")
+    .replace(/^\*\./, "")
     .replace(/\.$/, "");
 
 /** Browser origin for a deployed Sinfonia app. Falls back to CLIENT_HOST (core/panel). */

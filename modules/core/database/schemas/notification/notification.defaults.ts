@@ -17,7 +17,7 @@ const DEMO_NOTIFICATIONS: readonly {
 }[] = [
     {
         code: "core-demo-seed:welcome",
-        description: "Welcome to Pronix — demo data is ready.",
+        description: "Welcome to Arpeggio — demo data is ready.",
         receiver: "echo@echo.com",
         importance: NotificationImportance.NORMAL,
         status: NotificationStatus.Success,

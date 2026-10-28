@@ -15,7 +15,15 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {companyModuleClause, isModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
 import Company from "@coreModule/database/schemas/company/company";
 import {publicMediaUrl} from "@coreModule/utilities/media/publicMediaUrl";
-import type {PortalCompanyCard} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
+import {clientHostFor} from "@coreModule/environment";
+import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
+import {CitySimpleSnippet} from "@coreModule/database/schemas/city/city.snippets";
+import {StateSimpleSnippet} from "@coreModule/database/schemas/state/state.snippets";
+import {CountrySimpleSnippet} from "@coreModule/database/schemas/country/country.snippets";
+import type {CitySimple} from "armonia/src/modules/core/dto/city.dto";
+import type {StateSimple} from "armonia/src/modules/core/dto/state.dto";
+import type {CountrySimple} from "armonia/src/modules/core/dto/country.dto";
+import type {PortalCompany, PortalCompanyAddress, PortalCompanyCard} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
 import type {Model} from "mongoose";
 
 /** Mongo clause for companies the portal may list for `moduleName`. */
@@ -40,14 +48,75 @@ export async function findPlatformCompany(languageCode: string): Promise<ICompan
     return company;
 }
 
+function trimmed(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const text = value.trim();
+    return text.length > 0 ? text : undefined;
+}
+
+function companyAddresses(addresses: ICompany["addresses"]): PortalCompanyAddress[] | undefined {
+    if (!addresses?.length) return undefined;
+    return addresses.map((address) => {
+        const street = trimmed(address.street);
+        const postalCode = trimmed(address.postalCode);
+        const city = mapSnippet<CitySimple>()(address.city, CitySimpleSnippet);
+        const state = mapSnippet<StateSimple>()(address.state, StateSimpleSnippet);
+        const country = mapSnippet<CountrySimple>()(address.country, CountrySimpleSnippet);
+        const item: PortalCompanyAddress = {};
+        if (street) item.street = street;
+        if (postalCode) item.postalCode = postalCode;
+        if (city) item.city = city;
+        if (state) item.state = state;
+        if (country) item.country = country;
+        if (address.latitude !== undefined) item.latitude = address.latitude;
+        if (address.longitude !== undefined) item.longitude = address.longitude;
+        return item;
+    });
+}
+
+/** Public fields of a company, the same set the shop footer shows for a tenant. */
+function mapPortalCompany(company: ICompany): PortalCompany {
+    const profile: PortalCompany = {name: company.name};
+    const logo = publicMediaUrl(company.logo);
+    const email = trimmed(company.email);
+    const phoneNumber = trimmed(company.phoneNumber);
+    const vat = trimmed(company.vat);
+    const website = trimmed(company.website);
+    const linkedin = trimmed(company.linkedin);
+    const instagram = trimmed(company.instagram);
+    const facebook = trimmed(company.facebook);
+    const addresses = companyAddresses(company.addresses);
+    if (logo) profile.logo = logo;
+    if (email) profile.email = email;
+    if (phoneNumber) profile.phoneNumber = phoneNumber;
+    if (vat) profile.vat = vat;
+    if (website) profile.website = website;
+    if (linkedin) profile.linkedin = linkedin;
+    if (instagram) profile.instagram = instagram;
+    if (facebook) profile.facebook = facebook;
+    if (addresses) profile.addresses = addresses;
+    return profile;
+}
+
+/** A company's public profile, for the portal chrome. */
+export async function portalCompanyProfile(company: ICompany): Promise<PortalCompany> {
+    await company.populate([
+        {path: "addresses.city", select: "name"},
+        {path: "addresses.state", select: "name code"},
+        {path: "addresses.country", select: "name code phoneCode"},
+    ]);
+    return mapPortalCompany(company);
+}
+
 /**
- * The company a portal page is about (`x-site-company`: its shop slug, or its id), only
- * while it may be listed for `moduleName`. Anything else reads as not found.
+ * The company a portal page is about, named by its site host (`{slug}.{root}`) or by
+ * `x-site-company` on the apex (its site slug, or its id), only while it is eligible for
+ * `moduleName`. Anything else reads as not found.
  */
 export async function findPortalSiteCompany(site: string, moduleName: string, languageCode: string): Promise<ICompany> {
     const slug = site.trim().toLowerCase();
     const company = await companyService.findOne(
-        ObjectId.isValid(site) ? {$or: [{shopSlug: slug}, {_id: new ObjectId(site)}]} : {shopSlug: slug},
+        ObjectId.isValid(site) ? {$or: [{siteSlug: slug}, {_id: new ObjectId(site)}]} : {siteSlug: slug},
     );
     if (!company || !isPortalListable(company, moduleName)) {
         throw apiValidationException("portal_company_not_listed", "", null, languageCode);
@@ -55,9 +124,16 @@ export async function findPortalSiteCompany(site: string, moduleName: string, la
     return company;
 }
 
-/** How the portal addresses a company: its shop slug, else its id. */
-export function portalSlug(company: {_id: ObjectId; shopSlug?: string | null}): string {
-    return company.shopSlug || company._id.toString();
+/** How the portal addresses a company: its site slug, else its id. */
+export function portalSlug(company: {_id: ObjectId; siteSlug?: string | null}): string {
+    return company.siteSlug || company._id.toString();
+}
+
+/** A page on the company's own site: the portal's client URL with the company's host label (keeps scheme and dev port). */
+export function companySiteUrl(company: {_id: ObjectId; siteSlug?: string | null}, path: string): string {
+    const url = new URL(clientHostFor("portal"));
+    url.hostname = `${portalSlug(company)}.${url.hostname}`;
+    return `${url.origin}${path}`;
 }
 
 /** Cards for `companyIds`, sorted by name. */
@@ -66,9 +142,9 @@ export async function portalCompanyCards(
     citiesByCompany: Map<string, string[]>,
 ): Promise<PortalCompanyCard[]> {
     const companies = await Company.find({_id: {$in: companyIds}})
-        .select("_id name shopSlug logo description")
+        .select("_id name siteSlug logo description")
         .sort({name: 1})
-        .lean<{_id: ObjectId; name: string; shopSlug?: string; logo?: ObjectId; description?: string}[]>();
+        .lean<{_id: ObjectId; name: string; siteSlug?: string; logo?: ObjectId; description?: string}[]>();
     return companies.map((company) => ({
         _id: company._id.toString(),
         name: company.name,
@@ -99,18 +175,29 @@ export async function addressCitiesByCompany(
     return new Map([...cities].map(([key, names]) => [key, [...names].sort()]));
 }
 
+/** Whom a portal section answers for: every listed company (the apex) or one company's own site. */
+export type PortalScope = {companyId?: ObjectId};
+
 /**
- * Companies a portal section lists: eligible for `moduleName` and opted in, either through
- * the module's config document (`configModel` + `configFilter`, e.g. `listedOnPortal`) or a
- * company field (`companyFilter`).
+ * Companies a portal section shows in `scope`: eligible for `moduleName` and meeting the module's
+ * own site rule (`configModel` + `configFilter`, e.g. `publicBookingEnabled`). On the apex they
+ * must also have opted in to the listing, on their config (`listedOn`) or company (`companyListedOn`).
  */
 export async function portalListedCompanyIds(
     moduleName: string,
-    optIn: {configModel?: Model<any>; configFilter?: Record<string, unknown>; companyFilter?: Record<string, unknown>},
+    rule: {
+        configModel?: Model<any>;
+        configFilter?: Record<string, unknown>;
+        listedOn?: Record<string, unknown>;
+        companyListedOn?: Record<string, unknown>;
+    },
+    scope: PortalScope,
 ): Promise<ObjectId[]> {
-    const filter: Record<string, unknown> = {...portalCompanyClause(moduleName), ...optIn.companyFilter};
-    if (optIn.configModel) {
-        const configs = await optIn.configModel.find({deletedAt: null, ...optIn.configFilter}).select("company").lean<{company: ObjectId}[]>();
+    const apex = !scope.companyId;
+    const filter: Record<string, unknown> = {...portalCompanyClause(moduleName), ...(apex ? rule.companyListedOn : {_id: scope.companyId})};
+    if (rule.configModel) {
+        const configs = await rule.configModel.find({deletedAt: null, ...rule.configFilter, ...(apex ? rule.listedOn : {company: scope.companyId})})
+            .select("company").lean<{company: ObjectId}[]>();
         filter._id = {$in: configs.map((config) => config.company)};
     }
     const companies = await Company.find(filter).select("_id").lean<{_id: ObjectId}[]>();
@@ -119,7 +206,7 @@ export async function portalListedCompanyIds(
 
 /** Name and portal slug per company id, for labelling search hits. */
 export async function portalCompanyRefs(companyIds: ObjectId[]): Promise<Map<string, {name: string; slug: string}>> {
-    const companies = await Company.find({_id: {$in: companyIds}}).select("_id name shopSlug").lean<{_id: ObjectId; name: string; shopSlug?: string}[]>();
+    const companies = await Company.find({_id: {$in: companyIds}}).select("_id name siteSlug").lean<{_id: ObjectId; name: string; siteSlug?: string}[]>();
     return new Map(companies.map((company) => [company._id.toString(), {name: company.name, slug: portalSlug(company)}]));
 }
 

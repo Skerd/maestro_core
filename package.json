@@ -36,6 +36,7 @@
     "migrate:sync-ecommerce-indexes": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/syncECommerceIndexes.ts",
     "migrate:order-reservations": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/moveReservationsToOrders.ts",
     "migrate:sync-company-default-roles": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/syncCompanyDefaultRoles.ts",
+    "sync:demo-companies": "ts-node --transpile-only -r tsconfig-paths/register scripts/syncDemoCompanies.ts",
     "migrate:backfill-company-modules": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/backfillCompanyModules.ts",
     "resync:role-permissions": "ts-node --transpile-only -r tsconfig-paths/register scripts/migrations/resyncRolePermissions.ts --execute",
     "kafka:replay-dlq": "ts-node --transpile-only -r tsconfig-paths/register scripts/replayKafkaDeadLetters.ts",

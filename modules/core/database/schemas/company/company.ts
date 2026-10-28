@@ -44,10 +44,10 @@ import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import {
-    SHOP_PROVISION_STATUSES,
-    SHOP_SLUG_MAX,
-    type ShopProvisionStatus,
-} from "armonia/src/modules/core/api/company/private/company/shopSlug";
+    SITE_PROVISION_STATUSES,
+    SITE_SLUG_MAX,
+    type SiteProvisionStatus,
+} from "armonia/src/modules/core/api/company/private/company/siteSlug";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {closeCompanyModules, effectiveCompanyModules, invalidateCompanyModules} from "@coreModule/utilities/modules/companyModules";
 
@@ -88,10 +88,10 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     instagram?: string;
     facebook?: string;
     vat: string;
-    shopSlug?: string;
-    shopHost?: string;
-    shopProvision?: {
-        status: ShopProvisionStatus;
+    siteSlug?: string;
+    siteHost?: string;
+    siteProvision?: {
+        status: SiteProvisionStatus;
         checkedAt?: Date;
         lastError?: string;
         steps: {
@@ -245,13 +245,13 @@ const CompanySchema: Schema = new Schema(
             required: true,
             unique: true
         },
-        shopSlug: {
+        siteSlug: {
             type: SchemaTypes.String,
             trim: true,
             lowercase: true,
-            maxlength: SHOP_SLUG_MAX,
+            maxlength: SITE_SLUG_MAX,
         },
-        shopHost: {
+        siteHost: {
             type: SchemaTypes.String,
             trim: true,
             lowercase: true,
@@ -260,11 +260,11 @@ const CompanySchema: Schema = new Schema(
                 others: {write: "no-permission"},
             },
         },
-        shopProvision: {
+        siteProvision: {
             type: {
                 status: {
                     type: SchemaTypes.String,
-                    enum: SHOP_PROVISION_STATUSES,
+                    enum: SITE_PROVISION_STATUSES,
                 },
                 checkedAt: {
                     type: SchemaTypes.Date,

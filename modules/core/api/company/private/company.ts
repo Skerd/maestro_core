@@ -39,9 +39,9 @@ import {
     CreateCompanyFormType,
     EditCompanyFormType
 } from "armonia/src/modules/core/api/company/private/company/company.schema-def";
-import {resolveShopSlug} from "armonia/src/modules/core/api/company/private/company/shopSlug";
-import {SHOP_ROOT_DOMAIN} from "@coreModule/environment";
-import {buildShopHostAssignment, mergeShopAllowedDomains} from "@coreModule/utilities/company/shopHost";
+import {resolveSiteSlug} from "armonia/src/modules/core/api/company/private/company/siteSlug";
+import {PORTAL_ROOT_DOMAIN} from "@coreModule/environment";
+import {buildSiteHostAssignment} from "@coreModule/utilities/company/siteHost";
 import type {FilterQuery} from "mongoose";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
 
@@ -62,29 +62,29 @@ import type {ICompany} from "@coreModule/database/schemas/company/company";
  */
 const router = Router();
 
-const SHOP_SLUG_ERRORS = {
-    empty: "company_shop_slug_empty",
-    invalid: "company_shop_slug_invalid",
-    reserved: "company_shop_slug_reserved",
+const SITE_SLUG_ERRORS = {
+    empty: "company_site_slug_empty",
+    invalid: "company_site_slug_invalid",
+    reserved: "company_site_slug_reserved",
 } as const;
 
 function trimDomains(domains: string[] | undefined): string[] {
     return (domains ?? []).map((domain) => domain.trim()).filter((domain) => domain !== "");
 }
 
-async function assertShopSlugAvailable(
+async function assertSiteSlugAvailable(
     slug: string,
     languageCode: string,
     ctx: {session: any; logger: any},
     excludeId?: ObjectId,
 ): Promise<void> {
-    const filter: FilterQuery<ICompany> = {shopSlug: slug};
+    const filter: FilterQuery<ICompany> = {siteSlug: slug};
     if (excludeId) {
         filter._id = {$ne: excludeId};
     }
     const taken = await companyService.findOne(filter, {session: ctx.session, logger: ctx.logger, languageCode});
     if (taken) {
-        throw apiValidationException("company_shop_slug_taken", "shopSlug", [slug], languageCode);
+        throw apiValidationException("company_site_slug_taken", "siteSlug", [slug], languageCode);
     }
 }
 
@@ -273,7 +273,7 @@ type CreateNewCompanyType = TransactionRequiredParams & CreateCompanyFormType & 
  * @remarks Validates VAT uniqueness; creates addresses if provided; adds to userInfo.companies/roles/finance
  */
 async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, shopSlug, allowedDomains, publicAiChat, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
+    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, allowedDomains, publicAiChat, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
 
     logger.start(`Trying to create new company...`);
 
@@ -286,17 +286,15 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
         throw apiValidationException("company_exists_with_same_vat", null, null, languageCode);
     }
 
-    const resolvedSlug = resolveShopSlug(name, shopSlug);
+    const resolvedSlug = resolveSiteSlug(name, siteSlug);
     if (!resolvedSlug.ok) {
-        throw apiValidationException(SHOP_SLUG_ERRORS[resolvedSlug.error], "shopSlug", [shopSlug ?? ""], languageCode);
+        //@ts-expect-error
+        throw apiValidationException(SITE_SLUG_ERRORS[resolvedSlug.error], "siteSlug", [siteSlug ?? ""], languageCode);
     }
-    await assertShopSlugAvailable(resolvedSlug.slug, languageCode, {session, logger});
+    await assertSiteSlugAvailable(resolvedSlug.slug, languageCode, {session, logger});
 
-    const shopHostAssignment = buildShopHostAssignment({
-        shopSlug: resolvedSlug.slug,
-        allowedDomains: trimDomains(allowedDomains),
-        rootDomain: SHOP_ROOT_DOMAIN,
-    });
+    const siteHostAssignment = buildSiteHostAssignment({siteSlug: resolvedSlug.slug, rootDomain: PORTAL_ROOT_DOMAIN});
+    const domains = trimDomains(allowedDomains);
 
     const newCompanyId = new ObjectId();
     await companyService.create(
@@ -313,10 +311,10 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
             facebook,
             vat,
             company: company._id,
-            shopSlug: shopHostAssignment.shopSlug,
-            shopHost: shopHostAssignment.shopHost,
-            shopProvision: shopHostAssignment.shopProvision,
-            allowedDomains: shopHostAssignment.allowedDomains.length > 0 ? shopHostAssignment.allowedDomains : ["none.none.com"],
+            siteSlug: siteHostAssignment.siteSlug,
+            siteHost: siteHostAssignment.siteHost,
+            siteProvision: siteHostAssignment.siteProvision,
+            allowedDomains: domains.length > 0 ? domains : ["none.none.com"],
             addresses: await validateAndMapAddresses(addresses, newCompanyId, {languageCode, session, logger}),
             parentCompany: company._id,
             // The platform owner grants further modules (PUT /api/platform/companies/modules/:id).
@@ -372,7 +370,7 @@ type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & Media
  * @returns Success message
  */
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, shopSlug, allowedDomains, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, allowedDomains, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -412,35 +410,24 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     if (instagram !== undefined && sanitizedWriteFields.instagram) existingCompany.instagram = instagram;
     if (facebook !== undefined && sanitizedWriteFields.facebook) existingCompany.facebook = facebook;
     if (vat && sanitizedWriteFields.vat) existingCompany.vat = vat;
-    if (sanitizedWriteFields.shopSlug) {
+    if (sanitizedWriteFields.siteSlug) {
         const nameForSlug = sanitizedWriteFields.name && name ? name : existingCompany.name;
-        const resolvedSlug = resolveShopSlug(nameForSlug, shopSlug);
+        const resolvedSlug = resolveSiteSlug(nameForSlug, siteSlug);
         if (!resolvedSlug.ok) {
-            throw apiValidationException(SHOP_SLUG_ERRORS[resolvedSlug.error], "shopSlug", [shopSlug ?? ""], languageCode);
+            //@ts-expect-error
+            throw apiValidationException(SITE_SLUG_ERRORS[resolvedSlug.error], "siteSlug", [siteSlug ?? ""], languageCode);
         }
-        if (resolvedSlug.slug !== existingCompany.shopSlug) {
-            await assertShopSlugAvailable(resolvedSlug.slug, languageCode, {session, logger}, existingCompany._id);
+        if (resolvedSlug.slug !== existingCompany.siteSlug) {
+            await assertSiteSlugAvailable(resolvedSlug.slug, languageCode, {session, logger}, existingCompany._id);
         }
-        const shopHostAssignment = buildShopHostAssignment({
-            shopSlug: resolvedSlug.slug,
-            allowedDomains: sanitizedWriteFields.allowedDomains
-                ? trimDomains(allowedDomains)
-                : (existingCompany.allowedDomains ?? []),
-            rootDomain: SHOP_ROOT_DOMAIN,
-            previousHost: existingCompany.shopHost,
-        });
-        existingCompany.shopSlug = shopHostAssignment.shopSlug;
-        existingCompany.shopHost = shopHostAssignment.shopHost;
-        existingCompany.shopProvision = shopHostAssignment.shopProvision;
-        existingCompany.markModified("shopProvision");
-        existingCompany.allowedDomains = shopHostAssignment.allowedDomains.length > 0
-            ? shopHostAssignment.allowedDomains
-            : ["none.none.com"];
-    } else if (allowedDomains && sanitizedWriteFields.allowedDomains) {
-        const nextDomains = mergeShopAllowedDomains(
-            trimDomains(allowedDomains),
-            existingCompany.shopHost,
-        );
+        const siteHostAssignment = buildSiteHostAssignment({siteSlug: resolvedSlug.slug, rootDomain: PORTAL_ROOT_DOMAIN});
+        existingCompany.siteSlug = siteHostAssignment.siteSlug;
+        existingCompany.siteHost = siteHostAssignment.siteHost;
+        existingCompany.siteProvision = siteHostAssignment.siteProvision;
+        existingCompany.markModified("siteProvision");
+    }
+    if (allowedDomains && sanitizedWriteFields.allowedDomains) {
+        const nextDomains = trimDomains(allowedDomains);
         existingCompany.allowedDomains = nextDomains.length > 0 ? nextDomains : ["none.none.com"];
     }
     if (shopListedOnPortal !== undefined && sanitizedWriteFields.shopListedOnPortal) {

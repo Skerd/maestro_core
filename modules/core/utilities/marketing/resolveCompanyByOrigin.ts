@@ -19,7 +19,7 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {assertModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
-import {isPortalOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
+import {isPortalApexOrigin, isPortalZoneOrigin, portalSiteSlug} from "@coreModule/utilities/marketing/portalOrigin";
 import {findPlatformCompany, findPortalSiteCompany} from "@coreModule/utilities/marketing/portalCompanies";
 
 /**
@@ -32,9 +32,9 @@ import {findPlatformCompany, findPortalSiteCompany} from "@coreModule/utilities/
  * The company must have the module whose router is handling the request, so a
  * module's public site stops answering for a company that lost the module.
  *
- * On the portal origin the host names no company: the page's company comes from
- * `x-site-company` and must be listable on the portal; without it, the platform
- * owner is the tenant (portal accounts belong to it).
+ * In the portal zone a company site names its company in the host (`{siteSlug}.{root}`), and
+ * an apex page about one company names it in `x-site-company`; either way it must be
+ * eligible for the portal. The apex itself is the platform owner (portal accounts belong to it).
  *
  * @throws when neither a domain match nor a wildcard company exists, or the
  * company does not have the route's module.
@@ -44,11 +44,12 @@ export async function resolveCompanyByOrigin(
     languageCode: string,
 ): Promise<ICompany> {
     const routeModule = requestContext.getStore()?.routeModule;
-    const site = requestContext.getStore()?.siteCompany;
-    if (isPortalOrigin(origin) && site) {
+    const site = portalSiteSlug(origin)
+        ?? (isPortalApexOrigin(origin) ? requestContext.getStore()?.siteCompany : undefined);
+    if (site) {
         return findPortalSiteCompany(site, routeModule ?? "core", languageCode);
     }
-    const company = isPortalOrigin(origin)
+    const company = isPortalApexOrigin(origin)
         ? await findPlatformCompany(languageCode)
         : await findCompanyByOrigin(origin, languageCode);
     if (routeModule) {
@@ -82,8 +83,8 @@ async function findCompanyByOrigin(origin: string, languageCode: string): Promis
 /**
  * Company a public signup should join: the origin tenant when one exists,
  * otherwise the company flagged `isDefaultForSignUp`. Accounts belong to the
- * company regardless of modules, so the route's module is not checked. Portal
- * accounts always belong to the platform owner.
+ * company regardless of modules, so the route's module is not checked. Accounts made
+ * anywhere in the portal zone belong to the platform owner.
  */
 export async function resolveSignupCompany(
     origin: string,
@@ -91,7 +92,7 @@ export async function resolveSignupCompany(
     options: {session?: ClientSession | null; logger?: serverLogger} = {},
 ): Promise<ICompany> {
     try {
-        return isPortalOrigin(origin)
+        return isPortalZoneOrigin(origin)
             ? await findPlatformCompany(languageCode)
             : await findCompanyByOrigin(origin, languageCode);
     } catch {

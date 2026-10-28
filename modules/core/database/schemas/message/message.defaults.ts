@@ -10,7 +10,7 @@ const DEMO_MESSAGES: readonly {from: string; to: string; text: string}[] = [
     {
         from: "echo@echo.com",
         to: "almir@leka.com",
-        text: "Welcome to the Pronix ops channel.\n\n[core-demo-seed:msg-01]",
+        text: "Welcome to the Arpeggio ops channel.\n\n[core-demo-seed:msg-01]",
     },
     {
         from: "almir@leka.com",

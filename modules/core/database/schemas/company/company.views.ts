@@ -57,8 +57,8 @@ export const companySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            permissions: {read: "shopSlug"},
-                            field: {name: "shopSlug", widget: "#DisplayCard", label: "shopSlug", widgetProps: {icon: "#Hash"}},
+                            permissions: {read: "siteSlug"},
+                            field: {name: "siteSlug", widget: "#DisplayCard", label: "siteSlug", widgetProps: {icon: "#Hash"}},
                         },
                         {
                             render: "#DisplayCard",
@@ -99,9 +99,9 @@ export const companySheetView: ViewConfig = {
         },
         {
             render: "#SheetGroup",
-            props: {title: "shopHost"},
-            // dependent: "shopHost",
-            permissions: {read: "shopHost"},
+            props: {title: "siteHost"},
+            // dependent: "siteHost",
+            permissions: {read: "siteHost"},
             children: [
                 {
                     render: "#SheetGrid",
@@ -109,27 +109,27 @@ export const companySheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            permissions: {read: "shopHost"},
-                            field: {name: "shopHost", widget: "#DisplayCard", label: "shopHost", widgetProps: {icon: "#World"}},
+                            permissions: {read: "siteHost"},
+                            field: {name: "siteHost", widget: "#DisplayCard", label: "siteHost", widgetProps: {icon: "#World"}},
                         },
                         {
                             render: "#DisplayCard",
-                            permissions: {read: "shopProvision"},
+                            permissions: {read: "siteProvision"},
                             field: {
-                                name: "shopProvision.status",
+                                name: "siteProvision.status",
                                 widget: "#DisplayCard",
-                                label: "shopStatus",
-                                widgetProps: {icon: "#CircleDot", languageKeyCategory: "shopHostStatus", type: "enum"},
+                                label: "siteStatus",
+                                widgetProps: {icon: "#CircleDot", languageKeyCategory: "siteHostStatus", type: "enum"},
                             },
                         },
                         {
                             render: "#DisplayCard",
-                            permissions: {read: "shopProvision"},
-                            dependent: "shopProvision.lastError",
+                            permissions: {read: "siteProvision"},
+                            dependent: "siteProvision.lastError",
                             field: {
-                                name: "shopProvision.lastError",
+                                name: "siteProvision.lastError",
                                 widget: "#DisplayCard",
-                                label: "shopHostLastError",
+                                label: "siteHostLastError",
                                 widgetProps: {icon: "#Hash"},
                             },
                         },
@@ -297,7 +297,7 @@ const companyFormCreateFields: ViewConfig["nodes"] = [
         props: {columns: 1, className: "px-1"},
         children: [
             {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}},
-            {render: "#Field", field: {name: "shopSlug", widget: "#Input", label: "form.shopSlugLabel", placeholder: "form.shopSlugPlaceholder"}},
+            {render: "#Field", field: {name: "siteSlug", widget: "#Input", label: "form.siteSlugLabel", placeholder: "form.siteSlugPlaceholder"}},
             {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder", required: true}},
             {
                 render: "#Field",
@@ -316,14 +316,14 @@ const companyFormEditFields: ViewConfig["nodes"] = [
     {
         render: "#TitleWithCollapse",
         props: {title: "generalInfo"},
-        permissions: {writeAny: ["name", "shopSlug", "shopListedOnPortal", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
+        permissions: {writeAny: ["name", "siteSlug", "shopListedOnPortal", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
         children: [
             {
                 render: "#FormGrid",
                 props: {columns: 2},
                 children: [
                     {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}, permissions: {read: "name", write: "name"}},
-                    {render: "#Field", field: {name: "shopSlug", widget: "#Input", label: "form.shopSlugLabel", placeholder: "form.shopSlugPlaceholder"}, permissions: {read: "shopSlug", write: "shopSlug"}},
+                    {render: "#Field", field: {name: "siteSlug", widget: "#Input", label: "form.siteSlugLabel", placeholder: "form.siteSlugPlaceholder"}, permissions: {read: "siteSlug", write: "siteSlug"}},
                     {render: "#Field", field: {name: "shopListedOnPortal", widget: "#Switch", label: "form.shopListedOnPortalLabel"}, permissions: {read: "shopListedOnPortal", write: "shopListedOnPortal"}},
                     {render: "#Field", field: {name: "email", widget: "#Input", label: "form.emailLabel", placeholder: "form.emailPlaceholder", required: true}, permissions: {read: "email", write: "email"}},
                     {

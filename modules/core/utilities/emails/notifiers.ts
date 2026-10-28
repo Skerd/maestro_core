@@ -73,7 +73,7 @@ function originBaseUrl(origin: string | undefined, mappedHost: string): string {
 
 /**
  * Public signup/forgot-password emails should deep-link into the SPA that
- * originated the request: the public app, another client (shop), or the panel.
+ * originated the request: the public app, another client (the portal, on any of its hosts), or the panel.
  */
 function resolveAuthLinkUrl(origin: string | undefined, publicPath: "activate" | "reset-password", code: string): string {
     const publicHost = clientHostFor("public");
@@ -87,8 +87,8 @@ function resolveAuthLinkUrl(origin: string | undefined, publicPath: "activate" |
     }
 
     if (originHost && originHost !== coreHostOnly) {
-        const shopHost = clientHostFor("shop");
-        const mapped = hostOnly(shopHost) === originHost ? shopHost : "";
+        const portalHost = clientHostFor("portal");
+        const mapped = hostOnly(portalHost) === originHost ? portalHost : "";
         return `${originBaseUrl(origin, mapped)}/${publicPath}/${code}`;
     }
 

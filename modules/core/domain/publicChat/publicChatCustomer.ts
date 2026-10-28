@@ -24,7 +24,7 @@ import {IUser} from "@coreModule/database/schemas/user/user";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
-import {isPortalOrigin} from "@coreModule/utilities/marketing/platformShopOrigin";
+import {isPortalZoneOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 
 export interface PublicChatCustomer {
@@ -66,8 +66,8 @@ export async function tryResolvePublicChatCustomer(params: {
 
 /**
  * The signed-in customer a public request may act as for `company`. Their session must be
- * for that company, or, on the portal only, for the platform owner (portal accounts
- * belong to it). Company sites never accept another company's accounts.
+ * for that company, or, in the portal zone only, for the platform owner (portal accounts
+ * belong to it). Sites outside the zone never accept another company's accounts.
  */
 export async function publicCustomerFor(
     customer: PublicChatCustomer | undefined,
@@ -76,21 +76,21 @@ export async function publicCustomerFor(
 ): Promise<IUser | undefined> {
     if (!customer) return undefined;
     if (customer.companyId.equals(company._id as ObjectId)) return customer.user;
-    if (!isPortalOrigin(origin)) return undefined;
+    if (!isPortalZoneOrigin(origin)) return undefined;
     const platformAccount = await companyService.findOne({_id: customer.companyId, isPlatformOwner: true, isActive: true});
     return platformAccount ? customer.user : undefined;
 }
 
 /**
- * The portal account behind a portal request: signed in, and belonging to the platform
- * owner. Anything else (another origin, no or a company account) is refused.
+ * The portal account behind a request in the portal zone: signed in, and belonging to the
+ * platform owner. Anything else (another origin, no or a company account) is refused.
  */
 export async function requirePortalAccount(
     customer: PublicChatCustomer | undefined,
     origin: string,
     languageCode: string,
 ): Promise<IUser> {
-    const platform = isPortalOrigin(origin) && customer
+    const platform = isPortalZoneOrigin(origin) && customer
         ? await companyService.findOne({_id: customer.companyId, isPlatformOwner: true, isActive: true})
         : null;
     if (!platform || !customer) {
