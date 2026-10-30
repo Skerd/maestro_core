@@ -89,12 +89,13 @@ async function assertSiteSlugAvailable(
 }
 
 async function validateAndMapAddresses(
-    addresses: any[],
+    addresses: any[] | undefined,
     companyId: ObjectId,
     ctx: {logger: any; languageCode: string; session: any},
 ): Promise<any[]> {
+    // `addresses` is optional on the form: none sent means none to store.
     return Promise.all(
-        addresses.map(async (addr) => {
+        (addresses ?? []).map(async (addr) => {
             const countryId = new ObjectId(addr.country);
             const stateId   = addr.state ? new ObjectId(addr.state) : undefined;
             const cityId    = new ObjectId(addr.city);
@@ -460,7 +461,8 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
         existingCompany.markModified("publicAiChat");
     }
 
-    if (sanitizedWriteFields.addresses) {
+    // Not sent: the addresses stay as they are.
+    if (sanitizedWriteFields.addresses && addresses !== undefined) {
         if( addresses.length > 0 ){
             existingCompany.addresses = await validateAndMapAddresses(addresses, company._id, {languageCode, session, logger});
         }

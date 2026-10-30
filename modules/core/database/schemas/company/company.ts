@@ -31,7 +31,9 @@ import {CountrySimpleSnippet} from "@coreModule/database/schemas/country/country
 import {CompanyBlankSnippet} from "./company.snippets";
 import {companyViews} from "./company.views";
 import {
+    DEFAULT_ROLE_SLUG_PATTERN,
     defaultRoleSlug,
+    groupDefaultRoles,
     getDefaultRolesForModules,
     resolveDefaultRolePermissionIds,
     roleHasPermissionPack,
@@ -421,15 +423,31 @@ CompanySchema.methods.createDefaultRoles = async function (parentLogger?: server
             logger.debug(`No default roles found`);
         }
         else {
-            const seededSlugs = seededRoles.map((role) => defaultRoleSlug(this.name, role));
             const definitionBySlug = new Map<string, DefaultRoleDefinition>(
                 seededRoles.map((role) => [defaultRoleSlug(this.name, role), role])
             );
 
-            let savedRoles = await Role.find({company: this._id, slug: {$in: seededSlugs}}).session(session ?? null);
-            let savedRolesSlugs = savedRoles.map((role) => role.slug);
-
-            let rolesToCreate = seededRoles.filter((role) => !savedRolesSlugs.includes(defaultRoleSlug(this.name, role)));
+            // Found by suffix: a role made under the company's former name is the same role, and
+            // takes the current name's slug instead of a second set being created.
+            const companyRoles = await Role.find({company: this._id, slug: DEFAULT_ROLE_SLUG_PATTERN})
+                .sort({createdAt: 1})
+                .session(session ?? null);
+            const savedRoles: typeof companyRoles = [];
+            const rolesToCreate: DefaultRoleDefinition[] = [];
+            for (const [definition, matches] of groupDefaultRoles(companyRoles, seededRoles)) {
+                const slug = defaultRoleSlug(this.name, definition);
+                const kept = matches.find((role) => role.slug === slug) ?? matches[0];
+                if (!kept) {
+                    rolesToCreate.push(definition);
+                    continue;
+                }
+                if (kept.slug !== slug) {
+                    logger.debug(`Role '${kept.slug}' follows the company's new name: '${slug}'`);
+                    kept.slug = slug;
+                    await kept.save({session});
+                }
+                savedRoles.push(kept);
+            }
 
             for (const savedRole of savedRoles) {
                 const definition = definitionBySlug.get(savedRole.slug);

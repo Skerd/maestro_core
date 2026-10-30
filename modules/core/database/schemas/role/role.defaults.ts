@@ -81,7 +81,27 @@ export function getDefaultRolesForModules(modules: string[]): DefaultRoleDefinit
 }
 
 export function defaultRoleSlug(companyName: string, role: DefaultRoleDefinition): string {
-    return companyName.toLowerCase() + (role.isAdmin ? ":reserved:" : ":default:") + role.slug;
+    return companyName.toLowerCase() + defaultRoleSuffix(role);
+}
+
+/** The part of a default role's slug that does not change when the company is renamed. */
+export function defaultRoleSuffix(role: DefaultRoleDefinition): string {
+    return (role.isAdmin ? ":reserved:" : ":default:") + role.slug;
+}
+
+/** Matches every slug a company's default roles may carry, whatever name the company had. */
+export const DEFAULT_ROLE_SLUG_PATTERN = /:(reserved|default):[^:]+$/;
+
+/**
+ * A company's saved default roles grouped by definition. The slug starts with the company's
+ * name at the time the role was made, so a renamed company's roles are found by suffix; more
+ * than one per definition means the company got a second set after a rename.
+ */
+export function groupDefaultRoles<T extends {slug?: string}>(roles: T[], definitions: DefaultRoleDefinition[]): Map<DefaultRoleDefinition, T[]> {
+    return new Map(definitions.map((definition) => {
+        const suffix = defaultRoleSuffix(definition);
+        return [definition, roles.filter((role) => role.slug?.endsWith(suffix))];
+    }));
 }
 
 export function roleHasPermissionPack(role: DefaultRoleDefinition): boolean {

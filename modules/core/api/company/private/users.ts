@@ -284,6 +284,8 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
             filter.isBot = { $ne: true };
         }
         else {
+            // Bots have no roles but are not customers either (same rule as the users list).
+            filter.isBot = { $ne: true };
             const rolesOr = [
                 { "roles.roles": { $in: findCorrectRoles } },
                 { "roles.roles": { $size: 0 } },
