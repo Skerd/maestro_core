@@ -14,6 +14,7 @@
 import {Router} from "express";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import {
     ValidateTokenFormResponseType
 } from "armonia/src/modules/core/api/user/public/validateToken/validateToken.form.response.type";
@@ -52,8 +53,8 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
         return {
             id: userInfo._id.toString(),
             username: userInfo.username,
-            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"]},
-            isPlatformAdmin: company.isPlatformOwner === true && actionUserCtx.isAdmin,
+            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company)},
+            isPlatformAdmin: isPlatformCompany(company) && actionUserCtx.isAdmin,
             email: userInfo.username,
             maxClearance: 0,
             name: userInfo.name,

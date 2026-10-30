@@ -15,6 +15,7 @@
 import {NextFunction, Request, Response, Router} from "express";
 import type {PermissionAction} from "mongoose";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {assertPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
 import {SERVER} from "@coreModule/environment";
@@ -52,9 +53,10 @@ const logger = getLogger("health_endpoint");
  */
 const LOCAL_FALLBACK_TTL_SECONDS = 1;
 
-/** Viewing needs read on server performance; acting on the servers needs write. */
+/** Platform company only; viewing needs read on server performance, acting on the servers needs write. */
 function assertCanAccessServerPerformance(req: Request, action: PermissionAction = "read"): void {
     const {actionUserCtx, languageCode} = req.body as AuthenticatedMWType;
+    assertPlatformCompany(req.body as AuthenticatedMWType);
     SchemaGuard.sanitizeFields(ServerPerformance1m, {count: {}}, action, actionUserCtx, languageCode);
 }
 

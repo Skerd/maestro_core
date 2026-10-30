@@ -17,6 +17,7 @@
 
 import {NextFunction, Request, Response, Router} from "express";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
+import {assertPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
 import {getLogger} from "@coreModule/loggers/serverLog";
@@ -43,6 +44,8 @@ type HistoricalWindow = "1h" | "24h" | "7d" | "30d";
 
 function assertCanReadServerPerformance(req: Request, model: typeof ServerPerformance1m | typeof ServerPerformance1h | typeof ServerPerformance1d): void {
     const {actionUserCtx, languageCode} = req.body as AuthenticatedMWType;
+    // Stats cover every company's traffic on this server.
+    assertPlatformCompany(req.body as AuthenticatedMWType);
     SchemaGuard.sanitizeFields(model, {count: {}}, "read", actionUserCtx, languageCode);
 }
 

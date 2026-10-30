@@ -32,6 +32,7 @@ import {
     invalidateCompanyModules,
 } from "@coreModule/utilities/modules/companyModules";
 import {skipMissedCronRuns} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs";
+import {assertPlatformAdmin} from "@coreModule/utilities/security/platformAccess";
 
 /**
  * Platform administration of companies (Private)
@@ -45,12 +46,6 @@ import {skipMissedCronRuns} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs
  * @module modules/core/api/platform/companies
  */
 const router = Router();
-
-function assertPlatformAdmin(params: AuthenticatedMWType): void {
-    if (!params.company?.isPlatformOwner || !params.actionUserCtx.isAdmin) {
-        throw apiValidationException("platform_admin_required", "", null, params.languageCode);
-    }
-}
 
 /**
  * GET /api/platform/companies/modules

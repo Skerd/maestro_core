@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
     /** token → user claims */
     tokens: {} as Record<string, {id: string; username: string; company: {_id: string}; sessionId: string; exp?: number}>,
     admins: new Set<string>(),
+    platformCompany: true,
     channels: {} as Record<string, string[]>,
     authDelayMs: 0,
     sessionExpiresAt: undefined as Date | undefined,
@@ -60,6 +61,11 @@ vi.mock("@coreModule/database/schemas/user/user.service", () => ({
         findByIdOrThrow: async (userId: string) => ({
             getCompanyAccess: async () => ({isAdmin: state.admins.has(userId), permissions: []}),
         }),
+    },
+}));
+vi.mock("@coreModule/database/schemas/company/company.service", () => ({
+    companyService: {
+        findByIdOrThrow: async () => ({isPlatformOwner: state.platformCompany}),
     },
 }));
 vi.mock("@coreModule/database/security/schemaGuard", () => ({
@@ -179,6 +185,7 @@ describe("websocket server", () => {
     beforeEach(() => {
         state.tokens = {};
         state.admins.clear();
+        state.platformCompany = true;
         state.channels = {
             [ids.teamChannel]: [ids.alice, ids.bob],
             [ids.visitorChannel]: [ids.visitor, ids.agent],
@@ -240,6 +247,15 @@ describe("websocket server", () => {
         expect((await frame(bob, "ServerHealthUpdater")).payload).toEqual({status: "ok"});
         await pause(30);
         expect(alice.frames.some((entry) => entry.code === "ServerHealthUpdater")).toBe(false);
+    });
+
+    it("keeps admins of other companies out of the server rooms", async () => {
+        state.admins.add(ids.bob);
+        state.platformCompany = false;
+        const bob = await connect("token-bob");
+
+        send(bob, "JOIN_ROOM", [Room.SERVER_STATS]);
+        expect((await frame(bob, "JOIN_ROOM")).payload).toMatchObject({failed: [Room.SERVER_STATS], joined: []});
     });
 
     it("refuses malformed room ids and caps the rooms of a connection", async () => {

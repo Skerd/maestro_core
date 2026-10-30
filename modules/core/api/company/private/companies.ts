@@ -16,6 +16,8 @@ import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/ds
 import {COLLECTED_DATA} from "@coreModule/database/collections";
 import {TableForm, TableResponse} from "armonia/src/modules/core/types/shared.types";
 import {validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import {companiesBasicInfoFormSchema} from "armonia/src/modules/core/api/company/private/company/companiesBasicInfo.form.validator";
+import {escapeRegex} from "@coreModule/utilities/helpers";
 import {SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 
 /**
@@ -110,13 +112,14 @@ async function getCompanies(params: GetCompaniesType): Promise<TableResponse<Com
  *
  * @route POST /api/companies/basicInfo
  * @access Private
- * @body {TableForm} - offset, limit
+ * @body {TableForm & {name?: string}} - offset, limit, optional case-insensitive name search
  * @returns {Promise<TableResponse<BasicCompanyInfoFormResponseType>>} Page of basic company information and total
  *
  * @remarks
  * - For non-admin users: returns only companies where user has active, unlocked roles
  * - For admin users: also includes companies where the user is admin
  * - Ordered by created date, newest first, so each offset is a stable page
+ * - `name` narrows that set with a literal, case-insensitive match so later pages stay inside the search
  */
 router.post(
     "/basicInfo",
@@ -125,10 +128,10 @@ router.post(
         windowMs: 60000,
         max: 120
     }),
-    validateFormZod(validateTableForm),
+    validateFormZod(companiesBasicInfoFormSchema),
     asyncHandler(getCompaniesBasicInfo)
 );
-type GetCompaniesBasicInfoType = AuthenticatedMWType & TableForm;
+type GetCompaniesBasicInfoType = AuthenticatedMWType & TableForm & {name?: string};
 /**
  * Fetches one page of basic information for accessible companies with role-based filtering.
  *
@@ -137,7 +140,7 @@ type GetCompaniesBasicInfoType = AuthenticatedMWType & TableForm;
  * @remarks Merges immediate (active/unlocked) and admin company ids; filters null results
  */
 async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise<TableResponse<BasicCompanyInfoFormResponseType>> {
-    const { logger, languageCode, actionUserCtx, actionUserInfo, offset, limit } = params;
+    const { logger, languageCode, actionUserCtx, actionUserInfo, offset, limit, name } = params;
 
     logger.start(`Trying to get companies basic info (offset ${offset}, limit ${limit})...`);
 
@@ -174,7 +177,11 @@ async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise
         return {data: [], total: 0};
     }
 
-    const filter = {_id: {$in: companyIds}};
+    const filter: Record<string, unknown> = {_id: {$in: companyIds}};
+    const search = name?.trim();
+    if (search) {
+        filter.name = {$regex: escapeRegex(search), $options: "i"};
+    }
     const opts = {logger, languageCode};
     const [page, total] = await Promise.all([
         companyService.find(filter, opts, undefined, "_id", {createdAt: 1, _id: -1}, limit, offset),

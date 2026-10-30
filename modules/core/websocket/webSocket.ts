@@ -41,6 +41,8 @@ import {JWTTokenType} from "armonia/src/modules/core/api/user/public/login/login
 import {MACHINE_TO_MACHINE_SECRET, WEBSOCKET} from "@coreModule/environment";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
+import {companyService} from "@coreModule/database/schemas/company/company.service";
+import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
 import {WebSocketMessageCodes, WebSocketPush} from "armonia/src/modules/core/websocket/types";
@@ -236,12 +238,16 @@ function leaveRoom(ws: ClientWebSocket, room: string): void {
 
 /**
  * The server rooms carry the same data as `/auxiliary/health` and
- * `/auxiliary/stats`, so they need the same read permission. Checked on every
- * join, so a removed role applies from the next page visit. Fails closed.
+ * `/auxiliary/stats`, so they need the same platform company and read permission.
+ * Checked on every join, so a removed role applies from the next page visit. Fails closed.
  */
 async function canReadServerPerformance(ws: ClientWebSocket): Promise<boolean> {
     try {
         const companyId = new ObjectId(ws.companyId);
+        const company = await companyService.findByIdOrThrow(companyId, {languageCode: ws.languageCode}, [], "isPlatformOwner");
+        if (!isPlatformCompany(company)) {
+            return false;
+        }
         const user = await userService.findByIdOrThrow(ws.userId, {languageCode: ws.languageCode});
         const {isAdmin, permissions} = await user.getCompanyAccess(companyId);
         SchemaGuard.sanitizeFields(ServerPerformance1m, {count: {}}, "read", {
