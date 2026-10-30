@@ -69,11 +69,19 @@ function getFileExtension(filename: string): string {
     return ext || '';
 }
 
-/** Browsers often send an empty or generic type for .p12 / .pfx. */
-function certificateMime(mimeType: string, filename: string): string {
-    const extension = getFileExtension(filename);
-    if ((extension === ".p12" || extension === ".pfx") && (!mimeType || mimeType === "application/octet-stream")) {
-        return "application/x-pkcs12";
+/** Browsers send an empty, generic or vendor type for these; the extension names the real one. */
+const MIME_BY_EXTENSION: Record<string, {mime: string; aliases: string[]}> = {
+    ".p12": {mime: "application/x-pkcs12", aliases: []},
+    ".pfx": {mime: "application/x-pkcs12", aliases: []},
+    ".dcm": {mime: "application/dicom", aliases: []},
+    ".zip": {mime: "application/zip", aliases: ["application/x-zip-compressed"]},
+    ".stl": {mime: "model/stl", aliases: ["application/sla", "application/vnd.ms-pki.stl", "model/x.stl-binary", "model/x.stl-ascii"]},
+};
+
+function normalizedMime(mimeType: string, filename: string): string {
+    const known = MIME_BY_EXTENSION[getFileExtension(filename)];
+    if (known && (!mimeType || mimeType === "application/octet-stream" || known.aliases.includes(mimeType))) {
+        return known.mime;
     }
     return mimeType;
 }
@@ -489,7 +497,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         
         try {
             // Never trust client MIME type - validate it
-            file.mimetype = certificateMime(file.mimetype, file.originalname);
+            file.mimetype = normalizedMime(file.mimetype, file.originalname);
             validateFileType(file.mimetype, file.originalname, languageCode);
             const allowedForField = fieldMimeTypes?.[file.fieldname];
             if (allowedForField?.length && !allowedForField.includes(file.mimetype)) {

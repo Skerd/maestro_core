@@ -9,11 +9,17 @@ import {mediaUploadMW} from "@coreModule/utilities/middlewares/mediaUploadMW";
 
 const router = Router();
 
-function companyOwnsMedia(_mediaId: unknown, media: {company?: {_id?: unknown} | unknown}, context: Record<string, unknown>): Promise<boolean> {
+/** The session's company owns the file, or the owner shared it with that company. */
+function companyOwnsMedia(
+    _mediaId: unknown,
+    media: {company?: {_id?: unknown} | unknown; sharedWithCompanies?: unknown[]},
+    context: Record<string, unknown>,
+): Promise<boolean> {
     const company = context.company as {_id?: unknown} | undefined;
     const sessionCompany = String(company?._id ?? "");
     const mediaCompany = String((media.company as {_id?: unknown})?._id ?? media.company ?? "");
-    return Promise.resolve(sessionCompany !== "" && sessionCompany === mediaCompany);
+    const sharedWith = (media.sharedWithCompanies ?? []).map(String);
+    return Promise.resolve(sessionCompany !== "" && (sessionCompany === mediaCompany || sharedWith.includes(sessionCompany)));
 }
 
 /**

@@ -41,6 +41,8 @@ export interface IMedia extends Document, IOwnershipPluginFields, ISoftDeletePlu
     isPublic: boolean;
     /** Uploaded ahead of the record that will use it and not yet found referenced (see `orphanUploadCleanup`). */
     pendingReference?: boolean;
+    /** Other tenants that may read this file through the private media route */
+    sharedWithCompanies: Schema.Types.ObjectId[];
     createdAt: Date;
     uploadedAt: Date;
 }
@@ -298,6 +300,18 @@ const MediaSchema = new Schema<IMedia>(
         pendingReference: {
             type: Boolean,
             required: false,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
+        },
+        sharedWithCompanies: {
+            type: [{type: Schema.Types.ObjectId, ref: "Company"}],
+            default: [],
             permissions: {
                 self: {
                     write: "no-permission"
