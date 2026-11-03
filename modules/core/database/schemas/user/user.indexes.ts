@@ -1,8 +1,8 @@
 import {Schema} from "mongoose";
 
 export function applyUserIndexes(UserSchema: Schema): void {
-    // Top-level field indexes
-    UserSchema.index({ username: 1 });              // Already unique, but explicit index for clarity
+    // Top-level field indexes (username: `unique` on the field already indexes it; a second
+    // declaration of the same key conflicts with that index when the model builds its indexes)
     UserSchema.index({ registerDate: -1 });         // For sorting by registration date
     UserSchema.index({ registeredFrom: 1 });        // For finding users registered by another user
     UserSchema.index({ online: 1 });                // For finding online/offline users

@@ -6,7 +6,7 @@ export function applyCompanyIndexes(CompanySchema: Schema): void {
     // Primary field indexes
     CompanySchema.index({name: 1});
     CompanySchema.index({email: 1});
-    CompanySchema.index({vat: 1});
+    // vat: `unique` on the field already indexes it; a second declaration of the same key conflicts
     CompanySchema.index({phoneNumber: 1});
     CompanySchema.index({parentCompany: 1});
     CompanySchema.index({isActive: 1});

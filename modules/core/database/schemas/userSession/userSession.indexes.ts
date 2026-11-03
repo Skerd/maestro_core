@@ -9,7 +9,7 @@ export function applyUserSessionIndexes(UserSessionSchema: Schema): void {
     UserSessionSchema.index({user: 1});
     UserSessionSchema.index({company: 1});
 
-    UserSessionSchema.index({sessionId: 1});
+    // sessionId: `unique` on the field already indexes it; a second declaration of the same key conflicts
     UserSessionSchema.index({deviceId: 1});
 
     UserSessionSchema.index({isActive: 1});

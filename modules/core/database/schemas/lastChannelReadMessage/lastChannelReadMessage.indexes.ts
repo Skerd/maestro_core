@@ -10,7 +10,6 @@ export function applyLastChannelReadMessageIndexes(LastChannelReadMessageSchema:
     LastChannelReadMessageSchema.index({ time: 1 });              // For sorting by read time (oldest first)
 
     // Compound indexes for common query patterns
-    LastChannelReadMessageSchema.index({ user: 1, channel: 1 });           // User's read time for a specific channel
     LastChannelReadMessageSchema.index({ user: 1, channel: 1 }, { unique: true }); // Ensure one read record per user-channel
     LastChannelReadMessageSchema.index({ user: 1, time: -1 });               // User's read messages sorted by time
     LastChannelReadMessageSchema.index({ channel: 1, time: -1 });            // Channel's read messages sorted by time
