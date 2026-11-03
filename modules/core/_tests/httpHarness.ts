@@ -4,7 +4,7 @@
  * instead of a JWT. Mock auth in the test file (vi.mock is hoisted per file):
  *
  *   vi.mock("@coreModule/utilities/middlewares/authMW", async () =>
- *       (await import("@coreModule/__tests__/httpHarness")).authMWStub);
+ *       (await import("@coreModule/_tests/httpHarness")).authMWStub);
  */
 import express, {type Router} from "express";
 import type {Model} from "mongoose";
