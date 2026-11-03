@@ -230,6 +230,12 @@ export interface CrudRouterConfig<
     afterDelete?: (params: DeleteParams, doc: T) => Promise<void>;
 
     /**
+     * Called after the built-in restore (within the same transaction), with the restored
+     * document. Use to put back what `afterDelete` removed (e.g. back-references).
+     */
+    afterRestore?: (params: RestoreParams, doc: T) => Promise<void>;
+
+    /**
      * When provided, replaces the built-in restore route handler entirely.
      * The middleware chain (auth, rate limiting, form validation, transaction) still runs.
      * Use when restore requires pre-restore validation or post-restore side effects that
@@ -701,10 +707,11 @@ export function createCrudRouter<
             logger.start(`Restoring ${entityName} ${_id}...`);
             SchemaGuard.checkModelPermission(model, "restore", actionUserCtx, languageCode);
 
-            await service.restoreOneOrThrow(
+            const restored = await service.restoreOneOrThrow(
                 await docFilterForId(params, _id),
                 {session, logger, languageCode, auditUserId: actionUserCtx.userId},
             );
+            await config.afterRestore?.(params, restored);
 
             logger.finish(`Restored ${entityName} ${_id}`);
             return {message: `${entityName} successfully restored`} as RestoreResponse;

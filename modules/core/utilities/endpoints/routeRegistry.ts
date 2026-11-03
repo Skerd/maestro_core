@@ -110,10 +110,11 @@ export class RouteRegistry {
 
     /**
      * Directories under `modules/<name>/api` that are not route modules.
-     * `__tests__` must be skipped: importing a Vitest file from the CJS server fails.
+     * `_tests` must be skipped: importing a Vitest file from the CJS server fails.
+     * `__tests__` stays in the skip list so an old folder name is not loaded either.
      */
     private _isSkippedDirectory(name: string): boolean {
-        return name === "middleware" || name === "__tests__" || name === "__mocks__";
+        return name === "middleware" || name === "_tests" || name === "__tests__" || name === "__mocks__";
     }
 
     /**

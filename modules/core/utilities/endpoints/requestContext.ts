@@ -20,6 +20,11 @@ export interface RequestContextStore {
     routeModule?: string;
     /** Public requests from the portal: the company the page is about (`x-site-company`, slug or id). */
     siteCompany?: string;
+    /**
+     * Studio preview read in development. The list is not limited to the signed-in
+     * company's modules or its own documents.
+     */
+    studioSample?: boolean;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContextStore>();

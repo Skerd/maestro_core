@@ -8,6 +8,7 @@ import type {
 } from "armonia/src/modules/core/api/company/private/users/tableConfig.form.response.type";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {CONSTANTS} from "@coreModule/environment";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 
 export type Sanitized = {
     sanitizedReadFields: SanitizedFields;
@@ -75,7 +76,11 @@ export function schemaSanitizer(options: SchemaSanitizerOptions) {
         let sanitizedWriteFields: SanitizedFields | undefined;
 
         if (requiredModes.includes("read")) {
-            sanitizedReadFields = SchemaGuard.sanitizeFields(model, readFields, "read", actionUserCtx, languageCode);
+            // Studio's preview reads the field tree the view was authored against, not the
+            // signed-in role's allowlist. Writes stay on the normal check.
+            sanitizedReadFields = requestContext.getStore()?.studioSample
+                ? readFields
+                : SchemaGuard.sanitizeFields(model, readFields, "read", actionUserCtx, languageCode);
             if (Object.keys(sanitizedReadFields).length === 0) {
                 return next(
                     apiValidationException("schema_sanitizer_no_read_permission", null as any, null, languageCode)

@@ -4,7 +4,7 @@ import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {Router} from "express";
 import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collections";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
-import {isModelInModules} from "@coreModule/utilities/modules/modelModules";
+import {isModelInModules, wantsInstalledModuleScope} from "@coreModule/utilities/modules/modelModules";
 import type {ViewConfig, ViewConfiguration, ViewNode} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
 import type {SanitizedFields} from "armonia/src/modules/core/types";
 
@@ -24,14 +24,23 @@ router.get(
 
 type ViewConfigParams = AuthenticatedMWType;
 
-async function getAllViewConfigs(params: ViewConfigParams): Promise<ViewConfiguration> {
+async function getAllViewConfigs(
+    params: ViewConfigParams,
+    _routeParams: unknown,
+    request: {query?: {scope?: unknown}},
+): Promise<ViewConfiguration> {
     const { actionUserCtx, languageCode, logger } = params;
+    const installed = wantsInstalledModuleScope(request.query);
     const result: ViewConfiguration = {};
 
     for (const [collectionName, entry] of Object.entries(COLLECTED_DATA)) {
         const { model, readFields, writeFields, views } = entry;
         if (!model || !readFields || !views) continue;
-        if (!isModelInModules(model.modelName, actionUserCtx.modules ?? [])) continue;
+        if (!installed && !isModelInModules(model.modelName, actionUserCtx.modules ?? [])) continue;
+        if (installed) {
+            result[collectionName] = views;
+            continue;
+        }
 
         try {
             const sanitizedRead = SchemaGuard.sanitizeFields(model, readFields, "read", actionUserCtx, languageCode);

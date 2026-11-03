@@ -18,6 +18,8 @@ import {validateJWTToken} from "@coreModule/utilities/security/jwtValidator";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
 import {effectiveCompanyModules, isModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
+import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModules";
+import {STUDIO_SAMPLE_HEADER, wantsStudioSample} from "@coreModule/utilities/modules/modelModules";
 
 export type NotAuthenticatedMWType = {
     apiCode: string,
@@ -107,7 +109,8 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
 
         const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive modules isPlatformOwner");
         req.body.company = company;
-        const modules = effectiveCompanyModules(company);
+        const studioSample = wantsStudioSample(req.header(STUDIO_SAMPLE_HEADER));
+        const modules = studioSample ? getEnabledModuleNames() : effectiveCompanyModules(company);
         const {isAdmin, permissions} = await user.getCompanyAccess(company._id, modules);
 
         if( !company.isActive && !isAdmin ){
@@ -123,7 +126,7 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         }
 
         const routeModule = requestContext.getStore()?.routeModule;
-        if (routeModule && !isModuleEnabledForCompany(company, routeModule)) {
+        if (routeModule && !studioSample && !isModuleEnabledForCompany(company, routeModule)) {
             throw apiValidationException("module_not_enabled", "module", null, languageCode);
         }
 
@@ -139,7 +142,7 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         logger.updateActionInitializer(actionInitializer);
         req.body.logger = logger;
 
-        return requestContext.run({ ...requestContext.getStore(), actionUserCtx: req.body.actionUserCtx }, () => next());
+        return requestContext.run({ ...requestContext.getStore(), actionUserCtx: req.body.actionUserCtx, studioSample }, () => next());
     } catch (error: any) {
         logger.start()
         logger.fail(error);

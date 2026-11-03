@@ -57,6 +57,7 @@ const LOCAL_FALLBACK_TTL_SECONDS = 1;
 function assertCanAccessServerPerformance(req: Request, action: PermissionAction = "read"): void {
     const {actionUserCtx, languageCode} = req.body as AuthenticatedMWType;
     assertPlatformCompany(req.body as AuthenticatedMWType);
+    //@ts-ignore
     SchemaGuard.sanitizeFields(ServerPerformance1m, {count: {}}, action, actionUserCtx, languageCode);
 }
 

@@ -47,3 +47,19 @@ export function isModelInModules(modelName: string, modules: readonly string[]):
     const moduleName = getModelModule(modelName);
     return moduleName === "core" || modules.includes(moduleName);
 }
+
+/**
+ * Studio's catalog asks for every module installed on this server, not the grant on
+ * `Company.modules`. Honored only in development: the same query in production stays
+ * on the company filter.
+ */
+export function wantsInstalledModuleScope(query: {scope?: unknown} | undefined): boolean {
+    return process.env.SERVER_NODE_ENV === "development" && query?.scope === "installed";
+}
+
+/** Sent only by Studio's sample-row preview. Ignored outside development. */
+export const STUDIO_SAMPLE_HEADER = "x-studio-sample";
+
+export function wantsStudioSample(header: unknown): boolean {
+    return process.env.SERVER_NODE_ENV === "development" && header === "1";
+}
