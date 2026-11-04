@@ -68,6 +68,10 @@ export function appFor(routes: {basePath: string; router: Router; module?: strin
             module ? requestContext.run({...requestContext.getStore(), routeModule: module}, () => next()) : next();
         app.use(basePath, stripServerKeys, tag, router);
     }
+    // supertest calls `app.listen(0)` (every interface) and then connects to 127.0.0.1. On macOS another process
+    // can hold the same port on 127.0.0.1 alone and answer instead (TD-T11): bind loopback only.
+    const listen = app.listen.bind(app);
+    Object.assign(app, {listen: (port = 0) => listen(port, "127.0.0.1")});
     app.use((error: unknown, _req: any, res: any, _next: any) => {
         if (error instanceof ServerError) return res.status(error.status).json(error);
         return res.status(500).json({error_code: "internal_error", message: (error as Error)?.message});
