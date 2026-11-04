@@ -9,6 +9,7 @@ import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCom
 import {publicMediaUrl, publicMediaUrls} from "@coreModule/utilities/media/publicMediaUrl";
 import {isPortalApexOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import Company from "@coreModule/database/schemas/company/company";
 import {blogPostService} from "@coreModule/database/schemas/blogPost/blogPost.service";
 import {blogCategoryService} from "@coreModule/database/schemas/blogCategory/blogCategory.service";
@@ -119,7 +120,7 @@ router.post(
     authMW("public"),
     rateLimiter({windowMs: 60000, max: 120}),
     validateFormZod(publicBlogFormSchema),
-    asyncHandler(listPublicBlog),
+    asyncHandler((params: PublicBlogParams) => inBlogScope(params.origin, () => listPublicBlog(params))),
 );
 
 router.post(
@@ -127,7 +128,7 @@ router.post(
     authMW("public"),
     rateLimiter({windowMs: 60000, max: 120}),
     validateFormZod(publicBlogSingleFormSchema),
-    asyncHandler(publicBlogSingle),
+    asyncHandler((params: PublicBlogSingleParams) => inBlogScope(params.origin, () => publicBlogSingle(params))),
 );
 
 /**
@@ -141,6 +142,11 @@ async function publicBlogCompanyFilter(origin: string, languageCode: string): Pr
     }
     const company = await resolveCompanyByOrigin(origin, languageCode);
     return {company: company._id};
+}
+
+/** The apex blog reads every active company's posts (D16); a company host is scoped by `resolveCompanyByOrigin`. */
+function inBlogScope<T>(origin: string, read: () => Promise<T>): Promise<T> {
+    return blogSpansCompanies(origin) ? asCrossTenant("the apex blog lists every company's posts", read) : read();
 }
 
 function blogSpansCompanies(origin: string): boolean {

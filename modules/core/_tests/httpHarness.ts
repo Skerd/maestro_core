@@ -49,6 +49,9 @@ export function callerHeader(caller: TestCaller): Record<string, string> {
  */
 export function appFor(routes: {basePath: string; router: Router; module?: string}[]) {
     const app = express();
+    // A fresh context per request, as in production (the server starts outside any context): a test
+    // that runs as a company (D16) must not hand its tenant to the routes it calls.
+    app.use((_req, _res, next) => requestContext.run({}, () => next()));
     app.use(express.json());
     // Mounted like routeRegistry does, so tests see production's body guard.
     for (const {basePath, router, module} of routes) {

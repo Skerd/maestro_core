@@ -1,4 +1,4 @@
-import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
+import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {MongoMemoryServer} from "mongodb-memory-server";
 import mongoose, {Schema} from "mongoose";
 import {ObjectId} from "mongodb";
@@ -64,15 +64,7 @@ beforeEach(async () => {
     });
 });
 
-afterEach(() => {
-    delete process.env.TENANT_SCOPE_ENFORCE;
-});
-
-describe("enforced", () => {
-    beforeEach(() => {
-        process.env.TENANT_SCOPE_ENFORCE = "pilot";
-    });
-
+describe("tenant scoping", () => {
     it("limits a query without a company filter to the tenant", async () => {
         expect(titles(await asRequest(companyA, () => Booking.find({})))).toEqual(["a1", "a2"]);
         expect(await asRequest(companyA, () => Booking.countDocuments({}))).toBe(2);
@@ -160,25 +152,13 @@ describe("enforced", () => {
         await expect(asRequest(companyA, () => SharedFile.create({title: "x", company: companyB, sharedWith: [companyA]}))).rejects.toMatchObject({error_code: "tenant_scope_violation"});
     });
 
-    it("narrows a filter on no company to the tenant instead of refusing it (it matches nothing either way)", async () => {
+    it("narrows a filter on no company or an empty company list to the tenant instead of refusing it (it matches nothing either way)", async () => {
         expect(await asRequest(companyA, () => Booking.countDocuments({company: null}))).toBe(0);
+        expect(await asRequest(companyA, () => Booking.countDocuments({company: {$in: []}}))).toBe(0);
     });
 
     it("treats a populated company as its id", async () => {
         // Mongoose casts a document-like value to its _id; scoping must read it the same way.
         expect(await asRequest(companyA, () => Booking.countDocuments({company: {_id: companyA, name: "A"}}))).toBe(2);
-    });
-
-    it("does not enforce other modules", async () => {
-        process.env.TENANT_SCOPE_ENFORCE = "someOtherModule";
-        expect(titles(await asRequest(companyA, () => Booking.find({company: companyB})))).toEqual(["b1"]);
-    });
-});
-
-describe("log-only (rollout default)", () => {
-    it("changes nothing: queries return what they did before", async () => {
-        expect(titles(await asRequest(companyA, () => Booking.find({})))).toEqual(["a1", "a2", "b1"]);
-        expect(titles(await asRequest(companyA, () => Booking.find({company: companyB})))).toEqual(["b1"]);
-        expect(await asRequest(undefined, () => Booking.countDocuments({}))).toBe(3);
     });
 });

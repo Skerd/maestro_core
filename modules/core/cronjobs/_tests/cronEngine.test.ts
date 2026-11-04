@@ -16,9 +16,12 @@ import {registerCronHandler} from "../registry/handlerRegistry";
 import type {CronHandlerContext} from "../registry/types";
 import {jobRunner} from "../engine/jobRunner";
 import {SchedulerEngine} from "../engine/schedulerEngine";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const HOUR = 3600 * 1000;
 const company = new ObjectId();
+/** The tests read and seed this company's jobs, as its cron screen would (D16). */
+const asCompany = <T>(fn: () => PromiseLike<T>): Promise<T> => withTenant(company, fn);
 const seen: CronHandlerContext[] = [];
 let failNext = false;
 
@@ -78,7 +81,7 @@ async function tick(): Promise<void> {
 }
 
 describe("job runner", {timeout: 30000}, () => {
-    it("records a failure, pulls nextRunAt forward to the retry, and frees the job", async () => {
+    it("records a failure, pulls nextRunAt forward to the retry, and frees the job", () => asCompany(async () => {
         const job = await createJob({handler: "test.record", maxRetries: 2, retryDelaySeconds: 60, nextRunAt: new Date(Date.now() + 2 * HOUR)});
         failNext = true;
 
@@ -98,9 +101,9 @@ describe("job runner", {timeout: 30000}, () => {
 
         expect(jobRunner.hasCapacity(job)).toBe(true);
         expect(await CronLock.countDocuments()).toBe(0);
-    });
+    }));
 
-    it("numbers the retry as the next attempt", async () => {
+    it("numbers the retry as the next attempt", () => asCompany(async () => {
         const job = await createJob({handler: "test.record", maxRetries: 2, retryDelaySeconds: 0});
         failNext = true;
         jobRunner.start(job, 1);
@@ -111,9 +114,9 @@ describe("job runner", {timeout: 30000}, () => {
 
         const attempts = await CronExecution.find({jobId: job._id}).sort({startedAt: 1}).lean();
         expect(attempts.map((e) => [e.status, e.attempt])).toEqual([["failed", 1], ["success", 2]]);
-    });
+    }));
 
-    it("times a hung handler out and aborts its signal", async () => {
+    it("times a hung handler out and aborts its signal", () => asCompany(async () => {
         const job = await createJob({handler: "test.hang", timeoutSeconds: 1, maxRetries: 0});
 
         jobRunner.start(job, 1);
@@ -123,9 +126,9 @@ describe("job runner", {timeout: 30000}, () => {
         expect(execution.status).toBe("timeout");
         expect(execution.nextRetryAt).toBeUndefined();
         expect(await CronLock.countDocuments()).toBe(0);
-    });
+    }));
 
-    it("skips a run while another instance holds the job lock", async () => {
+    it("skips a run while another instance holds the job lock", () => asCompany(async () => {
         const job = await createJob({handler: "test.record"});
         await CronLock.create({key: `cron:lock:${job._id}`, owner: "other", token: "t", expiresAt: new Date(Date.now() + 60_000), heartbeatAt: new Date()});
 
@@ -134,11 +137,11 @@ describe("job runner", {timeout: 30000}, () => {
 
         expect(seen).toHaveLength(0);
         expect(await CronExecution.countDocuments()).toBe(0);
-    });
+    }));
 });
 
 describe("scheduler", {timeout: 30000}, () => {
-    it("runs a due job and moves nextRunAt to the next occurrence", async () => {
+    it("runs a due job and moves nextRunAt to the next occurrence", () => asCompany(async () => {
         const job = await createJob({handler: "test.record"});
 
         await tick();
@@ -147,9 +150,9 @@ describe("scheduler", {timeout: 30000}, () => {
         const stored = (await CronJobModel.findById(job._id).lean())!;
         expect(stored.nextRunAt!.getTime()).toBeGreaterThan(Date.now());
         expect(await CronExecution.countDocuments({jobId: job._id, status: "success"})).toBe(1);
-    });
+    }));
 
-    it("leaves paused jobs and jobs without a registered handler alone", async () => {
+    it("leaves paused jobs and jobs without a registered handler alone", () => asCompany(async () => {
         await createJob({handler: "test.record", active: false});
         await createJob({handler: "test.unregistered"});
 
@@ -157,9 +160,9 @@ describe("scheduler", {timeout: 30000}, () => {
 
         expect(seen).toHaveLength(0);
         expect(await CronExecution.countDocuments()).toBe(0);
-    });
+    }));
 
-    it("applies the missed-run policy to a backlog", async () => {
+    it("applies the missed-run policy to a backlog", () => asCompany(async () => {
         const threeHoursAgo = new Date(Date.now() - 3 * HOUR - 60_000);
         const skip = await createJob({handler: "test.record", code: "skip", missedRunPolicy: "skip", nextRunAt: threeHoursAgo});
         await tick();
@@ -169,18 +172,18 @@ describe("scheduler", {timeout: 30000}, () => {
         await createJob({handler: "test.record", code: "catch_up", missedRunPolicy: "catch_up", nextRunAt: threeHoursAgo});
         await tick();
         expect(seen.length).toBeGreaterThanOrEqual(3);
-    });
+    }));
 
-    it("runs a job whose nextRunAt was set to now (Run now)", async () => {
+    it("runs a job whose nextRunAt was set to now (Run now)", () => asCompany(async () => {
         const job = await createJob({handler: "test.record", nextRunAt: new Date(Date.now() + HOUR)});
         await CronJobModel.updateOne({_id: job._id}, {$set: {nextRunAt: new Date()}});
 
         await tick();
 
         expect(seen).toHaveLength(1);
-    });
+    }));
 
-    it("closes executions left running past their timeout by a dead process", async () => {
+    it("closes executions left running past their timeout by a dead process", () => asCompany(async () => {
         const job = await createJob({handler: "test.record", timeoutSeconds: 60, nextRunAt: new Date(Date.now() + HOUR)});
         const abandoned = await CronExecution.create({jobId: job._id, company, status: "running", startedAt: new Date(Date.now() - 10 * 60_000), attempt: 1});
         const live = await CronExecution.create({jobId: job._id, company, status: "running", startedAt: new Date(Date.now() - 2.5 * 60_000), attempt: 1});
@@ -189,5 +192,5 @@ describe("scheduler", {timeout: 30000}, () => {
 
         expect((await CronExecution.findById(abandoned._id).lean())!.status).toBe("timeout");
         expect((await CronExecution.findById(live._id).lean())!.status).toBe("running");
-    });
+    }));
 });

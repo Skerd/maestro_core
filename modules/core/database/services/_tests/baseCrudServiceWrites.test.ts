@@ -5,6 +5,7 @@ import {ObjectId} from "mongodb";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import AuditLog from "@coreModule/database/schemas/auditLog/auditLog";
 import {BaseCrudService} from "@coreModule/database/services/baseCrudService";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 interface IGadget extends Document {
     code: string;
@@ -40,7 +41,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-    await Promise.all([Gadget.deleteMany({}), AuditLog.deleteMany({})]);
+    await Promise.all([Gadget.collection.deleteMany({}), AuditLog.collection.deleteMany({})]);
 });
 
 describe("BaseCrudService.updateById with operators (E-14)", {timeout: 30000}, () => {
@@ -59,7 +60,8 @@ describe("BaseCrudService.updateById with operators (E-14)", {timeout: 30000}, (
 
         const updated = await gadgets.updateById(gadget._id, {$set: {color: "red"}, $inc: {count: 2}}, {auditUserId: actor});
         expect(updated!.color).toBe("red");
-        const entry = await AuditLog.findOne({documentId: gadget._id, action: "UPDATE"});
+        // The audit log is tenant data: read it as the gadget's company (D16).
+        const entry = await withTenant(company, () => AuditLog.findOne({documentId: gadget._id, action: "UPDATE"}));
         expect(entry!.diff).toMatchObject({color: {from: null, to: "red"}, count: {from: 0, to: 2}});
         expect(entry!.actorId!.toString()).toBe(actor.toString());
 
@@ -68,7 +70,7 @@ describe("BaseCrudService.updateById with operators (E-14)", {timeout: 30000}, (
         await gadgets.updateById(gadget._id, {$set: {color: "blue"}}, {auditUserId: actor, session});
         await session.abortTransaction();
         await session.endSession();
-        expect(await AuditLog.countDocuments({documentId: gadget._id, action: "UPDATE"})).toBe(1);
+        expect(await withTenant(company, () => AuditLog.countDocuments({documentId: gadget._id, action: "UPDATE"}))).toBe(1);
     });
 
     it("maps a duplicate key and returns the old document when asked", async () => {

@@ -58,7 +58,7 @@ import {KafkaConsumerRegistration} from "@coreModule/kafka/consumerRegistry";
 import {metricsAggregator} from "@coreModule/utilities/timing/metricsAggregator";
 import type {EachMessagePayload} from "kafkajs";
 import {sendToDeadLetterQueue} from "@coreModule/kafka/deadLetters";
-import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const logger = getLogger("kafka_consumer");
 
@@ -69,7 +69,7 @@ const CONSUMER_RETRY_BASE_DELAY_MS = 5_000;
 const CONSUMER_RETRY_MAX_DELAY_MS = 5 * 60_000;
 
 async function processApiEvent(event: ApiAccessEvent): Promise<void> {
-    await new ApiAccess({
+    const row = new ApiAccess({
         endpoint: event.endpoint,
         method: event.method,
         statusCode: event.statusCode,
@@ -83,7 +83,9 @@ async function processApiEvent(event: ApiAccessEvent): Promise<void> {
         source: event.source || undefined,
         company: event.company ? new ObjectId(event.company) : undefined,
         createdBy: event.user ? new ObjectId(event.user) : undefined
-    }).save();
+    });
+    // A hit before sign-in (login, public pages, probes) belongs to no company, so it has no tenant to save under (D16).
+    await (event.company ? row.save() : asCrossTenant("an anonymous API hit belongs to no company", () => row.save()));
 }
 
 async function processApiMetricsEvent(event: ApiAccessEvent): Promise<void> {

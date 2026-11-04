@@ -7,22 +7,25 @@ import request from "supertest";
 import Media from "@coreModule/database/schemas/media/media";
 import {createGridFSStorage} from "@coreModule/utilities/gridfs/gridfsStorage";
 import {parseByteRange, serveMedia} from "@coreModule/utilities/media/serveMedia";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const logger: any = {err: vi.fn(), warn: vi.fn(), debug: vi.fn(), start: vi.fn(), finish: vi.fn(), info: vi.fn()};
 const body = Buffer.from(Array.from({length: 1000}, (_, i) => i % 256));
 let replSet: MongoMemoryReplSet;
 let mediaId: string;
+/** The media's company: the test route serves it as a request of that company would (D16). */
+const company = new ObjectId();
 
 const app = express();
 app.get("/media/:id", (req, res) => {
-    serveMedia({mediaId: req.params.id, req, res, logger, languageCode: "en-US"}).catch(() => res.status(500).end());
+    withTenant(company, () => serveMedia({mediaId: req.params.id, req, res, logger, languageCode: "en-US"})).catch(() => res.status(500).end());
 });
 
 beforeAll(async () => {
     replSet = await MongoMemoryReplSet.create({replSet: {count: 1}});
     await mongoose.connect(replSet.getUri());
     const fileId = await createGridFSStorage("en-US", "media", logger).uploadFile(body, "clip.mp4", {});
-    const media = await Media.create({
+    const media = await withTenant(company, () => Media.create({
         type: "video",
         fileName: "clip.mp4",
         originalName: "clip.mp4",
@@ -32,9 +35,9 @@ beforeAll(async () => {
         fileSize: body.length,
         sizeInBytes: body.length,
         metadata: {size: body.length, extension: "mp4", mime: "video/mp4", safeCheckedFlag: true},
-        company: new ObjectId(),
+        company,
         createdBy: new ObjectId(),
-    });
+    }));
     mediaId = media._id.toString();
 }, 120000);
 

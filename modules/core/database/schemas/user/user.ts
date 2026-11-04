@@ -47,6 +47,7 @@ import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.sni
 import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets";
 import {getRolesAccess} from "@coreModule/utilities/security/roleAccessCache";
 import {getCompanyModules} from "@coreModule/utilities/modules/companyModules";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 let userService: any;
 let roleService: any;
@@ -1715,7 +1716,9 @@ UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId, modul
     // Resolved through the Redis-backed role cache: populating the permission refs here
     // hydrated thousands of documents on every private request just to read their tags.
     // Permissions of modules the company does not have are left out, admins included.
-    const {isAdmin, tags} = await getRolesAccess(roleIds, modules ?? await getCompanyModules(companyId));
+    // The roles belong to `companyId`, which need not be the request's tenant: the companies list asks
+    // for each of the user's companies (D16).
+    const {isAdmin, tags} = await withTenant(companyId, async () => getRolesAccess(roleIds, modules ?? await getCompanyModules(companyId)));
     return {isAdmin, permissions: tags};
 }
 
@@ -1744,7 +1747,8 @@ UserSchema.methods.getUserRoles = async function (companyId: ObjectId): Promise<
     }
 
     const { roleService } = await getServices();
-    return await roleService.find({_id: {$in: roleIds}}, {});
+    // `companyId`'s roles, whichever company the request is for (D16).
+    return withTenant(companyId, () => roleService.find({_id: {$in: roleIds}}, {}));
 };
 
 UserSchema.methods.getCompanies = async function (): Promise<{_id: ObjectId, name: string}[]>{

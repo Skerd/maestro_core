@@ -5,6 +5,7 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {serveMedia} from "@coreModule/utilities/media/serveMedia";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {isPortalZoneOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 
 const router = Router();
@@ -27,7 +28,7 @@ async function servePublicMediaFile(
 
     // The portal zone shows every company's items (a cart spans sellers) — public media must not be scoped to one Origin tenant.
     if (isPortalZoneOrigin(origin)) {
-        return serveMedia({
+        return asCrossTenant("the portal serves any company's public media", () => serveMedia({
             mediaId: queryParams.mediaId,
             req,
             res,
@@ -36,7 +37,7 @@ async function servePublicMediaFile(
             cacheControl: "public",
             deniedAsNotFound: true,
             accessCheck: async (_id, media) => media.isPublic === true,
-        });
+        }));
     }
 
     const company = await resolveCompanyByOrigin(origin, languageCode);

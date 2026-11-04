@@ -156,7 +156,7 @@ router.get(
  * @returns Complete user profile data with status and login information
  */
 async function GetUser(params: AuthenticatedMWType & SchemaSanitizerMWType): Promise<CompanyUserType> {
-    const { logger, userInfo, actionUserInfo, actionUserCtx, languageCode, sanitizedReadFields } = params;
+    const { logger, userInfo, actionUserInfo, actionUserCtx, languageCode, sanitizedReadFields, company } = params;
 
     logger.start(`Trying to fetch user info...`);
 
@@ -173,10 +173,11 @@ async function GetUser(params: AuthenticatedMWType & SchemaSanitizerMWType): Pro
         },
         {logger, languageCode},
         populate.populate,
-        (populate.select || "") + " requests.invitation.invitedBy requests.activation.email"
+        // `roles.company` is not readable, but the mapper needs it to pick this company's membership; it is never returned.
+        (populate.select || "") + " requests.invitation.invitedBy requests.activation.email roles.company"
     );
 
-    const dto = userToCompanyUserDTO(user);
+    const dto = userToCompanyUserDTO(user, company._id);
     if (!dto) {
         throw new Error("User data could not be mapped");
     }

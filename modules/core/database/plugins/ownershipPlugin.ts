@@ -2,7 +2,6 @@ import {Aggregate, Document, MongooseQueryMiddleware, PipelineStage, Query, Sche
 import {apiValidationException, DEFAULT_EXCEPTION_LANGUAGE} from "armonia/src/modules/core/helpers/exceptions";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
-import {tenantScopeEnforced} from "@coreModule/utilities/endpoints/tenantScope";
 
 export interface OwnershipPluginOptions {
     /**
@@ -72,7 +71,7 @@ export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions 
 
 /* ---------------------------------------------------------------------------------------------
  * Tenant scoping (D16, DB-02): queries, aggregations and writes on tenant models stay inside the
- * current company (`requestContext.tenantCompanyId`). See `tenantScope.ts` for the rollout switch.
+ * current company (`requestContext.tenantCompanyId`). See `tenantScope.ts` for setting it or opting out.
  * ------------------------------------------------------------------------------------------- */
 
 /** Every query that takes a filter. `estimatedDocumentCount` has none; `remove` is document middleware. */
@@ -85,14 +84,12 @@ const SCOPED_QUERIES: MongooseQueryMiddleware[] = [
 const FIRST_ONLY_STAGES = ["$geoNear", "$search", "$searchMeta", "$collStats", "$indexStats", "$listSessions", "$changeStream"];
 
 const logger = getLogger("tenantScope");
-const reported = new Set<string>();
 
 type Verdict = "tenant" | "absent" | "other";
-type Finding = "no-tenant" | "unscoped" | "other-company";
+type Finding = "no-tenant" | "other-company";
 
 interface Scope {
     tenant?: string;
-    enforce: boolean;
     module?: string;
     languageCode: string;
 }
@@ -103,7 +100,6 @@ function currentScope(): Scope | null {
     if (store?.crossTenantReason) return null;
     return {
         tenant: store?.tenantCompanyId,
-        enforce: tenantScopeEnforced(store?.routeModule),
         module: store?.routeModule,
         languageCode: store?.languageCode ?? DEFAULT_EXCEPTION_LANGUAGE,
     };
@@ -115,7 +111,7 @@ function hasHexId(value: object): value is {toHexString(): string} {
 
 /** How a `company` filter or value relates to the tenant. Only plain equality and an `$in` of the tenant count as the tenant. */
 function companyVerdict(value: unknown, tenant: string): Verdict {
-    // `company: null` matches no tenant's records; narrowed to the tenant it still matches nothing.
+    // `company: null` and an empty `$in` match no tenant's records; narrowed to the tenant they still match nothing.
     if (value === undefined || value === null) return "absent";
     if (typeof value === "string") return value === tenant ? "tenant" : "other";
     if (typeof value !== "object") return "other";
@@ -126,21 +122,14 @@ function companyVerdict(value: unknown, tenant: string): Verdict {
     const operators: Record<string, unknown> = {...value};
     const keys = Object.keys(operators);
     if (keys.length === 1 && keys[0] === "$eq") return companyVerdict(operators.$eq, tenant);
-    if (keys.length === 1 && keys[0] === "$in" && Array.isArray(operators.$in) && operators.$in.length > 0) {
+    if (keys.length === 1 && keys[0] === "$in" && Array.isArray(operators.$in)) {
+        if (operators.$in.length === 0) return "absent";
         return operators.$in.every((entry) => companyVerdict(entry, tenant) === "tenant") ? "tenant" : "other";
     }
     return "other";
 }
 
-/** Log-only mode: one warning per finding, model, operation and module, so logs list what to fix. */
-function report(finding: Finding, model: string, operation: string, scope: Scope): void {
-    const key = `${finding}|${model}|${operation}|${scope.module ?? ""}`;
-    if (reported.has(key)) return;
-    reported.add(key);
-    logger.warn(`Tenant scope would ${finding === "unscoped" ? "scope" : "refuse"} ${model}.${operation} (${finding}) in ${scope.module ?? "no module"}`);
-}
-
-function refuse(finding: Exclude<Finding, "unscoped">, model: string, operation: string, scope: Scope): Error {
+function refuse(finding: Finding, model: string, operation: string, scope: Scope): Error {
     logger.err(`Tenant scope refused ${model}.${operation} (${finding}) in ${scope.module ?? "no module"}`);
     return finding === "no-tenant"
         ? apiValidationException("tenant_context_missing", "company", [model], scope.languageCode)
@@ -154,20 +143,10 @@ function refuse(finding: Exclude<Finding, "unscoped">, model: string, operation:
 function judge(companyFilter: unknown, model: string, operation: string, addTenant: (tenant: string) => void): Error | undefined {
     const scope = currentScope();
     if (!scope) return undefined;
-    if (!scope.tenant) {
-        if (scope.enforce) return refuse("no-tenant", model, operation, scope);
-        report("no-tenant", model, operation, scope);
-        return undefined;
-    }
+    if (!scope.tenant) return refuse("no-tenant", model, operation, scope);
     const verdict = companyVerdict(companyFilter, scope.tenant);
-    if (verdict === "tenant") return undefined;
-    if (verdict === "other") {
-        if (scope.enforce) return refuse("other-company", model, operation, scope);
-        report("other-company", model, operation, scope);
-        return undefined;
-    }
-    if (scope.enforce) addTenant(scope.tenant);
-    else report("unscoped", model, operation, scope);
+    if (verdict === "other") return refuse("other-company", model, operation, scope);
+    if (verdict === "absent") addTenant(scope.tenant);
     return undefined;
 }
 

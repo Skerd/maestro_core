@@ -20,9 +20,13 @@ import {registerCronHandler, setCronHandlerModule} from "../registry/handlerRegi
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {seedCronJobsForCompany, skipMissedCronRuns} from "../bootstrap/seedCompanyJobs";
 import {SchedulerEngine} from "../engine/schedulerEngine";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 // Stand-in for the model companyIdsWithModule resolves by name; only `modules` is read.
 const Company = mongoose.model("Company", new Schema({modules: {type: [String], default: undefined}}));
+
+/** The tests seed and read several companies' jobs; the code under test sets each run's own company (D16). */
+const acrossCompanies = <T>(fn: () => PromiseLike<T>): Promise<T> => asCrossTenant("test fixtures span companies", fn);
 
 const ran: string[] = [];
 /** Each run's tenant context (D16): `code@company tenant module`. */
@@ -66,16 +70,16 @@ async function tick(): Promise<void> {
 }
 
 describe("per-company module jobs", {timeout: 30000}, () => {
-    it("seeds a module's jobs only for companies that have the module", async () => {
+    it("seeds a module's jobs only for companies that have the module", () => acrossCompanies(async () => {
         const clinic = new ObjectId();
         await seedCronJobsForCompany(clinic, ["core"]);
         expect((await CronJobModel.find({company: clinic}).lean()).map((job) => job.code)).toEqual(["test.core"]);
 
         await seedCronJobsForCompany(clinic, ["core", "carRental"]);
         expect((await CronJobModel.find({company: clinic}).lean()).map((job) => job.code).sort()).toEqual(["test.core", "test.rental"]);
-    });
+    }));
 
-    it("runs a module's jobs only for companies that have the module", async () => {
+    it("runs a module's jobs only for companies that have the module", () => acrossCompanies(async () => {
         const rental = await Company.create({modules: ["core", "finance", "carRental"]});
         const clinic = await Company.create({modules: ["core", "finance", "dentalClinic"]});
         const due = new Date(Date.now() - 1_000);
@@ -98,9 +102,9 @@ describe("per-company module jobs", {timeout: 30000}, () => {
         // The clinic's rental job is left due, untouched, for when the module comes back.
         const parked = await CronJobModel.findOne({company: clinic._id, code: "test.rental"}).lean();
         expect(parked!.nextRunAt!.getTime()).toBe(due.getTime());
-    });
+    }));
 
-    it("moves overdue jobs of a re-enabled module to their next run", async () => {
+    it("moves overdue jobs of a re-enabled module to their next run", () => acrossCompanies(async () => {
         const company = new ObjectId();
         const longAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000);
         await CronJobModel.create({company, code: "test.rental", handler: "test.rental", name: "r", cronExpression: "0 0 * * * *", nextRunAt: longAgo});
@@ -112,5 +116,5 @@ describe("per-company module jobs", {timeout: 30000}, () => {
         const coreJob = await CronJobModel.findOne({company, code: "test.core"}).lean();
         expect(rentalJob!.nextRunAt!.getTime()).toBeGreaterThan(Date.now());
         expect(coreJob!.nextRunAt!.getTime()).toBe(longAgo.getTime());
-    });
+    }));
 });

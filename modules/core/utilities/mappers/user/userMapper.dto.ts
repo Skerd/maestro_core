@@ -63,10 +63,14 @@ function mapRequests(req: IUser["requests"]): CompanyUserRequestsType | undefine
     return Object.keys(out).length ? out : undefined;
 }
 
-export function userToCompanyUserDTO(user: IUser | null | undefined): CompanyUserType | null {
+/**
+ * The user as a member of `companyId`: roles, status and login facts come from that company's membership,
+ * never from whichever membership happens to be stored first.
+ */
+export function userToCompanyUserDTO(user: IUser | null | undefined, companyId: {toString(): string}): CompanyUserType | null {
     if (!user) return null;
 
-    const role = (user.roles ?? []).shift();
+    const role = (user.roles ?? []).find((membership) => String(membership.company?._id ?? membership.company) === companyId.toString());
 
     return {
         _id: user._id ? user._id.toString() : undefined,
@@ -77,7 +81,7 @@ export function userToCompanyUserDTO(user: IUser | null | undefined): CompanyUse
         timezone: user.timezone,
         birthday: user.birthday ? toDate(user.birthday) : undefined,
         registerDate: user.registerDate ? toDate(user.registerDate) : undefined,
-        roles: role.roles
+        roles: role?.roles
             ? role.roles
                 .map((r) => mapSnippet<RoleSimple>()(r, RoleSimpleSnippet))
                 .filter((r): r is RoleSimple => r != null)
