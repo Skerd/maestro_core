@@ -13,6 +13,7 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {ServerError} from "armonia/src/modules/core/types";
+import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 
 export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]};
 
@@ -42,7 +43,8 @@ export function callerHeader(caller: TestCaller): Record<string, string> {
 export function appFor(routes: {basePath: string; router: Router}[]) {
     const app = express();
     app.use(express.json());
-    for (const {basePath, router} of routes) app.use(basePath, router);
+    // Mounted like routeRegistry does, so tests see production's body guard.
+    for (const {basePath, router} of routes) app.use(basePath, stripServerKeys, router);
     app.use((error: unknown, _req: any, res: any, _next: any) => {
         if (error instanceof ServerError) return res.status(error.status).json(error);
         return res.status(500).json({error_code: "internal_error", message: (error as Error)?.message});

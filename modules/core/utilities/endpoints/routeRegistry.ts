@@ -11,6 +11,7 @@ import {registerRawBodyPrefix} from '@coreModule/utilities/endpoints/rawBodyRout
 import {requestContext} from '@coreModule/utilities/endpoints/requestContext';
 import path from 'path';
 import fs from 'fs';
+import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 
 /**
  * Route Metadata Interface
@@ -227,7 +228,8 @@ export class RouteRegistry {
         sortedRoutes.forEach(([routePath, modules]) => {
             try {
                 modules.forEach((module, index) => {
-                    app.use(routePath, tagRouteModule, module.router);
+                    // stripServerKeys first: no client value may reach a server-owned body key (SEC-03).
+                    app.use(routePath, stripServerKeys, tagRouteModule, module.router);
                     if (modules.length > 1) {
                         this.logger?.debug(`Applied route: ${routePath} (router ${index + 1}/${modules.length})`);
                     } else {

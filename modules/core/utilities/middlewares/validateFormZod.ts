@@ -3,6 +3,7 @@ import {ZodType} from 'zod';
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {ValidationError} from "armonia/src/modules/core/types";
 import {CONSTANTS} from "@coreModule/environment";
+import {clientValuesOfServerKeys, SERVER_KEYS} from "@coreModule/utilities/middlewares/serverKeys";
 
 /**
  * Form Validation Middleware (Zod-based)
@@ -32,7 +33,14 @@ export const validateFormZod = (schemaFactory: (languageCode: string | undefined
         const body = req.body;
         const languageCode = body.languageCode ?? CONSTANTS.DEFAULT_LANGUAGE;
         const schema = schemaFactory(languageCode, null, req.body?.sanitizedWriteFields ?? {}, req.body?.sanitizedReadFields ?? {});
-        const result = schema.safeParse(body);
+        // Validate what the client sent: server-written keys are swapped back for the client's own values
+        // (quarantined by stripServerKeys), so a contract field like a recipient's `languageCode` sees its input.
+        const input: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(body)) {
+            if (!SERVER_KEYS.has(key)) input[key] = value;
+        }
+        Object.assign(input, clientValuesOfServerKeys(req));
+        const result = schema.safeParse(input);
         if( !result.success ){
             const validationErrors: ValidationError[] = [];
             const zodErrors = result.error.issues;
@@ -49,7 +57,15 @@ export const validateFormZod = (schemaFactory: (languageCode: string | undefined
             return next(error);
         }
         /** Multipart and URL-encoded bodies arrive as strings; Zod preprocess/coerce produces typed values. Merge so handlers see parsed output. */
-        Object.assign(body, result.data);
+        const data: unknown = result.data;
+        if (data != null && typeof data === "object") {
+            for (const [key, value] of Object.entries(data)) {
+                // A value a middleware wrote (e.g. authMW's `languageCode`) wins; otherwise the validated client value.
+                if (SERVER_KEYS.has(key) && body[key] !== undefined) continue;
+                body[key] = value;
+            }
+            body.validatedForm = data;
+        }
         return next();
     };
 };

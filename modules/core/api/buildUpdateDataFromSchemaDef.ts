@@ -1,5 +1,6 @@
 import {ObjectId} from "mongodb";
 import type {FieldDef, SchemaDef} from "armonia/src/modules/core/helpers/schemaDefBuilder";
+import {SERVER_KEYS} from "@coreModule/utilities/middlewares/serverKeys";
 
 /**
  * Per-field value transformer. Keys use dot-notation for nested fields (e.g. "address.country").
@@ -107,7 +108,7 @@ function buildCreateRecursive(
     const data: Record<string, any> = {};
 
     for (const [key, fieldDef] of Object.entries(schemaDef)) {
-        const value = params[key];
+        const value = fieldValue(params, key, prefix);
         if (value === undefined || value === null) continue;
 
         const fullKey = prefix ? `${prefix}.${key}` : key;
@@ -118,6 +119,18 @@ function buildCreateRecursive(
     }
 
     return data;
+}
+
+/**
+ * A SchemaDef field named like a server key (e.g. a recipient's `languageCode`) must come from what the
+ * client sent and Zod validated, not from the request context middlewares put under the same name.
+ */
+function fieldValue(params: Record<string, any>, key: string, prefix: string): unknown {
+    const form: unknown = params.validatedForm;
+    if (!prefix && SERVER_KEYS.has(key) && form != null && typeof form === "object") {
+        return (form as Record<string, unknown>)[key];
+    }
+    return params[key];
 }
 
 // ── buildUpdateDataFromSchemaDef ──────────────────────────────────────────────
@@ -154,7 +167,7 @@ function buildUpdateRecursive(
     const update: Record<string, any> = {};
 
     for (const [key, fieldDef] of Object.entries(schemaDef)) {
-        const value = params[key];
+        const value = fieldValue(params, key, prefix);
         if (value === undefined) continue;
         if (!writeFields[key]) continue;
 
