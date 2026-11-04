@@ -27,9 +27,10 @@ export interface ActionOptions {
      */
     schema?: (lang: string, form: any) => ZodObject<any>;
     /**
-     * The action works only on the signed-in caller's own record (their account, their preferences), so any
-     * signed-in user may run it and it is not a role permission (D14, SEC-02). The action itself MUST take the
-     * record from the caller (`userInfo`/`actionUserCtx`), never from the body.
+     * Access is decided by the caller's own relation to the record, not by their role: their own record
+     * (account, preferences, addresses) or one they are a party to (a marketplace order or bid). Any signed-in
+     * user may call it and it is not a role permission (D14, SEC-02). The action MUST check that relation
+     * itself (owner or party check on `actionUserCtx`), never trusting the body.
      */
     selfService?: boolean;
 }
