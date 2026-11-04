@@ -1,11 +1,9 @@
 import {ObjectId} from "mongodb";
 import {action} from "@coreModule/api/actionDecorator";
-import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {getTokenSessionId} from "@coreModule/utilities/security/sessionValidator";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {validateSingleForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
 import {WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import UserSession from "@coreModule/database/schemas/userSession/userSession";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
@@ -29,13 +27,14 @@ export class UserSessionActions {
         auth: "private",
         rateLimit: {windowMs: 60000, max: 30},
         transaction: true,
+        // Signing out ends the caller's own current session, for every user (D14).
+        selfService: true,
     })
     async currentRevoke(params: Record<string, any>): Promise<{message: string}> {
         const {logger, languageCode, session, user, company, actionUserCtx} = params;
         const tokenSessionId = getTokenSessionId(user);
 
         logger.start("Revoking current user session...");
-        SchemaGuard.sanitizeFields(UserSession, {isActive: {}}, "write", actionUserCtx, languageCode);
 
         if (!tokenSessionId) {
             throw apiValidationException("session_not_found", "sessionId", null, languageCode);
@@ -67,7 +66,6 @@ export class UserSessionActions {
         const {logger, languageCode, session, _id, company, actionUserCtx} = params;
 
         logger.start(`Revoking user session: ${_id}...`);
-        SchemaGuard.sanitizeFields(UserSession, {isActive: {}}, "write", actionUserCtx, languageCode);
 
         const existing = await userSessionService.findOneOrThrow(
             {_id: new ObjectId(_id), company: company._id},

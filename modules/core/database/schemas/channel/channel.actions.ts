@@ -1,8 +1,7 @@
 import {ObjectId} from "mongodb";
 import {action} from "@coreModule/api/actionDecorator";
-import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
-import Channel, {IChannel} from "@coreModule/database/schemas/channel/channel";
+import type {IChannel} from "@coreModule/database/schemas/channel/channel";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {
     assignAgentToPublicChat,
@@ -55,8 +54,6 @@ export class ChannelActions {
         const {company, actionUserInfo, actionUserCtx, languageCode, logger, _id} = params;
         logger.start(`Agent ${actionUserInfo._id.toString()} joining public chat ${_id}...`);
 
-        SchemaGuard.sanitizeFields(Channel, {users: {}}, "write", actionUserCtx, languageCode);
-
         const channel = await requirePublicChat(_id, company._id, logger, languageCode);
 
         const assignedTo = (channel.publicChat?.assignedTo as any)?._id ?? channel.publicChat?.assignedTo;
@@ -91,10 +88,9 @@ export class ChannelActions {
         schema: validateSingleForm,
     })
     async release(params: ChannelActionParams): Promise<ActionMessage> {
-        const {company, actionUserInfo, actionUserCtx, languageCode, logger, _id} = params;
+        const {company, actionUserInfo, languageCode, logger, _id} = params;
         logger.start(`Releasing public chat ${_id} back to the bot...`);
 
-        SchemaGuard.sanitizeFields(Channel, {users: {}}, "write", actionUserCtx, languageCode);
         const channel = await requirePublicChat(_id, company._id, logger, languageCode);
 
         await releasePublicChatToBot({
@@ -118,10 +114,9 @@ export class ChannelActions {
         schema: validateSingleForm,
     })
     async close(params: ChannelActionParams): Promise<ActionMessage> {
-        const {company, actionUserInfo, actionUserCtx, languageCode, logger, _id} = params;
+        const {company, actionUserInfo, languageCode, logger, _id} = params;
         logger.start(`Closing public chat ${_id}...`);
 
-        SchemaGuard.sanitizeFields(Channel, {users: {}}, "write", actionUserCtx, languageCode);
         const channel = await requirePublicChat(_id, company._id, logger, languageCode);
 
         await closePublicChatByAgent({
