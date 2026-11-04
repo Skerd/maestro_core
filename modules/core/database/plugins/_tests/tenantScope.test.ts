@@ -160,6 +160,10 @@ describe("enforced", () => {
         await expect(asRequest(companyA, () => SharedFile.create({title: "x", company: companyB, sharedWith: [companyA]}))).rejects.toMatchObject({error_code: "tenant_scope_violation"});
     });
 
+    it("narrows a filter on no company to the tenant instead of refusing it (it matches nothing either way)", async () => {
+        expect(await asRequest(companyA, () => Booking.countDocuments({company: null}))).toBe(0);
+    });
+
     it("treats a populated company as its id", async () => {
         // Mongoose casts a document-like value to its _id; scoping must read it the same way.
         expect(await asRequest(companyA, () => Booking.countDocuments({company: {_id: companyA, name: "A"}}))).toBe(2);

@@ -115,9 +115,10 @@ function hasHexId(value: object): value is {toHexString(): string} {
 
 /** How a `company` filter or value relates to the tenant. Only plain equality and an `$in` of the tenant count as the tenant. */
 function companyVerdict(value: unknown, tenant: string): Verdict {
-    if (value === undefined) return "absent";
+    // `company: null` matches no tenant's records; narrowed to the tenant it still matches nothing.
+    if (value === undefined || value === null) return "absent";
     if (typeof value === "string") return value === tenant ? "tenant" : "other";
-    if (value === null || typeof value !== "object") return "other";
+    if (typeof value !== "object") return "other";
     if (hasHexId(value)) return value.toHexString() === tenant ? "tenant" : "other";
     // A populated company (a document) stands for its id.
     const populatedId: unknown = Reflect.get(value, "_id");
