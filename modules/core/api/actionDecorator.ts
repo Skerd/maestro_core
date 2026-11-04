@@ -26,6 +26,12 @@ export interface ActionOptions {
      * Invoked via validateFormZod before the handler.
      */
     schema?: (lang: string, form: any) => ZodObject<any>;
+    /**
+     * The action works only on the signed-in caller's own record (their account, their preferences), so any
+     * signed-in user may run it and it is not a role permission (D14, SEC-02). The action itself MUST take the
+     * record from the caller (`userInfo`/`actionUserCtx`), never from the body.
+     */
+    selfService?: boolean;
 }
 
 export interface RegisteredAction {

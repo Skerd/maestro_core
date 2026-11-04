@@ -729,17 +729,21 @@ export function createCrudRouter<
 }
 
 /**
- * Mounts each `@action` of `ActionsClass` as POST `/<methodName>` on `router`. An authenticated action is
- * a permission of `model` (D14): it is registered for the roles UI and checked right after `authMW`.
+ * Mounts each `@action` of `ActionsClass` as POST `/<methodName>` on `router`. A signed-in (not public) action
+ * is a permission of `model` (D14): it is registered for the roles UI and checked right after `authMW`.
  */
 export function mountActions(router: Router, ActionsClass: new () => any, model: Model<any>): void {
     const actionsInstance = new ActionsClass();
     for (const {methodName, options} of getRegisteredActions(ActionsClass)) {
         const mw: RequestHandler[] = [];
         if (options.auth !== false) {
-            mw.push(authMW((options.auth ?? "private") as any));
-            registerModelAction(model, methodName);
-            mw.push(actionPermissionMW(model, methodName));
+            const auth = options.auth ?? "private";
+            mw.push(authMW(auth as any));
+            // A public action has no signed-in caller to hold a permission; a self-service one needs none.
+            if (auth !== "public" && !options.selfService) {
+                registerModelAction(model, methodName);
+                mw.push(actionPermissionMW(model, methodName));
+            }
         }
         if (options.rateLimit)      mw.push(rateLimiter(options.rateLimit));
         if (options.transaction)    mw.push(transactionHandler());

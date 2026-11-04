@@ -25,6 +25,18 @@ class BookingActions {
         ran.push("publicQuote");
         return {ok: true};
     }
+
+    @action({auth: "public"})
+    async publicLink() {
+        ran.push("publicLink");
+        return {ok: true};
+    }
+
+    @action({auth: "private", selfService: true})
+    async myPreferences() {
+        ran.push("myPreferences");
+        return {ok: true};
+    }
 }
 
 const router = Router();
@@ -48,7 +60,7 @@ describe("action permissions (D14)", () => {
             expect.objectContaining({tag: "actionpermissionbookings[action:others:confirmBooking]"}),
         ]));
         // A public action has no caller to hold a permission.
-        expect(actionPermissionEntries().some((entry) => entry.tag.includes("publicQuote"))).toBe(false);
+        expect(actionPermissionEntries().some((entry) => /publicQuote|publicLink|myPreferences/.test(entry.tag))).toBe(false);
     });
 
     it("refuses an enforced module's action before its body when the role lacks the permission", async () => {
@@ -69,9 +81,17 @@ describe("action permissions (D14)", () => {
         expect(ran).toEqual(["confirmBooking"]);
     });
 
+    it("lets any signed-in caller run a self-service action", async () => {
+        process.env.ACTION_PERMISSION_ENFORCE = "*";
+        expect((await request(app).post("/api/bookings/myPreferences").set(callerHeader(caller([]))).send({})).status).toBe(200);
+        expect(ran).toEqual(["myPreferences"]);
+    });
+
     it("leaves public actions alone", async () => {
         process.env.ACTION_PERMISSION_ENFORCE = "*";
         expect((await request(app).post("/api/bookings/publicQuote").send({})).status).toBe(200);
-        expect(ran).toEqual(["publicQuote"]);
+        // A public route still authenticates nothing: the harness takes the caller from the header.
+        expect((await request(app).post("/api/bookings/publicLink").set(callerHeader(caller([]))).send({})).status).toBe(200);
+        expect(ran).toEqual(["publicQuote", "publicLink"]);
     });
 });

@@ -14,12 +14,14 @@ import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {ServerError} from "armonia/src/modules/core/types";
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
+import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
 
 export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]};
 
 export const authMWStub = {
     default: (scope?: string) => (req: any, _res: any, next: any) => {
-        const caller: TestCaller = JSON.parse(req.header("x-test-caller"));
+        const caller = callers.get(req.header("x-test-caller") ?? "");
+        if (!caller) throw new Error("Unknown test caller: build the header with callerHeader()");
         const actionUserCtx = {
             userId: caller.userId,
             orgId: caller.companyId,
@@ -38,9 +40,16 @@ export const authMWStub = {
     },
 };
 
+/** Callers by header id: a header carrying every permission tag outgrows Node's 16 KB header limit. */
+const callers = new Map<string, TestCaller>();
+
 /** Header that authenticates a request as `caller` under the stub. */
 export function callerHeader(caller: TestCaller): Record<string, string> {
-    return {"x-test-caller": JSON.stringify(caller)};
+    const id = JSON.stringify([caller.userId, caller.companyId, caller.isAdmin ?? false, caller.permissions?.length ?? 0, callers.size]);
+    const known = [...callers].find(([, value]) => value === caller);
+    if (known) return {"x-test-caller": known[0]};
+    callers.set(id, caller);
+    return {"x-test-caller": id};
 }
 
 /**
@@ -66,7 +75,7 @@ export function appFor(routes: {basePath: string; router: Router; module?: strin
     return app;
 }
 
-/** Every permission tag of these models: what an admin role holds after boot. */
+/** Every permission tag of these models, their actions included: what an admin role holds after boot. */
 export function allPermissionTags(models: Model<any>[]): string[] {
     const tags = new Set<string>();
     const collect = (value: unknown) => {
@@ -74,5 +83,10 @@ export function allPermissionTags(models: Model<any>[]): string[] {
         else if (value && typeof value === "object") Object.values(value).forEach(collect);
     };
     for (const model of models) collect(normalizeSchemaPermissions(model));
+    // Its @action permissions too (D14), registered when the test imported the routers.
+    const prefixes = models.map((model) => `${model.collection.name}[`);
+    for (const {tag} of actionPermissionEntries()) {
+        if (prefixes.some((prefix) => tag.startsWith(prefix))) tags.add(tag);
+    }
     return [...tags];
 }
