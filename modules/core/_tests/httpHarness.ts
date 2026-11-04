@@ -18,7 +18,7 @@ import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]};
 
 export const authMWStub = {
-    default: () => (req: any, _res: any, next: any) => {
+    default: (scope?: string) => (req: any, _res: any, next: any) => {
         const caller: TestCaller = JSON.parse(req.header("x-test-caller"));
         const actionUserCtx = {
             userId: caller.userId,
@@ -31,7 +31,10 @@ export const authMWStub = {
         req.body.logger = getLogger(req.originalUrl);
         req.body.company = {_id: new ObjectId(caller.companyId), name: "Test company"};
         req.body.actionUserCtx = actionUserCtx;
-        requestContext.run({...requestContext.getStore(), actionUserCtx, tenantCompanyId: caller.companyId, languageCode: "en-US"}, () => next());
+        // Like authMW: only a private request names its tenant here; a public one gets it from
+        // resolveCompanyByOrigin (or not at all), so tests see production's tenant scoping (D16).
+        const tenant = scope === "public" ? {} : {tenantCompanyId: caller.companyId};
+        requestContext.run({...requestContext.getStore(), actionUserCtx, ...tenant, languageCode: "en-US"}, () => next());
     },
 };
 

@@ -1,5 +1,6 @@
 import {ClientSession, Document, Model} from 'mongoose';
 import {AuthenticatedMWType} from './authMW';
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 
 export { transactionHandler } from './transactionHandler';
 
@@ -285,7 +286,7 @@ const commitTasks = new WeakMap<ClientSession, (() => Promise<void>)[]>();
  * Whoever commits flushes the queue with {@link flushAfterCommitTasks}:
  * `asyncHandler` does so for routes using `transactionHandler`; code that runs
  * its own `withTransaction` must do the same (dropping at the start of each
- * attempt, running after it resolves).
+ * attempt, running after it resolves). The task runs in the request context it was queued in.
  */
 export async function runAfterCommit(session: ClientSession | null | undefined, task: () => Promise<void>): Promise<void> {
     if (!session?.inTransaction()) {
@@ -293,7 +294,10 @@ export async function runAfterCommit(session: ClientSession | null | undefined, 
         return;
     }
     const tasks = commitTasks.get(session) ?? [];
-    tasks.push(task);
+    // The task runs later, after the handler returned: it keeps the context it was queued in, so it
+    // works on the same tenant (D16) and as the same user.
+    const store = requestContext.getStore();
+    tasks.push(store ? () => requestContext.run(store, task) : task);
     commitTasks.set(session, tasks);
 }
 

@@ -363,7 +363,8 @@ MediaSchema.pre('save', function(next) {
     next();
 });
 
-ownershipPlugin(MediaSchema);
+// A file is the owner's, and also readable by the companies it was shared with (D16).
+ownershipPlugin(MediaSchema, {sharedWith: "sharedWithCompanies"});
 auditPlugin(MediaSchema);
 softDeletePlugin(MediaSchema);
 applyMediaIndexes(MediaSchema);

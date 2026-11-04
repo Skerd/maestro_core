@@ -10,6 +10,11 @@ export interface OwnershipPluginOptions {
      * something else, like a company's parent company, so tenant scoping (D16) leaves the model alone.
      */
     tenantScoped?: boolean;
+    /**
+     * Field listing the companies the owner shared a record with (e.g. Media `sharedWithCompanies`).
+     * Reads and updates then match records the tenant owns OR was shared; creating stays owner-only.
+     */
+    sharedWith?: string;
 }
 
 export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions = {}): void => {
@@ -61,7 +66,7 @@ export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions 
     schema.index({company: 1, _id: 1});
 
     if (options.tenantScoped !== false) {
-        applyTenantScope(schema);
+        applyTenantScope(schema, options.sharedWith);
     }
 };
 
@@ -114,13 +119,15 @@ function companyVerdict(value: unknown, tenant: string): Verdict {
     if (typeof value === "string") return value === tenant ? "tenant" : "other";
     if (value === null || typeof value !== "object") return "other";
     if (hasHexId(value)) return value.toHexString() === tenant ? "tenant" : "other";
+    // A populated company (a document) stands for its id.
+    const populatedId: unknown = Reflect.get(value, "_id");
+    if (populatedId !== undefined) return companyVerdict(populatedId, tenant);
     const operators: Record<string, unknown> = {...value};
     const keys = Object.keys(operators);
     if (keys.length === 1 && keys[0] === "$eq") return companyVerdict(operators.$eq, tenant);
     if (keys.length === 1 && keys[0] === "$in" && Array.isArray(operators.$in) && operators.$in.length > 0) {
         return operators.$in.every((entry) => companyVerdict(entry, tenant) === "tenant") ? "tenant" : "other";
     }
-    if (keys.length === 1 && keys[0] === "_id") return companyVerdict(operators._id, tenant);
     return "other";
 }
 
@@ -176,11 +183,18 @@ function updatedCompany(update: unknown): unknown {
         ?? fieldOf(update, "company");
 }
 
-function applyTenantScope(schema: Schema): void {
+/** The filter that keeps a query inside the tenant: owned by it, or (shared models) shared with it. */
+function tenantCondition(tenant: string, sharedWith: string | undefined): Record<string, unknown> {
+    const company = new Types.ObjectId(tenant);
+    return sharedWith ? {$or: [{company}, {[sharedWith]: company}]} : {company};
+}
+
+function applyTenantScope(schema: Schema, sharedWith?: string): void {
     for (const operation of SCOPED_QUERIES) {
         schema.pre(operation, function (this: Query<unknown, unknown>, next: (error?: Error) => void) {
             const model = this.model.modelName;
-            const error = judge(this.getFilter().company, model, operation, (tenant) => this.where({company: new Types.ObjectId(tenant)}));
+            // `and` keeps a filter's own `$or` intact.
+            const error = judge(this.getFilter().company, model, operation, (tenant) => this.and([tenantCondition(tenant, sharedWith)]));
             if (error) return next(error);
             const written = updatedCompany(this.getUpdate());
             next(written === undefined ? undefined : judge(written, model, `${operation}:write`, () => undefined));
@@ -195,7 +209,7 @@ function applyTenantScope(schema: Schema): void {
         const leadingMatch = pipeline[insertAt];
         const matched = leadingMatch && "$match" in leadingMatch ? leadingMatch.$match.company : undefined;
         const error = judge(matched, model, "aggregate", (tenant) => {
-            const stage: PipelineStage = {$match: {company: new Types.ObjectId(tenant)}};
+            const stage: PipelineStage = {$match: tenantCondition(tenant, sharedWith)};
             pipeline.splice(insertAt, 0, stage);
         });
         next(error);

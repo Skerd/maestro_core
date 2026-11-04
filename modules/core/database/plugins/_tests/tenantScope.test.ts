@@ -24,6 +24,15 @@ ownershipPlugin(parentSchema, {tenantScoped: false});
 auditPlugin(parentSchema);
 const Parent = mongoose.model<IBooking>("TenantScopeParent", parentSchema);
 
+interface IFile {
+    title: string;
+    company: ObjectId;
+    sharedWith: ObjectId[];
+}
+const fileSchema = new Schema<IFile>({title: String, sharedWith: [Schema.Types.ObjectId]});
+ownershipPlugin(fileSchema, {sharedWith: "sharedWith"});
+const SharedFile = mongoose.model<IFile>("TenantScopeSharedFile", fileSchema);
+
 const companyA = new ObjectId();
 const companyB = new ObjectId();
 let mongo: MongoMemoryServer;
@@ -131,6 +140,29 @@ describe("enforced", () => {
         const child = await asRequest(companyA, () => Parent.create({title: "child company", company: companyB}));
         const entries = await asCrossTenant("check", () => AuditLog.countDocuments({documentId: child._id, company: companyB}));
         expect(entries).toBe(1);
+    });
+
+    it("reads a shared model's records the tenant owns or was shared, keeping the query's own $or", async () => {
+        const companyC = new ObjectId();
+        await asCrossTenant("fixture", async () => {
+            await SharedFile.deleteMany({});
+            await SharedFile.create([
+                {title: "own", company: companyA, sharedWith: []},
+                {title: "shared", company: companyB, sharedWith: [companyA]},
+                {title: "foreign", company: companyB, sharedWith: [companyC]},
+            ]);
+        });
+        expect(titles(await asRequest(companyA, () => SharedFile.find({})))).toEqual(["own", "shared"]);
+        expect(titles(await asRequest(companyA, () => SharedFile.find({$or: [{title: "shared"}, {title: "foreign"}]})))).toEqual(["shared"]);
+        // The sharee can take itself off the list; it cannot create files owned by someone else.
+        await asRequest(companyA, () => SharedFile.updateOne({title: "shared"}, {$pull: {sharedWith: companyA}}));
+        expect(titles(await asRequest(companyA, () => SharedFile.find({})))).toEqual(["own"]);
+        await expect(asRequest(companyA, () => SharedFile.create({title: "x", company: companyB, sharedWith: [companyA]}))).rejects.toMatchObject({error_code: "tenant_scope_violation"});
+    });
+
+    it("treats a populated company as its id", async () => {
+        // Mongoose casts a document-like value to its _id; scoping must read it the same way.
+        expect(await asRequest(companyA, () => Booking.countDocuments({company: {_id: companyA, name: "A"}}))).toBe(2);
     });
 
     it("does not enforce other modules", async () => {

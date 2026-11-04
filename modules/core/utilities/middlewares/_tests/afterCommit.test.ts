@@ -3,6 +3,8 @@ import {MongoMemoryReplSet} from "mongodb-memory-server";
 import mongoose from "mongoose";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {flushAfterCommitTasks, runAfterCommit} from "@coreModule/utilities/middlewares/transactionUtils";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 // Transactions need a replica set; WiredTiger, because the default in-memory
 // test engine has no document-level write conflicts
@@ -53,6 +55,14 @@ describe("runAfterCommit", {timeout: 30000}, () => {
 
         expect(failure).toBeInstanceOf(Error);
         expect(sent).toEqual(["committed"]);
+    });
+
+    it("runs a task in the request context it was queued in, e.g. its tenant (D16)", async () => {
+        const seen: (string | undefined)[] = [];
+        await runHandler(async ({session}) =>
+            withTenant("650000000000000000000a01", () =>
+                runAfterCommit(session, async () => { seen.push(requestContext.getStore()?.tenantCompanyId); })));
+        expect(seen).toEqual(["650000000000000000000a01"]);
     });
 
     it("reports a failing task without throwing", async () => {
