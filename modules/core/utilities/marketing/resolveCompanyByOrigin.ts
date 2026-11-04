@@ -19,15 +19,16 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {assertModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
-import {isPortalApexOrigin, isPortalZoneOrigin, portalSiteSlug} from "@coreModule/utilities/marketing/portalOrigin";
+import {isLocalDevOrigin, isPortalApexOrigin, isPortalZoneOrigin, portalSiteSlug} from "@coreModule/utilities/marketing/portalOrigin";
 import {findPlatformCompany, findPortalSiteCompany} from "@coreModule/utilities/marketing/portalCompanies";
 
 /**
  * Resolve the tenant company from a public request's origin.
  *
- * Falls back to an active company whose `allowedDomains` contains `"*"` (the
- * platform owner first), which is what makes local development (localhost,
- * preview hosts) work without per-environment domain configuration.
+ * Unknown origins fail closed (D18): the portal apex is the platform owner, `{siteSlug}.{root}` is
+ * that company's site, and any other host must be in a company's `allowedDomains`. Only a local
+ * development origin (localhost, `*.localhost`, loopback) may fall back to a company whose
+ * `allowedDomains` contains `"*"` (the platform owner first).
  *
  * The company must have the module whose router is handling the request, so a
  * module's public site stops answering for a company that lost the module.
@@ -36,7 +37,7 @@ import {findPlatformCompany, findPortalSiteCompany} from "@coreModule/utilities/
  * an apex page about one company names it in `x-site-company`; either way it must be
  * eligible for the portal. The apex itself is the platform owner (portal accounts belong to it).
  *
- * @throws when neither a domain match nor a wildcard company exists, or the
+ * @throws when no company matches the origin (and, locally, no wildcard company exists), or the
  * company does not have the route's module.
  */
 export async function resolveCompanyByOrigin(
@@ -71,10 +72,12 @@ async function findCompanyByOrigin(origin: string, languageCode: string): Promis
         }
     }
 
-    const wildcard = await companyService.findOne({isActive: true, allowedDomains: "*", isPlatformOwner: true})
-        ?? await companyService.findOne({isActive: true, allowedDomains: "*"});
-    if (wildcard) {
-        return wildcard;
+    if (isLocalDevOrigin(normalizedOrigin)) {
+        const wildcard = await companyService.findOne({isActive: true, allowedDomains: "*", isPlatformOwner: true})
+            ?? await companyService.findOne({isActive: true, allowedDomains: "*"});
+        if (wildcard) {
+            return wildcard;
+        }
     }
 
     throw apiValidationException("company_not_found_for_origin", "origin", [normalizedOrigin || origin], languageCode);

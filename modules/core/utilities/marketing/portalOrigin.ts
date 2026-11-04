@@ -10,6 +10,15 @@
 import {PORTAL_ROOT_DOMAIN} from "@coreModule/environment";
 import {isReservedSiteSlug} from "armonia/src/modules/core/api/company/private/company/siteSlug";
 
+/**
+ * A developer's machine (`localhost`, `*.localhost`, loopback IPs). Only here may a public request that
+ * matches no company fall back to a wildcard (`allowedDomains: "*"`) company (D18).
+ */
+export function isLocalDevOrigin(origin: string): boolean {
+    const host = normalizeOriginHost(origin);
+    return host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "[::1]";
+}
+
 /** Normalize Origin / Referer / hostname to a bare lowercase host (no port). */
 export function normalizeOriginHost(origin: string): string {
     return (origin || "")
