@@ -166,6 +166,28 @@ export const defaultCompaniesValues: any = {
                 geoLocation: {latitude: 41.3275, longitude: 19.8189},
             },
         },
+        {
+            "name": "Alpine Reach",
+            "email": "outreach@arpeggio.com",
+            "description": "Alpine Reach finds Swiss companies that fit a client's offer, researches each one and drafts a personal first e-mail that the client approves before it is sent.",
+            "website": "https://reach.arpeggio.io",
+            "phoneNumber": "+41 44 500 21 30",
+            "linkedin": "https://www.linkedin.com/company/alpinereach",
+            "vat": "CHE-523.456.789",
+            "isActive": true,
+            "isPlatformOwner": false,
+            "isDefaultForSignUp": false,
+            "siteSlug": "reach",
+            "allowedDomains": ["reach.localhost"],
+            "modules": ["core", "swissOutreach"],
+            "demoAddress": {
+                countryCode: "CH",
+                cityName: "Zürich",
+                street: "Bahnhofstrasse 42",
+                postalCode: "8001",
+                geoLocation: {latitude: 47.3712, longitude: 8.5393},
+            },
+        },
     ]
 };
 
