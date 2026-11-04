@@ -1,4 +1,4 @@
-import {Router, type RequestHandler} from "express";
+import {Router} from "express";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
@@ -61,7 +61,7 @@ import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketSe
 import {
     UpdateChannelDescriptionFormResponseType
 } from "armonia/src/modules/core/api/user/private/chats/channels/updateChannelDescription.form.response.type";
-import {getRegisteredActions} from "@coreModule/api/actionDecorator";
+import {mountActions} from "@coreModule/api/crudRouterFactory";
 import {ChannelActions} from "@coreModule/database/schemas/channel/channel.actions";
 import {computeInboxBadges} from "@coreModule/domain/chat/inboxBadges";
 import {InboxBadgesFormResponseType} from "armonia/src/modules/core/api/user/private/chats/channels/inboxBadges.form.response.type";
@@ -1098,26 +1098,7 @@ async function deleteUserChannel(params: DeleteUserChannelType & DeleteChannelFo
     };
 }
 
-const channelActions = new ChannelActions();
-for (const {methodName, options} of getRegisteredActions(ChannelActions)) {
-    const mw: RequestHandler[] = [];
-    if (options.auth !== false) {
-        mw.push(authMW((options.auth ?? "private") as any));
-    }
-    if (options.rateLimit) {
-        mw.push(rateLimiter(options.rateLimit));
-    }
-    if (options.transaction) {
-        mw.push(transactionHandler());
-    }
-    if (options.middleware?.length) {
-        mw.push(...options.middleware as RequestHandler[]);
-    }
-    if (options.schema) {
-        mw.push(validateFormZod((lang, form) => options.schema!(lang ?? "", form)));
-    }
-    router.post(`/${methodName}`, ...mw, asyncHandler((channelActions as any)[methodName].bind(channelActions)));
-}
+mountActions(router, ChannelActions, Channel);
 
 export const basePath = '/api/user/chats/channels';
 export { router };

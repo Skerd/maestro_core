@@ -98,6 +98,17 @@ export async function resolveSignupCompany(
     languageCode: string,
     options: {session?: ClientSession | null; logger?: serverLogger} = {},
 ): Promise<ICompany> {
+    const company = await signupCompany(origin, languageCode, options);
+    // The sign-up then works in that company: its default role, the new membership (D16).
+    setRequestTenant(company._id, languageCode);
+    return company;
+}
+
+async function signupCompany(
+    origin: string,
+    languageCode: string,
+    options: {session?: ClientSession | null; logger?: serverLogger},
+): Promise<ICompany> {
     try {
         return isPortalZoneOrigin(origin)
             ? await findPlatformCompany(languageCode)

@@ -4,6 +4,8 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
 import Role from "@coreModule/database/schemas/role/role";
 import {getModelModule} from "@coreModule/utilities/modules/modelModules";
+import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 export async function createRolePermissions(parentLogger?: serverLogger) {
     const logger = getLogger("mongoDbInitialization-createSchemaPermissions", parentLogger);
@@ -105,6 +107,15 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
         }
     }
 
+    // Each mounted @action is a permission of its model (D14), in the model's group so default roles that
+    // own the model get its actions. Registered by `mountActions`, which runs before this sync.
+    for (const entry of actionPermissionEntries()) {
+        if (allTags.includes(entry.tag)) continue;
+        potentialPermissions.push(entry);
+        allTags.push(entry.tag);
+        recordTagModule(entry.tag, entry.module);
+    }
+
     // safety check, remove duplicates
     allTags = [...new Set(allTags)];
 
@@ -117,7 +128,8 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
     if( newRolePermissions.length > 0 ){
         await RolePermission.bulkSave(newRolePermissions);
 
-        const adminRoleUpdateResult = await Role.updateMany(
+        // Every company's admin roles get the new permissions (D16: a deliberate cross-company write).
+        const adminRoleUpdateResult = await asCrossTenant("new permissions go to every company's admin roles", () => Role.updateMany(
             { isAdmin: true },
             {
                 $addToSet: {
@@ -126,7 +138,7 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
                     }
                 }
             }
-        );
+        ));
         logger.debug(`Added new permissions to admin roles=${adminRoleUpdateResult.modifiedCount}`);
     }
 

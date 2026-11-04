@@ -11,6 +11,7 @@
 
 import {EventEmitter} from "events";
 import type {ClientSession} from "mongodb";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 /** Core-platform notification event codes only. Module codes live under each package. */
 export const NotificationEventCodes = {
@@ -65,5 +66,14 @@ export function emitNotificationEvent(code: string, args: EmitNotificationEventA
         payload: args.payload,
         session: args.session
     };
-    notificationEventBus.emit(code, payload);
+    // Handlers write the notification under the event's company, whichever request raised it: a
+    // public activation has no tenant, a company switch another one (D16). Same rule as the Kafka consumer.
+    const companyId = args.payload.companyId == null ? "" : String(args.payload.companyId);
+    if (!companyId) {
+        notificationEventBus.emit(code, payload);
+        return;
+    }
+    void withTenant(companyId, () => {
+        notificationEventBus.emit(code, payload);
+    });
 }

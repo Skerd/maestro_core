@@ -5,6 +5,7 @@ import {ZodObject, type ZodType} from "zod";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {getRegisteredActions} from "@coreModule/api/actionDecorator";
+import {actionPermissionMW, registerModelAction} from "@coreModule/utilities/security/actionPermissions";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
@@ -721,19 +722,30 @@ export function createCrudRouter<
     // ── @action() routes ──────────────────────────────────────────────────────
 
     if (config.actions) {
-        const registeredActions = getRegisteredActions(config.actions);
-        const actionsInstance = new config.actions();
-        for (const {methodName, options} of registeredActions) {
-            const mw: RequestHandler[] = [];
-            if (options.auth !== false) mw.push(authMW((options.auth ?? "private") as any));
-            if (options.rateLimit)      mw.push(rateLimiter(options.rateLimit));
-            if (options.transaction)    mw.push(transactionHandler());
-            if (options.middleware?.length) mw.push(...options.middleware as RequestHandler[]);
-            if (options.schema)         mw.push(validateFormZod((lang, form) => options.schema!(lang ?? "", form)));
-            const handler = (actionsInstance[methodName] as Function).bind(actionsInstance);
-            router.post(`/${methodName}`, ...mw, asyncHandler(handler));
-        }
+        mountActions(router, config.actions, config.model);
     }
 
     return {router};
+}
+
+/**
+ * Mounts each `@action` of `ActionsClass` as POST `/<methodName>` on `router`. An authenticated action is
+ * a permission of `model` (D14): it is registered for the roles UI and checked right after `authMW`.
+ */
+export function mountActions(router: Router, ActionsClass: new () => any, model: Model<any>): void {
+    const actionsInstance = new ActionsClass();
+    for (const {methodName, options} of getRegisteredActions(ActionsClass)) {
+        const mw: RequestHandler[] = [];
+        if (options.auth !== false) {
+            mw.push(authMW((options.auth ?? "private") as any));
+            registerModelAction(model, methodName);
+            mw.push(actionPermissionMW(model, methodName));
+        }
+        if (options.rateLimit)      mw.push(rateLimiter(options.rateLimit));
+        if (options.transaction)    mw.push(transactionHandler());
+        if (options.middleware?.length) mw.push(...options.middleware as RequestHandler[]);
+        if (options.schema)         mw.push(validateFormZod((lang, form) => options.schema!(lang ?? "", form)));
+        const handler = (actionsInstance[methodName] as Function).bind(actionsInstance);
+        router.post(`/${methodName}`, ...mw, asyncHandler(handler));
+    }
 }

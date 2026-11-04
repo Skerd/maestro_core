@@ -20,7 +20,8 @@ vi.mock("@coreModule/utilities/marketing/portalCompanies", () => ({
 vi.mock("@coreModule/utilities/modules/companyModules", () => ({assertModuleEnabledForCompany: vi.fn()}));
 vi.mock("@coreModule/environment", () => ({PORTAL_ROOT_DOMAIN: "arpeggio.al", CONSTANTS: {DEFAULT_LANGUAGE: "en-US"}}));
 
-import {resolveCompanyByOrigin} from "../resolveCompanyByOrigin";
+import {resolveCompanyByOrigin, resolveSignupCompany} from "../resolveCompanyByOrigin";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {isLocalDevOrigin} from "../portalOrigin";
 
 describe("resolveCompanyByOrigin", () => {
@@ -56,6 +57,17 @@ describe("resolveCompanyByOrigin", () => {
     it("refuses a local origin too when no wildcard company exists", async () => {
         companies.wildcard = null;
         await expect(resolveCompanyByOrigin("localhost", "en-US")).rejects.toMatchObject({error_code: "company_not_found_for_origin"});
+    });
+});
+
+describe("resolveSignupCompany", () => {
+    it("makes the sign-up company the request's tenant, so its default role can be read (D16)", async () => {
+        companies.byDomain = new Map([["pronix.al", {_id: "pronix", name: "Pronix"}]]);
+        const tenant = await requestContext.run({}, async () => {
+            await resolveSignupCompany("pronix.al", "en-US");
+            return requestContext.getStore()?.tenantCompanyId;
+        });
+        expect(tenant).toBe("pronix");
     });
 });
 
