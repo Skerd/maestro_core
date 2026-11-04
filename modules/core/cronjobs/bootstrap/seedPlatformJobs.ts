@@ -3,6 +3,7 @@ import Company from "@coreModule/database/schemas/company/company";
 import {seedCronJobsForCompany} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {effectiveCompanyModules} from "@coreModule/utilities/modules/companyModules";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const logger = getLogger("cron_seed");
 
@@ -17,5 +18,6 @@ export async function seedPlatformCronJobs(): Promise<void> {
         await seedCronJobsForCompany(company._id, effectiveCompanyModules(company));
     }
     // Rows from before jobs were seeded per company have no owner to scope their work to.
-    await CronJobModel.updateMany({company: null, active: true}, {$set: {active: false}});
+    await asCrossTenant("retire cron rows that belong to no company", () =>
+        CronJobModel.updateMany({company: null, active: true}, {$set: {active: false}}));
 }

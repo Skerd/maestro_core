@@ -68,11 +68,11 @@ async function start() {
 }
 
 /** Delivers offset 7 once; resolves to the error message, or "ok". */
-async function deliver(eventType = "test_event"): Promise<string> {
+async function deliver(eventType = "test_event", fields: Record<string, unknown> = {}): Promise<string> {
     return state.eachMessage!({
         topic: "topic",
         partition: 2,
-        message: {offset: "7", key: Buffer.from("key"), value: Buffer.from(JSON.stringify({eventType}))},
+        message: {offset: "7", key: Buffer.from("key"), value: Buffer.from(JSON.stringify({eventType, ...fields}))},
         heartbeat: async () => {},
         pause,
     }).then(() => "ok", (error: Error) => error.message);
@@ -98,6 +98,18 @@ describe("addKafkaTopicConsumer", () => {
         expect(await deliver("other_event")).toBe("ok");
         expect(processEvent).toHaveBeenCalledTimes(1);
         expect(pause).not.toHaveBeenCalled();
+    });
+
+    it("runs the handler as work for the company the event names (D16)", async () => {
+        const {requestContext} = await import("@coreModule/utilities/endpoints/requestContext");
+        const tenants: (string | undefined)[] = [];
+        processEvent.mockImplementation(async () => { tenants.push(requestContext.getStore()?.tenantCompanyId); });
+        await start();
+
+        await deliver("test_event", {companyId: "650000000000000000000a01"});
+        await deliver("test_event", {company: "650000000000000000000a02"});
+        await deliver("test_event", {companyId: "not-an-id"});
+        expect(tenants).toEqual(["650000000000000000000a01", "650000000000000000000a02", undefined]);
     });
 
     it("pauses the partition with a growing backoff, then dead-letters on the last attempt", async () => {

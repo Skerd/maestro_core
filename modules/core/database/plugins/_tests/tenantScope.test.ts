@@ -3,6 +3,8 @@ import {MongoMemoryServer} from "mongodb-memory-server";
 import mongoose, {Schema} from "mongoose";
 import {ObjectId} from "mongodb";
 import {ownershipPlugin} from "../ownershipPlugin";
+import {auditPlugin} from "../auditPlugin";
+import AuditLog from "@coreModule/database/schemas/auditLog/auditLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {asCrossTenant, setRequestTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
@@ -19,6 +21,7 @@ const Booking = mongoose.model<IBooking>("TenantScopeBooking", bookingSchema);
 
 const parentSchema = new Schema<IBooking>({title: String});
 ownershipPlugin(parentSchema, {tenantScoped: false});
+auditPlugin(parentSchema);
 const Parent = mongoose.model<IBooking>("TenantScopeParent", parentSchema);
 
 const companyA = new ObjectId();
@@ -122,6 +125,12 @@ describe("enforced", () => {
     it("leaves models whose company is not a tenant alone", async () => {
         await asCrossTenant("fixture", () => Parent.create({title: "child of b", company: companyB}));
         expect(await asRequest(companyA, () => Parent.countDocuments({company: companyB}))).toBe(1);
+    });
+
+    it("audits a shared record under the record's own company", async () => {
+        const child = await asRequest(companyA, () => Parent.create({title: "child company", company: companyB}));
+        const entries = await asCrossTenant("check", () => AuditLog.countDocuments({documentId: child._id, company: companyB}));
+        expect(entries).toBe(1);
     });
 
     it("does not enforce other modules", async () => {

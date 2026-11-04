@@ -29,6 +29,7 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {setMediaAuthCookie} from "@coreModule/utilities/media/mediaAuthCookie";
 import type {Request, Response} from "express";
+import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const router = Router();
 
@@ -92,6 +93,8 @@ async function ReLoginDifferentCompany(
         }
     }
 
+    // From here the request works on the company being switched to (D16).
+    setRequestTenant(company._id, languageCode);
     const {session: userSessionRow} = await userInfo.createOrUpdateSession(
         company._id,
         deviceId ?? "",

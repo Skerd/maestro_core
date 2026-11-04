@@ -25,6 +25,7 @@ import {userService} from "@coreModule/database/schemas/user/user.service";
 import {IChannel} from "@coreModule/database/schemas/channel/channel";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {IUser} from "@coreModule/database/schemas/user/user";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 export interface VisitorSession {
     visitorUser: IUser;
@@ -62,11 +63,12 @@ export async function resolveVisitorSession(params: {
         throw apiValidationException("visitor_session_not_found", "token", null, languageCode);
     }
 
-    const visitorChannel = await channelService.findOne({
+    // The chat is the token's company's data, also on a websocket upgrade that has no tenant yet (D16).
+    const visitorChannel = await withTenant(companyId, () => channelService.findOne({
         _id: new ObjectId(payload.channelId),
         company: companyId,
         isPublicChat: true,
-    }, {languageCode});
+    }, {languageCode}));
     if (!visitorChannel) {
         throw apiValidationException("visitor_session_not_found", "token", null, languageCode);
     }

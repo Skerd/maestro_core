@@ -58,6 +58,7 @@ import {KafkaConsumerRegistration} from "@coreModule/kafka/consumerRegistry";
 import {metricsAggregator} from "@coreModule/utilities/timing/metricsAggregator";
 import type {EachMessagePayload} from "kafkajs";
 import {sendToDeadLetterQueue} from "@coreModule/kafka/deadLetters";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const logger = getLogger("kafka_consumer");
 
@@ -100,6 +101,12 @@ async function processApiMetricsEvent(event: ApiAccessEvent): Promise<void> {
     catch (error: any){
         logger.err(`Failed to process api metrics event: ${error.message}`);
     }
+}
+
+/** The company an event names, if it names a valid one. */
+function eventCompanyId(event: {companyId?: unknown; company?: unknown}): string | undefined {
+    const value = event.companyId ?? event.company;
+    return typeof value === "string" && ObjectId.isValid(value) ? value : undefined;
 }
 
 /**
@@ -213,7 +220,12 @@ export async function addKafkaTopicConsumer(parentLogger: serverLogger | undefin
                         );
                         return;
                     }
-                    await spec.processEvent(eventData);
+                    // Events name their company in `companyId` (`company` on api_access); the handler
+                    // then works on that company's data (D16).
+                    const companyId = eventCompanyId(eventData);
+                    await (companyId
+                        ? withTenant(companyId, () => spec.processEvent(eventData))
+                        : spec.processEvent(eventData));
                 });
             }
         }).catch((err: any) => {

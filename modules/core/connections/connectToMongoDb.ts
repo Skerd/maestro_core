@@ -4,6 +4,7 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {MongoDbHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {initializeMongoDatabase} from "@initializer";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 export const mongooseInstance = mongoose;
 
@@ -71,7 +72,8 @@ export async function connectToMongoDb(parentLogger?: serverLogger, canInitializ
     await connectWithRetry();
 
     if( !!canInitialize ){
-        await initializeMongoDatabase(parentLogger);
+        // Seeding writes every company's roles, users and demo data (D16).
+        await asCrossTenant("database init seeds every company", () => initializeMongoDatabase(parentLogger));
     }
 
     logger.finish("Finished setting up MongoDB instance");

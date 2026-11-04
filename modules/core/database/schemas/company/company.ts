@@ -52,6 +52,7 @@ import {
 } from "armonia/src/modules/core/api/company/private/company/siteSlug";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {closeCompanyModules, effectiveCompanyModules, invalidateCompanyModules} from "@coreModule/utilities/modules/companyModules";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 function documentObjectId(ref: unknown): ObjectId | null {
     if (ref == null) return null;
@@ -402,15 +403,23 @@ CompanySchema.post("save", async function (doc) {
     }
     if (doc.$locals.companyWasNew) {
         const session = doc.$session();
-        await doc.createDefaultRoles(undefined, session ?? undefined);
-        await doc.assignCreatorRoles(session);
-        await doc.createBot(session);
-        await doc.ensureAiChannels(session ?? undefined);
-        await doc.seedCronJobs(session ?? undefined);
+        // The new company's roles, bot, channels and jobs are its own data, not the creator's (D16).
+        await withTenant(String(doc._id), async () => {
+            await doc.createDefaultRoles(undefined, session ?? undefined);
+            await doc.assignCreatorRoles(session);
+            await doc.createBot(session);
+            await doc.ensureAiChannels(session ?? undefined);
+            await doc.seedCronJobs(session ?? undefined);
+        });
     }
 });
 
 CompanySchema.methods.createDefaultRoles = async function (parentLogger?: serverLogger, session?: ClientSession){
+    // Also run at boot for every company, outside any request (D16).
+    return withTenant(this._id, () => createDefaultRolesFor.call(this, parentLogger, session));
+};
+
+async function createDefaultRolesFor(this: ICompany, parentLogger?: serverLogger, session?: ClientSession){
 
     let logger =  getLogger("creating/updating_company_default_roles", parentLogger);
     logger.start(`Creating/updating company roles for company named '${this.name}' with VAT '${this.vat}'...`);

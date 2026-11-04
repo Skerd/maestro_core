@@ -3,6 +3,7 @@ import AuditLog, {AuditAction, AuditDiffEntry} from "@coreModule/database/schema
 import {ObjectId} from "mongodb";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const auditLogger = getLogger("audit_plugin");
 
@@ -63,7 +64,9 @@ export async function auditOperatorUpdate(
         auditLogger.warn(`Skipping audit log for ${model.collection.name} ${current._id}: no company on document`);
         return;
     }
-    await AuditLog.create([{
+    // An entry belongs to the audited record's company, which is not the request's when the record is
+    // shared, e.g. a company edited by its parent (D16).
+    await withTenant(companyId, () => AuditLog.create([{
         documentId: current._id as Types.ObjectId,
         collectionName: model.collection.name,
         organizationId: current.organizationId,
@@ -71,7 +74,7 @@ export async function auditOperatorUpdate(
         action: "UPDATE" as AuditAction,
         diff,
         company: companyId,
-    }], {session: session ?? undefined});
+    }], {session: session ?? undefined}));
 }
 
 export const auditPlugin = (schema: Schema): void => {
@@ -116,7 +119,7 @@ export const auditPlugin = (schema: Schema): void => {
                 );
                 return;
             }
-            await AuditLog.create({
+            await withTenant(companyId, () => AuditLog.create({
                 documentId: doc._id as Types.ObjectId,
                 collectionName: doc.collection.name,
                 organizationId: doc.organizationId,
@@ -124,7 +127,7 @@ export const auditPlugin = (schema: Schema): void => {
                 action: auditAction,
                 diff: auditDiff,
                 company: companyId,
-            });
+            }));
         } catch (err) {
             auditLogger.err(
                 `Failed to write audit log: ${err instanceof Error ? err.message : String(err)}`,

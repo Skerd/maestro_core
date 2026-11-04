@@ -55,6 +55,7 @@ import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
+import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 /** Default timezone for new third-party users (aligned with signup). */
 const DEFAULT_NEW_USER_TIMEZONE = "Europe/Tirane";
@@ -165,6 +166,8 @@ async function Login(
     try{
         const companyIds = user.companies.map((c: any) => c._id || c);
         company = await findLoginCompany(companyIds, origin, { session, logger, languageCode });
+        // The sign-in works on the company it signs into (D16).
+        setRequestTenant(company._id, languageCode);
 
         await user.checkAccountAccessibility(company._id, languageCode);
 
@@ -380,6 +383,8 @@ async function LoginThirdParty(
         // Get user profile and find company
         const companyIds = user.companies.map((c: any) => c._id || c);
         company = await findLoginCompany(companyIds, origin, { session, logger, languageCode });
+        // The sign-in works on the company it signs into (D16).
+        setRequestTenant(company._id, languageCode);
 
         // Verify account accessibility
         await user.checkAccountAccessibility(company._id, languageCode);

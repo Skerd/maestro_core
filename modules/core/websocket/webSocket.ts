@@ -54,6 +54,7 @@ import {getStoredRoomMessages} from "@coreModule/utilities/serviceMetrics/wsMess
 import {getKnownRoomIds, getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
 import {tryResolveVisitorSession, VisitorSession} from "@coreModule/domain/publicChat/visitorSession";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 /** Largest frame a user or visitor may send. A full read-receipt batch (800 ids) is about 22 KB. */
 const CLIENT_MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -115,6 +116,8 @@ type ClientWebSocket = WebSocket & {
     rateWindowCount: number;
     /** The token's company, for user connections */
     companyId?: string;
+    /** The company this connection's messages work on (D16): the user's, or the visitor chat's */
+    tenantCompanyId?: string;
     /** The token's session, closed on `SESSION_REVOKED` */
     sessionId?: string | null;
     /** Epoch ms at which the heartbeat closes the connection (token or session expiry) */
@@ -558,6 +561,7 @@ function setupUserConnection(ws: ClientWebSocket, identity: Extract<ConnectionId
     ws.username = user.username;
     ws.languageCode = languageCode;
     ws.companyId = String(user.company._id);
+    ws.tenantCompanyId = ws.companyId;
     ws.sessionId = sessionId;
     ws.expiresAt = expiresAt;
 
@@ -609,6 +613,7 @@ function setupVisitorConnection(ws: ClientWebSocket, identity: Extract<Connectio
     ws.languageCode = identity.languageCode;
     ws.isVisitor = true;
     ws.visitorChannelId = channelId;
+    ws.tenantCompanyId = identity.session.visitorCompany._id.toString();
 
     ws.on("close", () => {
         sockets.delete(ws);
@@ -662,12 +667,13 @@ async function authenticateUpgrade(url: string): Promise<ConnectionIdentity> {
 
     try {
         const user = validateJWTToken(token, languageCode);
-        const session = await validateActiveUserSession(
+        // The session belongs to the token's company; nothing else names a tenant yet (D16).
+        const session = await withTenant(user.company._id, () => validateActiveUserSession(
             user,
             new ObjectId(user.id),
             new ObjectId(user.company._id),
             {languageCode}
-        );
+        ));
         const {exp} = user as JWTTokenType & {exp?: number};
         const tokenExpiresAt = typeof exp === "number" ? exp * 1000 : Infinity;
         const sessionExpiresAt = session.expiresAt ? new Date(session.expiresAt).getTime() : Infinity;
@@ -704,7 +710,10 @@ function setupConnection(ws: ClientWebSocket, identity: ConnectionIdentity): voi
     ws.on("pong", () => {
         ws.isAlive = true;
     });
-    ws.on("message", (message: RawData) => void webSocketOnMessage(message, ws));
+    // Each message is work for the connection's company (D16); set below, before the client can send.
+    ws.on("message", (message: RawData) => void (ws.tenantCompanyId
+        ? withTenant(ws.tenantCompanyId, () => webSocketOnMessage(message, ws))
+        : webSocketOnMessage(message, ws)));
 
     if (identity.kind === "machine") {
         setupMachineConnection(ws, identity.machineName, logger);

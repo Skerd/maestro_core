@@ -9,6 +9,7 @@ import {publishSchedulerHeartbeat} from "@coreModule/cronjobs/health/cronSchedul
 import {DEFAULT_TIMEOUT_SECONDS, jobRunner} from "@coreModule/cronjobs/engine/jobRunner";
 import {CATCH_UP_MAX, selectRunCount} from "@coreModule/cronjobs/engine/missedRunPolicy";
 import {companyIdsWithModule} from "@coreModule/utilities/modules/companyModules";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 /** Extra time past a job's own timeout before a "running" execution counts as abandoned. */
 const STUCK_GRACE_MS = 120_000;
@@ -63,13 +64,16 @@ export class SchedulerEngine {
         if (this.ticking || !this.tickTimer || !CRON.ENABLED) return;
         this.ticking = true;
         try {
-            if (!(await this.holdLeadership())) return;
-            await publishSchedulerHeartbeat();
-            await this.runDueJobs(log);
-            if (Date.now() - this.lastHealAt >= CRON.SELF_HEAL_INTERVAL_MS) {
-                this.lastHealAt = Date.now();
-                await this.selfHeal(log);
-            }
+            // The scheduler itself works on every company's jobs; each run gets its own company (jobRunner).
+            await asCrossTenant("the cron scheduler sweeps every company's jobs", async () => {
+                if (!(await this.holdLeadership())) return;
+                await publishSchedulerHeartbeat();
+                await this.runDueJobs(log);
+                if (Date.now() - this.lastHealAt >= CRON.SELF_HEAL_INTERVAL_MS) {
+                    this.lastHealAt = Date.now();
+                    await this.selfHeal(log);
+                }
+            });
         } catch (e: unknown) {
             log.err(`Scheduler tick failed: ${errorMessage(e)}`);
         } finally {

@@ -12,6 +12,7 @@ const ids = vi.hoisted(() => ({
     agent: "650000000000000000000f01",
     teamChannel: "6500000000000000000aaa01",
     visitorChannel: "6500000000000000000bbb01",
+    visitorCompany: "6500000000000000000ccc01",
 }));
 
 const state = vi.hoisted(() => ({
@@ -44,7 +45,7 @@ vi.mock("@coreModule/utilities/security/sessionValidator", () => ({
 }));
 vi.mock("@coreModule/domain/publicChat/visitorSession", () => ({
     tryResolveVisitorSession: async ({token}: {token: string}) => token === "visitor-token"
-        ? {visitorUser: {_id: ids.visitor}, visitorChannel: {_id: ids.visitorChannel}}
+        ? {visitorUser: {_id: ids.visitor}, visitorChannel: {_id: ids.visitorChannel}, visitorCompany: {_id: ids.visitorCompany}}
         : null,
 }));
 vi.mock("@coreModule/database/schemas/channel/channel.service", () => ({

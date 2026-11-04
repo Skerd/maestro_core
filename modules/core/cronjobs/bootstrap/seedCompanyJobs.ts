@@ -4,6 +4,7 @@ import {computeNextRunAt} from "@coreModule/cronjobs/scheduling/nextRunCalculato
 import {cronHandlerAllowed, listCronHandlerRegistrations} from "@coreModule/cronjobs/registry/handlerRegistry";
 import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
 import {getLogger} from "@coreModule/loggers/serverLog";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const logger = getLogger("cron_seed");
 
@@ -17,6 +18,11 @@ export async function seedCronJobsForCompany(
     modules: readonly string[],
     session?: ClientSession | null,
 ): Promise<void> {
+    // Called while creating a company, whose request works on the creating company (D16).
+    return withTenant(companyId, () => seedJobs(companyId, modules, session));
+}
+
+async function seedJobs(companyId: Types.ObjectId, modules: readonly string[], session?: ClientSession | null): Promise<void> {
     if (listCronHandlerRegistrations().length === 0) {
         await loadAllCronHandlers(logger);
     }
@@ -61,6 +67,11 @@ export async function skipMissedCronRuns(
         .filter((registration) => registration.module && modules.includes(registration.module))
         .map((registration) => registration.code);
     if (codes.length === 0) return;
+    // Called by a platform admin's request about another company (D16).
+    await withTenant(companyId, () => skipOverdue(companyId, codes, session));
+}
+
+async function skipOverdue(companyId: Types.ObjectId, codes: string[], session?: ClientSession | null): Promise<void> {
     const now = new Date();
     const overdue = await CronJobModel.find({company: companyId, handler: {$in: codes}, nextRunAt: {$lt: now}})
         .session(session ?? null);
