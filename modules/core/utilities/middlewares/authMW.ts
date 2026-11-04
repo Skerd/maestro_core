@@ -16,6 +16,7 @@ import {UserContext} from "@coreModule/utilities/types/types";
 import {ObjectId} from "mongodb";
 import {validateJWTToken} from "@coreModule/utilities/security/jwtValidator";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
 import {effectiveCompanyModules, isModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
 import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModules";
@@ -109,6 +110,8 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
 
         const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive modules isPlatformOwner");
         req.body.company = company;
+        // From here on the request works on this company's data (D16); the checks below are about it.
+        setRequestTenant(company._id, languageCode);
         const studioSample = wantsStudioSample(req.header(STUDIO_SAMPLE_HEADER));
         const modules = studioSample ? getEnabledModuleNames() : effectiveCompanyModules(company);
         const {isAdmin, permissions} = await user.getCompanyAccess(company._id, modules);
@@ -142,7 +145,12 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         logger.updateActionInitializer(actionInitializer);
         req.body.logger = logger;
 
-        return requestContext.run({ ...requestContext.getStore(), actionUserCtx: req.body.actionUserCtx, studioSample }, () => next());
+        return requestContext.run({
+            ...requestContext.getStore(),
+            actionUserCtx: req.body.actionUserCtx,
+            studioSample,
+            ...(studioSample ? {crossTenantReason: "studio preview samples any company's documents"} : {}),
+        }, () => next());
     } catch (error: any) {
         logger.start()
         logger.fail(error);

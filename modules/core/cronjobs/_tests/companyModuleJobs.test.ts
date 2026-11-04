@@ -17,6 +17,7 @@ import CronJobModel from "@coreModule/database/schemas/cronJob/cronJob";
 import CronExecution from "@coreModule/database/schemas/cronExecution/cronExecution";
 import CronLock from "@coreModule/database/schemas/cronLock/cronLock";
 import {registerCronHandler, setCronHandlerModule} from "../registry/handlerRegistry";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {seedCronJobsForCompany, skipMissedCronRuns} from "../bootstrap/seedCompanyJobs";
 import {SchedulerEngine} from "../engine/schedulerEngine";
 
@@ -24,6 +25,8 @@ import {SchedulerEngine} from "../engine/schedulerEngine";
 const Company = mongoose.model("Company", new Schema({modules: {type: [String], default: undefined}}));
 
 const ran: string[] = [];
+/** Each run's tenant context (D16): `code@company tenant module`. */
+const contexts: string[] = [];
 let mongo: MongoMemoryServer;
 
 beforeAll(async () => {
@@ -34,7 +37,11 @@ beforeAll(async () => {
     for (const code of ["test.core", "test.rental"]) {
         registerCronHandler({
             code,
-            handler: async (ctx) => { ran.push(`${code}@${ctx.company}`); },
+            handler: async (ctx) => {
+                ran.push(`${code}@${ctx.company}`);
+                const store = requestContext.getStore();
+                contexts.push(`${code}@${ctx.company} ${store?.tenantCompanyId} ${store?.routeModule}`);
+            },
             defaultJob: {name: code, cronExpression: "0 0 * * * *"},
         });
     }
@@ -49,6 +56,7 @@ afterAll(async () => {
 beforeEach(async () => {
     await Promise.all([CronJobModel, CronExecution, CronLock, Company].map((model) => model.collection.deleteMany({})));
     ran.length = 0;
+    contexts.length = 0;
 });
 
 async function tick(): Promise<void> {
@@ -84,6 +92,9 @@ describe("per-company module jobs", {timeout: 30000}, () => {
             `test.core@${rental._id}`,
             `test.rental@${rental._id}`,
         ].sort());
+        // Each run works on its own job's company, tagged with the handler's module.
+        expect(contexts).toContain(`test.rental@${rental._id} ${rental._id} carRental`);
+        expect(contexts).toContain(`test.core@${clinic._id} ${clinic._id} undefined`);
         // The clinic's rental job is left due, untouched, for when the module comes back.
         const parked = await CronJobModel.findOne({company: clinic._id, code: "test.rental"}).lean();
         expect(parked!.nextRunAt!.getTime()).toBe(due.getTime());

@@ -18,6 +18,7 @@ import {companyService} from "@coreModule/database/schemas/company/company.servi
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {assertModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
 import {isLocalDevOrigin, isPortalApexOrigin, isPortalZoneOrigin, portalSiteSlug} from "@coreModule/utilities/marketing/portalOrigin";
 import {findPlatformCompany, findPortalSiteCompany} from "@coreModule/utilities/marketing/portalCompanies";
@@ -39,6 +40,8 @@ import {findPlatformCompany, findPortalSiteCompany} from "@coreModule/utilities/
  *
  * @throws when no company matches the origin (and, locally, no wildcard company exists), or the
  * company does not have the route's module.
+ *
+ * Records the resolved company as the request's tenant (D16).
  */
 export async function resolveCompanyByOrigin(
     origin: string,
@@ -47,15 +50,16 @@ export async function resolveCompanyByOrigin(
     const routeModule = requestContext.getStore()?.routeModule;
     const site = portalSiteSlug(origin)
         ?? (isPortalApexOrigin(origin) ? requestContext.getStore()?.siteCompany : undefined);
-    if (site) {
-        return findPortalSiteCompany(site, routeModule ?? "core", languageCode);
-    }
-    const company = isPortalApexOrigin(origin)
-        ? await findPlatformCompany(languageCode)
-        : await findCompanyByOrigin(origin, languageCode);
-    if (routeModule) {
+    const company = site
+        ? await findPortalSiteCompany(site, routeModule ?? "core", languageCode)
+        : isPortalApexOrigin(origin)
+            ? await findPlatformCompany(languageCode)
+            : await findCompanyByOrigin(origin, languageCode);
+    if (!site && routeModule) {
         assertModuleEnabledForCompany(company, routeModule, languageCode);
     }
+    // The rest of the public request works on this company's data (D16).
+    setRequestTenant(company._id, languageCode);
     return company;
 }
 

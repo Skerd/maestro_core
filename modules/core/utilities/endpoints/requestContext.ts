@@ -16,8 +16,21 @@ export interface RequestContextStore {
         isSelf?: boolean;
         modules?: string[];
     };
-    /** Module whose router is handling the request; set at mount time by RouteRegistry.applyRoutes. */
+    /**
+     * Module whose router (set at mount time by RouteRegistry.applyRoutes) or cron handler (set by the
+     * job runner) is running.
+     */
     routeModule?: string;
+    /**
+     * The company whose data this request or job works on (D16). Set by authMW (private requests),
+     * resolveCompanyByOrigin (public requests) and the cron job runner; ownershipPlugin scopes tenant
+     * queries to it. See `tenantScope.ts`.
+     */
+    tenantCompanyId?: string;
+    /** Why the current block may reach any company's data (`asCrossTenant`). Set, scoping is off. */
+    crossTenantReason?: string;
+    /** The caller's language, for errors raised below the request handler (e.g. by plugins). */
+    languageCode?: string;
     /** Public requests from the portal: the company the page is about (`x-site-company`, slug or id). */
     siteCompany?: string;
     /**

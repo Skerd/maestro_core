@@ -26,6 +26,7 @@ import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {isPortalZoneOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 export interface PublicChatCustomer {
     user: IUser;
@@ -55,8 +56,12 @@ export async function tryResolvePublicChatCustomer(params: {
         if (!user) {
             return null;
         }
-        await validateActiveUserSession(payload, user._id, companyId, {languageCode});
-        await user.checkAccountAccessibility(companyId, languageCode);
+        // The session belongs to the account's own company, which a public request on another
+        // company's site does not have as its tenant (D16).
+        await withTenant(companyId, async () => {
+            await validateActiveUserSession(payload, user._id, companyId, {languageCode});
+            await user.checkAccountAccessibility(companyId, languageCode);
+        });
         return {user, companyId};
     }
     catch {

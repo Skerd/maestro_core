@@ -31,7 +31,7 @@ export const authMWStub = {
         req.body.logger = getLogger(req.originalUrl);
         req.body.company = {_id: new ObjectId(caller.companyId), name: "Test company"};
         req.body.actionUserCtx = actionUserCtx;
-        requestContext.run({actionUserCtx}, () => next());
+        requestContext.run({...requestContext.getStore(), actionUserCtx, tenantCompanyId: caller.companyId, languageCode: "en-US"}, () => next());
     },
 };
 
@@ -40,11 +40,19 @@ export function callerHeader(caller: TestCaller): Record<string, string> {
     return {"x-test-caller": JSON.stringify(caller)};
 }
 
-export function appFor(routes: {basePath: string; router: Router}[]) {
+/**
+ * `module` tags requests with their route module the way routeRegistry does, so module checks and
+ * tenant-scope enforcement (D16) see the same context as in production.
+ */
+export function appFor(routes: {basePath: string; router: Router; module?: string}[]) {
     const app = express();
     app.use(express.json());
     // Mounted like routeRegistry does, so tests see production's body guard.
-    for (const {basePath, router} of routes) app.use(basePath, stripServerKeys, router);
+    for (const {basePath, router, module} of routes) {
+        const tag = (_req: unknown, _res: unknown, next: () => void) =>
+            module ? requestContext.run({...requestContext.getStore(), routeModule: module}, () => next()) : next();
+        app.use(basePath, stripServerKeys, tag, router);
+    }
     app.use((error: unknown, _req: any, res: any, _next: any) => {
         if (error instanceof ServerError) return res.status(error.status).json(error);
         return res.status(500).json({error_code: "internal_error", message: (error as Error)?.message});

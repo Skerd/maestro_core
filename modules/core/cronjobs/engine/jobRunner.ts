@@ -1,6 +1,7 @@
 import {Types} from "mongoose";
 import {CRON} from "@coreModule/environment";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {getCronHandler} from "@coreModule/cronjobs/registry/handlerRegistry";
 import type {CronHandlerFn} from "@coreModule/cronjobs/registry/types";
 import {acquireCronLock, keepCronLockAlive, releaseCronLock} from "@coreModule/cronjobs/locking/distributedLock";
@@ -96,7 +97,8 @@ export class JobRunner {
         }
         const stopRenewing = keepCronLockAlive(lock);
         try {
-            await this.execute(job, company, registration.handler, logger);
+            // Each run works on its job's company only (D16).
+            await withTenant(company, () => this.execute(job, company, registration.handler, logger), registration.module);
         } finally {
             stopRenewing();
             await releaseCronLock(lock);

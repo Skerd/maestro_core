@@ -708,7 +708,8 @@ CompanySchema.methods.getAllRoles = async function (fetchAdminRoles: boolean = f
     return Role.find(filter);
 }
 
-ownershipPlugin(CompanySchema);
+// `company` here is the parent company that created this one, not a tenant partition (D16).
+ownershipPlugin(CompanySchema, {tenantScoped: false});
 publicMediaPlugin(CompanySchema, {schemaDef: CompanySchemaDef, companyFromDocumentId: true});
 auditPlugin(CompanySchema);
 softDeletePlugin(CompanySchema);
