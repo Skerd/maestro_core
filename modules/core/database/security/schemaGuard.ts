@@ -133,7 +133,9 @@ export class SchemaGuard {
         return Object.keys(result).length ? result : undefined;
     }
 
-    static sanitizeFields<T extends Document>(
+    /* Reads only `model.schema`, so any model qualifies (metric models cannot extend Document: their
+       `errors` counter collides with Mongoose's validation `errors`). */
+    static sanitizeFields<T>(
         model: Model<T>,
         fields: UnSanitizedFields,
         action: PermissionAction,

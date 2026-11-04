@@ -81,7 +81,7 @@ router.post(
                 scope: scope.companyId ? "company" : "platform",
                 company: {
                     ...await portalCompanyProfile(company),
-                    slug: portalSlug(company),
+                    slug: portalSlug({_id: company._id, siteSlug: company.siteSlug}),
                     ...(description ? {description} : {}),
                     cities: scope.companyId ? cities : [],
                     chatEnabled: Boolean(scope.companyId && company.publicAiChat?.enabled),

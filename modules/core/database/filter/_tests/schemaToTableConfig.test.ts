@@ -1,10 +1,13 @@
 import {describe, expect, it} from "vitest";
-import {model, Schema, SchemaTypes} from "mongoose";
+import {model, Schema, SchemaTypes, type Document} from "mongoose";
 import {ARRAY_OPERATORS, COLUMN_TYPE, DATE_OPERATORS, EXISTENCE_OPERATORS, NUMBER_OPERATORS} from "armonia/src/modules/core/database/filter/typeOperators";
 import {buildTableColumnsFromSchema} from "../schemaToTableConfig";
 
+/** Probe documents: only the schema metadata matters to the table builder. */
+type ProbeDocument = Document & Record<string, unknown>;
+
 describe("buildTableColumnsFromSchema", () => {
-    const TestSchema = new Schema({
+    const TestSchema = new Schema<ProbeDocument>({
         saleCommissionRatePercent: {
             type: SchemaTypes.Decimal128,
             dynamicTableConfiguration: {cellType: COLUMN_TYPE.PERCENTAGE},
@@ -21,7 +24,7 @@ describe("buildTableColumnsFromSchema", () => {
         name: {type: SchemaTypes.String},
         sharedSpaces: {type: [{type: SchemaTypes.String}]},
     });
-    const TestModel = model("SchemaToTableConfigProbe", TestSchema);
+    const TestModel = model<ProbeDocument>("SchemaToTableConfigProbe", TestSchema);
 
     it("maps Decimal128 percentages to number operators", () => {
         const columns = buildTableColumnsFromSchema(
@@ -70,7 +73,7 @@ describe("buildTableColumnsFromSchema", () => {
     });
 
     it("passes declared enum tones through to the column meta", () => {
-        const ToneSchema = new Schema({
+        const ToneSchema = new Schema<ProbeDocument>({
             status: {
                 type: SchemaTypes.String,
                 enum: ["won", "lost", "negotiation", "new"],
@@ -79,7 +82,7 @@ describe("buildTableColumnsFromSchema", () => {
                 },
             },
         });
-        const ToneModel = model("SchemaToTableConfigTonesProbe", ToneSchema);
+        const ToneModel = model<ProbeDocument>("SchemaToTableConfigTonesProbe", ToneSchema);
         const columns = buildTableColumnsFromSchema(ToneModel, new Set(["status"]));
         expect(columns[0]!.meta?.enumTones).toEqual({
             won: "success",
@@ -89,7 +92,7 @@ describe("buildTableColumnsFromSchema", () => {
     });
 
     it("drops tones the client cannot paint instead of shipping a dead class name", () => {
-        const BadToneSchema = new Schema({
+        const BadToneSchema = new Schema<ProbeDocument>({
             status: {
                 type: SchemaTypes.String,
                 enum: ["won", "lost"],
@@ -103,7 +106,7 @@ describe("buildTableColumnsFromSchema", () => {
                 dynamicTableConfiguration: {enumTones: {} as never},
             },
         });
-        const BadToneModel = model("SchemaToTableConfigBadTonesProbe", BadToneSchema);
+        const BadToneModel = model<ProbeDocument>("SchemaToTableConfigBadTonesProbe", BadToneSchema);
         const columns = buildTableColumnsFromSchema(BadToneModel, new Set(["status", "note"]));
         const byId = Object.fromEntries(columns.map((c) => [c.id, c]));
         expect(byId.status!.meta?.enumTones).toEqual({other: "info"});
@@ -112,7 +115,7 @@ describe("buildTableColumnsFromSchema", () => {
     });
 
     it("maps nested receipt media to a filterable FILE column", () => {
-        const NestedSchema = new Schema({
+        const NestedSchema = new Schema<ProbeDocument>({
             paymentReceipts: {
                 type: [{
                     amount: {type: SchemaTypes.Number},
@@ -133,7 +136,7 @@ describe("buildTableColumnsFromSchema", () => {
                 },
             },
         });
-        const NestedModel = model("SchemaToTableConfigNestedMediaProbe", NestedSchema);
+        const NestedModel = model<ProbeDocument>("SchemaToTableConfigNestedMediaProbe", NestedSchema);
         const columns = buildTableColumnsFromSchema(
             NestedModel,
             new Set(["paymentReceipts", "paymentReceipts.amount", "paymentReceipts.media"]),
@@ -149,14 +152,14 @@ describe("buildTableColumnsFromSchema", () => {
     });
 
     it("maps Date fields to DATE unless overridden as DATETIME", () => {
-        const DateSchema = new Schema({
+        const DateSchema = new Schema<ProbeDocument>({
             dueDate: {type: SchemaTypes.Date},
             scheduledAt: {
                 type: SchemaTypes.Date,
                 dynamicTableConfiguration: {cellType: COLUMN_TYPE.DATETIME},
             },
         });
-        const DateModel = model("SchemaToTableConfigDateProbe", DateSchema);
+        const DateModel = model<ProbeDocument>("SchemaToTableConfigDateProbe", DateSchema);
         const columns = buildTableColumnsFromSchema(DateModel, new Set(["dueDate", "scheduledAt"]));
         const byId = Object.fromEntries(columns.map((c) => [c.id, c]));
         expect(byId.dueDate!.cellType).toBe(COLUMN_TYPE.DATE);

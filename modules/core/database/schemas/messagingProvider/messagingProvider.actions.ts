@@ -7,7 +7,7 @@ import MessagingProvider from "@coreModule/database/schemas/messagingProvider/me
 import {messagingProviderService} from "@coreModule/database/schemas/messagingProvider/messagingProvider.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {messagingProviderToDTO} from "@coreModule/utilities/mappers/messagingProvider/messagingProviderMapper.dto";
-import type {MessagingProvider} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.dto";
+import type {MessagingProvider as MessagingProviderDto} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.dto";
 import type {TestMessagingProviderConnectionResponse} from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.dto";
 import {testMessagingProviderConnection} from "@coreModule/utilities/messaging/messagingDispatchService";
 import {ServerError} from "armonia/src/modules/core/types";
@@ -82,7 +82,7 @@ export class MessagingProviderActions {
         schema: validateSingleForm,
         transaction: true,
     })
-    async activate(params: Record<string, any>): Promise<MessagingProvider> {
+    async activate(params: Record<string, any>): Promise<MessagingProviderDto> {
         return setActiveState(params, true);
     }
 
@@ -92,12 +92,12 @@ export class MessagingProviderActions {
         schema: validateSingleForm,
         transaction: true,
     })
-    async deactivate(params: Record<string, any>): Promise<MessagingProvider> {
+    async deactivate(params: Record<string, any>): Promise<MessagingProviderDto> {
         return setActiveState(params, false);
     }
 }
 
-async function setActiveState(params: Record<string, any>, active: boolean): Promise<MessagingProvider> {
+async function setActiveState(params: Record<string, any>, active: boolean): Promise<MessagingProviderDto> {
     const {logger, languageCode, session, company, actionUserCtx, _id} = params;
 
     const writeFields = SchemaGuard.sanitizeFields(

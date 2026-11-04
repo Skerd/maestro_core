@@ -6,7 +6,7 @@
  */
 
 import {ClientSession, Document, Error as MongooseError, FilterQuery, Model, QueryOptions, UpdateQuery} from 'mongoose';
-import {ObjectId} from 'mongodb';
+import {Decimal128, ObjectId} from 'mongodb';
 import {performance} from 'perf_hooks';
 import {serverLogger} from '@coreModule/loggers/serverLog';
 import {timeFunction} from '@coreModule/utilities/timing/functionTimer';
@@ -50,12 +50,18 @@ export interface PaginationOptions {
  */
 export type CreateInput<T> = {
     [K in keyof T]?: CreateInputValue<T[K]>;
+} & {
+    /** Mongoose also accepts dotted paths into nested objects, e.g. `"requests.invitation": {...}`. */
+    [path: `${string}.${string}`]: unknown;
 };
 
 type CreateInputValue<V> =
     [V] extends [ObjectId] ? V :
     [NonNullable<V>] extends [readonly (infer E)[]] ? CreateInputValue<E>[] :
     [NonNullable<V>] extends [Document] ? ObjectId | NonNullable<V> :
+    [NonNullable<V>] extends [Date | Decimal128] ? V :
+    // Plain sub-document objects (e.g. `lines: {product: IProduct}[]`) carry refs too.
+    [NonNullable<V>] extends [Record<string, unknown>] ? {[K in keyof V]: CreateInputValue<V[K]>} :
     V;
 
 /** Paginated result */

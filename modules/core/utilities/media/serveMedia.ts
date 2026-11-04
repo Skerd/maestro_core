@@ -232,7 +232,7 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
     }
 
     const gridfs = getGridFSStorage(languageCode, 'media', logger);
-    const fileId = media.fileId instanceof ObjectId ? media.fileId : new ObjectId(media.fileId.toString());
+    const fileId = new ObjectId(String(media.fileId));
     // The stored GridFS length, not the Media size fields: those can describe the upload before re-encoding.
     const size: number = (await gridfs.getFileMetadata(fileId)).length;
     const range = parseByteRange(req.headers.range, size);

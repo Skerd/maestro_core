@@ -1,9 +1,12 @@
 import {describe, expect, it} from "vitest";
-import {model, Schema, SchemaTypes} from "mongoose";
+import {model, Schema, SchemaTypes, type Document} from "mongoose";
+
+/** Probe documents: only the schema metadata matters to SchemaGuard. */
+type ProbeDocument = Document & Record<string, unknown>;
 import SchemaGuard from "../schemaGuard";
 import type {UserContext} from "@coreModule/utilities/types/types";
 
-const ProbeSchema = new Schema({
+const ProbeSchema = new Schema<ProbeDocument>({
     name: {
         type: SchemaTypes.String,
         permissions: {
@@ -13,7 +16,7 @@ const ProbeSchema = new Schema({
     },
 }, {accessMode: "strict"});
 
-const Probe = model("SchemaGuardProbe", ProbeSchema);
+const Probe = model<ProbeDocument>("SchemaGuardProbe", ProbeSchema);
 
 function ctx(overrides: Partial<UserContext> = {}): UserContext {
     return {

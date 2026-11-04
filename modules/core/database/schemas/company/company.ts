@@ -560,8 +560,8 @@ CompanySchema.methods.assignCreatorRoles = async function (session?: ClientSessi
         lockedOutUntil: null,
         lastLogin: null,
         rolesCount: 1,
-        roles: [adminRole._id] as unknown as IEmbeddedCompanyRole["roles"],
-        company: this._id as unknown as IEmbeddedCompanyRole["company"],
+        roles: [adminRole._id],
+        company: this._id,
     };
 
     creatorUser.companies.push(this._id as never);

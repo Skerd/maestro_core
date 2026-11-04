@@ -246,7 +246,7 @@ async function ensureCompanyLogo(company: any, photoId: string | undefined, pare
 
 /** Keeps the company bot's display name in step with the company name. */
 async function syncCompanyBot(company: any): Promise<void> {
-    const compact = String(company.name).replaceAll(" ", "");
+    const compact = String(company.name).replace(/ /g, "");
     const username = `${compact} AI Bot`;
     const bot = await User.findOne({companies: company._id, isBot: true});
     if (!bot || bot.username === username) return;
@@ -286,7 +286,7 @@ export async function createCompanies(parentLogger?: serverLogger, demoData: boo
                 logger.debug(`The company with VAT '${profile.vat}' already exists; updating its profile`);
                 applyCompanyProfile(currentCompany, profile, false);
                 if (mainCompanyId && String(currentCompany._id) !== String(mainCompanyId)) {
-                    currentCompany.parentCompany = mainCompanyId;
+                    currentCompany.set("parentCompany", mainCompanyId);
                 }
                 await currentCompany.save();
             }

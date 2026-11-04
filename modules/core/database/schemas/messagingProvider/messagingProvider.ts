@@ -16,6 +16,8 @@ import {
     MESSAGING_PROVIDER_ACCOUNT_SID_MAX,
     MESSAGING_PROVIDER_NAME_MAX,
     MESSAGING_PROVIDER_PHONE_MAX,
+    messagingProviderTypeValues,
+    type MessagingProviderType,
 } from "armonia/src/modules/core/api/auxiliary/private/messagingProvider/messagingProvider.schema-def";
 import {
     MESSAGING_PROVIDER_TEST_STATUSES,
@@ -26,7 +28,7 @@ import {ICompany} from "@coreModule/database/schemas/company/company";
 
 export interface IMessagingProvider extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
-    providerType: string;
+    providerType: MessagingProviderType;
     accountSid: string;
     authTokenEncrypted?: string;
     fromPhone?: string;
@@ -51,7 +53,7 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
         providerType: {
             type: SchemaTypes.String,
             required: true,
-            enum: ["twilio"],
+            enum: [...messagingProviderTypeValues],
             dynamicTableConfiguration: {filterable: true, sortable: true},
         },
         accountSid: {

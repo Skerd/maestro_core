@@ -1,5 +1,5 @@
 import {NextFunction, Request, Response} from 'express';
-import {ZodObject} from 'zod';
+import {ZodType} from 'zod';
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {ValidationError} from "armonia/src/modules/core/types";
 import {CONSTANTS} from "@coreModule/environment";
@@ -22,7 +22,8 @@ import {CONSTANTS} from "@coreModule/environment";
  * );
  * ```
  */
-export const validateFormZod = (schemaFactory: (languageCode: string | undefined, form?: any, sanitizedFields?: any, sanitizedReadFields?: any) => ZodObject<any>) => {
+// Only `safeParse` is used, so any Zod type qualifies, including the `z.preprocess` pipes some validators return.
+export const validateFormZod = (schemaFactory: (languageCode: string | undefined, form?: any, sanitizedFields?: any, sanitizedReadFields?: any) => ZodType) => {
     return function (req: Request, _: Response, next: NextFunction) {
 
         if (req.body == null || typeof req.body !== "object") {

@@ -37,8 +37,20 @@ export function isValidTimeZone(timeZone: string): boolean {
  */
 export function localToUtc(date: string, time: string, timeZone: string): Date | null {
     const local = `${date} ${time}`;
-    const instant = dayjs.tz(local, timeZone);
-    return instant.isValid() && instant.tz(timeZone).format(LOCAL_FORMAT) === local ? instant.toDate() : null;
+    const wallClock = dayjs.utc(local);
+    if (!wallClock.isValid()) return null;
+    /* `dayjs.tz` picks an offset itself, which for a repeated time is not reliably the earlier one.
+       Instead try the offsets in force 12 h either side: no candidate maps back to `local` inside a
+       spring-forward gap, both do inside a fall-back overlap, and the earlier one wins. */
+    const offsets = new Set(
+        [-12, 12].map((hours) => dayjs(wallClock.valueOf() + hours * 3_600_000).tz(timeZone).utcOffset()),
+    );
+    const matches = [...offsets]
+        .map((offset) => wallClock.subtract(offset, "minute"))
+        .filter((candidate) => candidate.tz(timeZone).format(LOCAL_FORMAT) === local)
+        .map((candidate) => candidate.valueOf())
+        .sort((a, b) => a - b);
+    return matches.length ? new Date(matches[0]!) : null;
 }
 
 /** The local calendar date (`YYYY-MM-DD`) an instant falls on in `timeZone`. */

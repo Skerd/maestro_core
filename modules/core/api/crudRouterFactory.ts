@@ -1,7 +1,7 @@
 import {Router, RequestHandler} from "express";
 import {ObjectId} from "mongodb";
 import {Document, Model, RefAllowlist} from "mongoose";
-import {ZodObject} from "zod";
+import {ZodObject, type ZodType} from "zod";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {getRegisteredActions} from "@coreModule/api/actionDecorator";
@@ -127,10 +127,10 @@ export interface CrudRouterConfig<
     overrideSelectHandler?: (params: SelectRouteParams) => Promise<SelectResponse>;
 
     /** Zod schema factory for the create route. */
-    createSchema: (lang: string, form: any) => ZodObject<any>;
+    createSchema: (lang: string, form: any) => ZodType;
 
     /** Zod schema factory for the edit route (receives write + read permission maps). */
-    editSchema: (lang: string, form: any, writePerms: any, readPerms: any) => ZodObject<any>;
+    editSchema: (lang: string, form: any, writePerms: any, readPerms: any) => ZodType;
 
     /** Maps a single Mongoose document to its API DTO shape. */
     toDTO: (doc: T) => unknown;

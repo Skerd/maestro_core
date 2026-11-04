@@ -1,4 +1,4 @@
-import mongoose, {Document, Schema, SchemaTypes} from 'mongoose';
+import mongoose, {Document, Schema, SchemaTypes, Types} from 'mongoose';
 import {applyMediaIndexes} from "./media.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
@@ -27,7 +27,7 @@ export interface IMedia extends Document, IOwnershipPluginFields, ISoftDeletePlu
     fileName: string;
     filePath: string;
     url?: string;
-    fileId?: Schema.Types.ObjectId;
+    fileId?: Types.ObjectId;
     metadata: IMediaMetadata;
     mimeType: string;
     extension: string;

@@ -88,8 +88,10 @@ export interface IEmbeddedCompanyRole {
     lockedOutUntil: Date | null;
     lastLogin: Date | null;
     rolesCount: number;
-    roles: IRole[];
-    company: ICompany;
+    /** Stored as ids; populated to IRole only where a query asks for it. */
+    roles: (IRole | ObjectId)[];
+    /** Stored as an id; populated to ICompany only where a query asks for it. */
+    company: ICompany | ObjectId;
     _id: ObjectId;
 }
 
