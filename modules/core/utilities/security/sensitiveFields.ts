@@ -1,4 +1,5 @@
 import mongoose, {Schema, SchemaType, SchemaTypeOptions} from "mongoose";
+import type {SanitizedFields} from "armonia/src/modules/core/types";
 
 /** Special-category data kinds (SEC-06, D39). */
 export type Sensitivity = NonNullable<SchemaTypeOptions<unknown>["sensitivity"]>;
@@ -60,4 +61,16 @@ export function findSensitiveSnippetFields(connection: typeof mongoose = mongoos
         });
     }
     return leaks;
+}
+
+/**
+ * A read selection without the schema's sensitive fields (SEC-06), for list reads: a list carries every row, so its
+ * rows never hold special-category data; a record's sheet loads those fields with its own single read. Keeps `_id`
+ * when nothing else is left, because an empty selection loads whole documents.
+ */
+export function withoutSensitiveFields(fields: SanitizedFields, schema: Schema): SanitizedFields {
+    const marked = sensitivePaths(schema);
+    if (marked.size === 0) return fields;
+    const kept: SanitizedFields = Object.fromEntries(Object.entries(fields).filter(([field]) => !sensitivityOfPath(field, marked)));
+    return Object.keys(kept).length > 0 ? kept : {_id: {}};
 }

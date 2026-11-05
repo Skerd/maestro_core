@@ -37,6 +37,7 @@ import type {
     TableForm,
     TableResponse,
 } from "armonia/src/modules/core/types/shared.types";
+import {withoutSensitiveFields} from "@coreModule/utilities/security/sensitiveFields";
 
 // ── Param helpers ─────────────────────────────────────────────────────────────
 
@@ -472,7 +473,8 @@ export function createCrudRouter<
 
             logger.start(`Fetching ${entityName} list...`);
 
-            const populate = SchemaGuard.generatePopulate(sanitizedReadFields, model.schema);
+            // SEC-06: rows of a list never carry sensitive fields; the sheet reads them through /single.
+            const populate = SchemaGuard.generatePopulate(withoutSensitiveFields(sanitizedReadFields, model.schema), model.schema);
             const filter: Record<string, unknown> = {
                 ...(documentFilter
                     ? await documentFilter(params)

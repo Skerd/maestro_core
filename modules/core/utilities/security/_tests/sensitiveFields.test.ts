@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 import {Mongoose, Schema} from "mongoose";
-import {findSensitiveSnippetFields, sensitivePaths, sensitivityOfPath} from "../sensitiveFields";
+import {findSensitiveSnippetFields, sensitivePaths, sensitivityOfPath, withoutSensitiveFields} from "../sensitiveFields";
 
 describe("sensitive fields (SEC-06)", () => {
     const chartSchema = new Schema({
@@ -30,5 +30,13 @@ describe("sensitive fields (SEC-06)", () => {
             charts: [{type: Schema.Types.ObjectId, ref: "Chart", refAllowlist: {keys: {title: {}, history: {}}}}],
         }));
         expect(findSensitiveSnippetFields(connection)).toEqual(["Referral.charts → Chart.history"]);
+    });
+
+    it("drops sensitive fields from a list selection, keeping _id when nothing else is left", () => {
+        expect(withoutSensitiveFields({title: {}, history: {keys: {notes: {}}}}, chartSchema)).toEqual({title: {}});
+        expect(withoutSensitiveFields({history: {}}, chartSchema)).toEqual({_id: {}});
+        const plain = new Schema({title: String});
+        const fields = {title: {}};
+        expect(withoutSensitiveFields(fields, plain)).toBe(fields);
     });
 });
