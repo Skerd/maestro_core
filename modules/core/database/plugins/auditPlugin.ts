@@ -45,6 +45,18 @@ const buildDiff = (previous: LeanDoc, current: LeanDoc): Record<string, AuditDif
 const auditedSchemas = new WeakSet<Schema>();
 
 /**
+ * The id of a document's company. A create often receives the request's company document, which Mongoose then holds
+ * as populated: the entry must carry its id, or the tenant guard reads it as another company and refuses it (TD-B36).
+ */
+function companyIdOf(value: unknown): ObjectId | undefined {
+    if (value instanceof ObjectId) return value;
+    if (value instanceof Types.ObjectId) return new ObjectId(value.toHexString());
+    if (value && typeof value === "object" && "_id" in value) return companyIdOf(value._id);
+    if (typeof value === "string" && ObjectId.isValid(value)) return new ObjectId(value);
+    return undefined;
+}
+
+/**
  * Audit entry for an update that bypassed `save` (operator updates in
  * `BaseCrudService.updateById`): the same UPDATE diff the save hook records,
  * written in the caller's transaction. No-op for models without this plugin.
@@ -60,7 +72,7 @@ export async function auditOperatorUpdate(
     const diff = buildDiff(previous, current);
     // `updatedAt` always moves; on its own it isn't a change worth an entry
     if (Object.keys(diff).every(key => key === "updatedAt")) return;
-    const companyId = current.company ?? previous?.company;
+    const companyId = companyIdOf(current.company) ?? companyIdOf(previous?.company);
     if (!companyId) {
         auditLogger.warn(`Skipping audit log for ${model.collection.name} ${current._id}: no company on document`);
         return;
@@ -134,7 +146,7 @@ async function recordSensitiveReads(query: Query<unknown, unknown>, result: unkn
     for (const doc of (Array.isArray(result) ? result : [result]) as Record<string, any>[]) {
         const fields = requested.filter((field) => !isEmptyValue(typeof doc.get === "function" ? doc.get(field) : doc[field]));
         // The selection may leave `company` out; the request's company owns what it reads.
-        const companyId = doc.company?._id ?? doc.company ?? store.tenantCompanyId;
+        const companyId = companyIdOf(doc.company) ?? companyIdOf(store.tenantCompanyId);
         if (fields.length === 0 || !doc._id || !companyId) continue;
         const key = `${String(doc._id)}:${fields.join(",")}`;
         if (recorded.has(key)) continue;
@@ -193,7 +205,7 @@ export const auditPlugin = (schema: Schema): void => {
 
         try {
             const orgId = requestContext.getStore()?.actionUserCtx?.orgId;
-            const companyId = doc.company ?? (orgId ? new ObjectId(orgId) : null);
+            const companyId = companyIdOf(doc.company) ?? (orgId ? new ObjectId(orgId) : null);
             if (!companyId) {
                 auditLogger.warn(
                     `Skipping audit log for ${doc.collection?.name} ${doc._id}: no company on document`,
