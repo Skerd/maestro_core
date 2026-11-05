@@ -48,7 +48,7 @@ import {
     userDisplayName
 } from "@coreModule/domain/ai/tools/assistantToolKit";
 
-const AUDIT_ACTIONS = ["CREATE", "UPDATE", "DELETE", "RESTORE", "READ"];
+const AUDIT_ACTIONS = ["CREATE", "UPDATE", "DELETE", "RESTORE", "READ", "ERASE"];
 const LOGIN_STATUSES = ["success", "failure"];
 
 /**

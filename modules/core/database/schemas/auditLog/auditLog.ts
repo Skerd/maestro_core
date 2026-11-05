@@ -5,7 +5,8 @@ import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import {IOwnershipPluginFields} from "@coreModule/database/types/plugin-fields";
 
 /** `READ` records an opening of sensitive fields (SEC-06): `diff` names them with null `from`/`to`, never values. */
-export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "RESTORE" | "READ";
+/** `ERASE`: an admin erased a person's data from the record (D57): who and when, nothing about the person. */
+export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "RESTORE" | "READ" | "ERASE";
 
 export interface AuditDiffEntry {
     from: unknown;
@@ -69,7 +70,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
         action: {
             type: SchemaTypes.String,
             required: true,
-            enum: ["CREATE", "UPDATE", "DELETE", "RESTORE", "READ"],
+            enum: ["CREATE", "UPDATE", "DELETE", "RESTORE", "READ", "ERASE"],
             permissions: {
                 self: {
                     write: "no-permission"

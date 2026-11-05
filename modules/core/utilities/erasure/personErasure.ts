@@ -42,8 +42,11 @@ export type ErasureContext = {
     logger: serverLogger;
     /** Media to delete for good with its stored file (special-category files). */
     deleteMedia: (ids: Types.ObjectId[]) => void;
-    /** Blank the stored values of these fields in past audit diffs of these records. */
-    scrubAudit: (collectionName: string, documentIds: Types.ObjectId[], fields: string[]) => void;
+    /**
+     * Blank the stored values of these fields in past audit diffs of these records; `"all"` for records the eraser
+     * deleted, whose whole history was about the person.
+     */
+    scrubAudit: (collectionName: string, documentIds: Types.ObjectId[], fields: string[] | "all") => void;
 };
 
 export type PersonEraser = {module: string; erase: (ctx: ErasureContext) => Promise<ErasureCount[]>};
@@ -54,6 +57,8 @@ export const ERASED_FIRST_NAME = "Erased";
 export const ERASED_LAST_NAME = "person";
 /** Stands in for a required phone number. */
 export const ERASED_PHONE = "-";
+/** Stands in for any other required text, such as a street. */
+export const ERASED_TEXT = "-";
 /** Stands in for a required email; `.invalid` can never be delivered. */
 export const ERASED_EMAIL = "erased@erased.invalid";
 
@@ -112,6 +117,8 @@ export async function erasePersonInCompany(params: {
     companyId: Types.ObjectId;
     subject: ErasureSubject;
     preview: boolean;
+    /** The admin erasing, recorded on every record they erased (ERASE audit entry). */
+    actorId?: Types.ObjectId;
     session?: ClientSession;
     logger?: serverLogger;
 }): Promise<ErasureCount[]> {
@@ -120,7 +127,7 @@ export async function erasePersonInCompany(params: {
     if (params.subject.accountIds.length === 0 && params.subject.emails.length === 0) return [];
 
     const mediaIds: Types.ObjectId[] = [];
-    const audit: {collectionName: string; documentIds: Types.ObjectId[]; fields: string[]}[] = [];
+    const audit: {collectionName: string; documentIds: Types.ObjectId[]; fields: string[] | "all"}[] = [];
     const ctx: ErasureContext = {
         companyId: params.companyId,
         subject: params.subject,
@@ -143,7 +150,16 @@ export async function erasePersonInCompany(params: {
     if (params.preview) return counts;
 
     // Special-category values in old change history: keep that a change happened, drop what it was.
+    // Each erased record says who erased it and when (TD-B34), without anything about the person.
+    const erasedAt = new Date();
+    const erasures = audit.flatMap(({collectionName, documentIds}) => documentIds.map((documentId) => ({
+        company: params.companyId, collectionName, documentId, actorId: params.actorId, action: "ERASE", diff: {}, createdAt: erasedAt, updatedAt: erasedAt,
+    })));
     for (const {collectionName, documentIds, fields} of audit) {
+        if (fields === "all") {
+            await auditLogService.blankAllDiffValues(params.companyId, collectionName, documentIds, params.session);
+            continue;
+        }
         for (const field of fields) {
             // Only entries that recorded this field: blanking must not invent changes.
             await auditLogService.eraseFields(
@@ -153,8 +169,11 @@ export async function erasePersonInCompany(params: {
             );
         }
     }
+    if (erasures.length > 0) await auditLogService.recordErasures(erasures, params.session);
     if (media.length > 0) {
         await mediaService.deleteMany({_id: {$in: media.map((item) => item._id)}, company: params.companyId}, {session: params.session, hard: true});
+        // A file's history (its name, often the person's) goes with it.
+        await auditLogService.blankAllDiffValues(params.companyId, "media", objectIds(media), params.session);
         const fileIds = media.map((item) => item.fileId).filter((id): id is Types.ObjectId => !!id);
         await runAfterCommit(params.session, async () => {
             const gridfs = getGridFSStorage("en-US", "media", logger);
