@@ -29,6 +29,9 @@ import {
     hydrateAllServiceCounters,
     startServiceCountersFlush,
 } from "@coreModule/utilities/serviceMetrics/serviceCounters";
+import {loadModuleExceptionLocales} from "@coreModule/utilities/helpers/exceptionLocales";
+
+loadModuleExceptionLocales();
 
 /** Global server name identifier for logging and service identification */
 global.ServerName = "TelegramServer";

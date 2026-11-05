@@ -60,6 +60,9 @@ import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {startApiHeartbeat, stopApiHeartbeat} from "@coreModule/api/health/apiServerHealth";
 import {syncAllCompanyDefaultRoles} from "@coreModule/database/schemas/company/company.defaults";
 import {loadOptionalModuleBootstraps} from "@initializer";
+import {loadModuleExceptionLocales} from "@coreModule/utilities/helpers/exceptionLocales";
+
+loadModuleExceptionLocales();
 
 /** Express application instance */
 const application: Application = express();

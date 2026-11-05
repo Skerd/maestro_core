@@ -18,6 +18,9 @@ import {schedulerEngine} from "@coreModule/cronjobs/engine/schedulerEngine";
 import "@coreModule/database/schemas/cronJob/cronJob";
 import "@coreModule/database/schemas/cronExecution/cronExecution";
 import "@coreModule/database/schemas/cronLock/cronLock";
+import {loadModuleExceptionLocales} from "@coreModule/utilities/helpers/exceptionLocales";
+
+loadModuleExceptionLocales();
 
 global.ServerName = "CronServer";
 

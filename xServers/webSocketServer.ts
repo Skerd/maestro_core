@@ -67,6 +67,9 @@ import {getAssistantResponderHealth} from "@coreModule/domain/ai/assistantHealth
 import {getCronSchedulerHealth} from "@coreModule/cronjobs/health/cronSchedulerHealth";
 import {getApiServerHealth} from "@coreModule/api/health/apiServerHealth";
 import {getKafkaServerHealth} from "@coreModule/kafka/kafkaServerHealth";
+import {loadModuleExceptionLocales} from "@coreModule/utilities/helpers/exceptionLocales";
+
+loadModuleExceptionLocales();
 
 mongoose.set("strictQuery", true);
 global.ServerName = "WebSocketServer";

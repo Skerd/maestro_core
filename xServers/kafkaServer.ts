@@ -45,6 +45,9 @@ import {
     startKafkaServerHeartbeat,
     stopKafkaServerHeartbeat,
 } from "@coreModule/kafka/kafkaServerHealth";
+import {loadModuleExceptionLocales} from "@coreModule/utilities/helpers/exceptionLocales";
+
+loadModuleExceptionLocales();
 
 /** Global server name identifier for logging and service identification */
 global.ServerName = "KafkaServer";

@@ -10,5 +10,7 @@ export default defineConfig({
         // time (each still isolated) the suite is deterministic: 778/778 on 2026-11-04, ~3 min.
         fileParallelism: false,
         hookTimeout: 60_000,
+        // The modules' API error messages, which the servers register at start-up.
+        setupFiles: ["./modules/core/_tests/vitestSetup.ts"],
     },
 });

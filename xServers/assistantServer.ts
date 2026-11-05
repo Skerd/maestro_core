@@ -31,6 +31,9 @@ import {KAFKA, AI_ASSISTANT} from "@coreModule/environment";
 import {startAiChannelConsumer} from "@coreModule/kafka/aiChannelConsumer";
 import {startAssistantHeartbeat, stopAssistantHeartbeat} from "@coreModule/domain/ai/assistantHealth";
 import {registerAllAssistantTools} from "@coreModule/domain/ai/tools/registerAllAssistantTools";
+import {loadModuleExceptionLocales} from "@coreModule/utilities/helpers/exceptionLocales";
+
+loadModuleExceptionLocales();
 
 /** Global server name identifier for logging and service identification */
 global.ServerName = "AssistantServer";
