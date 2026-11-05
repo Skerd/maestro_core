@@ -6,6 +6,12 @@ import Role from "@coreModule/database/schemas/role/role";
 import {getModelModule} from "@coreModule/utilities/modules/modelModules";
 import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {
+    findSensitiveSnippetFields,
+    sensitivePaths,
+    sensitivityOfPath,
+    type Sensitivity,
+} from "@coreModule/utilities/security/sensitiveFields";
 
 export async function createRolePermissions(parentLogger?: serverLogger) {
     const logger = getLogger("mongoDbInitialization-createSchemaPermissions", parentLogger);
@@ -15,6 +21,8 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
     let modelPermissions: Record<string, ModelPermissions>[] = [];
     // Owning module of the model at the same index in `permissions` / `modelPermissions`.
     const permissionModules: string[] = [];
+    // Sensitive field paths (SEC-06) of the model at the same index.
+    const permissionSensitivePaths: Map<string, Sensitivity>[] = [];
 
     const modelNames = mongoose.modelNames();
     for (const modelName of modelNames) {
@@ -26,7 +34,14 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
             permissions.push(normalizedPermissions.permissions);
             modelPermissions.push(normalizedPermissions.modelPermissions);
             permissionModules.push(getModelModule(modelName));
+            permissionSensitivePaths.push(sensitivePaths(model.schema));
         }
+    }
+
+    // SEC-06: a snippet travels into lists, other modules and notifications, so it never carries sensitive data.
+    const snippetLeaks = findSensitiveSnippetFields();
+    if (snippetLeaks.length > 0) {
+        throw new Error(`Snippets expose sensitive fields (SEC-06): ${snippetLeaks.join("; ")}`);
     }
 
     let potentialPermissions: {
@@ -34,17 +49,21 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
         group: string,
         tag: string,
         alwaysActive: boolean,
-        module: string
+        module: string,
+        sensitivity?: Sensitivity
     }[] = [];
     let allTags: string[] = [];
     const tagsByModule = new Map<string, string[]>();
     const recordTagModule = (tag: string, moduleName: string) => {
         tagsByModule.set(moduleName, [...(tagsByModule.get(moduleName) ?? []), tag]);
     };
+    const tagsBySensitivity = new Map<Sensitivity, string[]>();
 
     for (const [index, permissionObj] of permissions.entries()) {
         const moduleName = permissionModules[index];
         for (let [fieldName, fieldPermissions] of Object.entries(permissionObj)) {
+            // Read before `fieldName` is turned into a display name below.
+            const sensitivity = sensitivityOfPath(fieldName, permissionSensitivePaths[index]);
             for (const scope of ["self", "others"]) {
                 if( !fieldPermissions[scope] ) continue;
                 for (const action of ["read", "write"]) {
@@ -69,10 +88,12 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
                             tag,
                             group: schemaName,
                             alwaysActive,
-                            module: moduleName
+                            module: moduleName,
+                            ...(sensitivity ? {sensitivity} : {})
                         });
                         allTags.push(tag);
                         recordTagModule(tag, moduleName);
+                        if (sensitivity) tagsBySensitivity.set(sensitivity, [...(tagsBySensitivity.get(sensitivity) ?? []), tag]);
                     }
                 }
             }
@@ -146,6 +167,13 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
     for (const [moduleName, tags] of tagsByModule) {
         await RolePermission.updateMany({tag: {$in: tags}, module: {$ne: moduleName}}, {$set: {module: moduleName}});
     }
+
+    // Existing rows follow their field's current sensitivity, both ways.
+    const sensitiveTags = [...tagsBySensitivity.values()].flat();
+    for (const [sensitivity, tags] of tagsBySensitivity) {
+        await RolePermission.updateMany({tag: {$in: tags}, sensitivity: {$ne: sensitivity}}, {$set: {sensitivity}});
+    }
+    await RolePermission.updateMany({tag: {$nin: sensitiveTags}, sensitivity: {$in: ["health", "identity", "payment"]}}, {$unset: {sensitivity: 1}});
 
     logger.debug(`Created=${potentialPermissions.length}, Already Present=${alreadyFoundPermissionTags.length}`);
     logger.finish(`Finished creating schema-derived permissions`);

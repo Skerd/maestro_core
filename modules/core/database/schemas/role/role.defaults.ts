@@ -13,6 +13,11 @@ export type DefaultRoleDefinition = {
     permissionGroups?: string[];
     /** Read-only RolePermission groups — only tags containing `[read:` are granted. */
     readPermissionGroups?: string[];
+    /**
+     * Groups whose sensitive fields (SEC-06: health, identity, payment data) this role also gets, within what
+     * `permissionGroups` / `readPermissionGroups` grant. Every other group's sensitive tags are left out.
+     */
+    sensitivePermissionGroups?: string[];
 };
 
 export const coreDefaultRoles: DefaultRoleDefinition[] = [
@@ -140,14 +145,21 @@ export async function resolveDefaultRolePermissionIds(
     }
 
     const ids: ObjectId[] = [];
+    // Sensitive tags (SEC-06) only come with the groups the role names for them.
+    const notSensitiveUnlessListed = {
+        $or: [
+            {sensitivity: {$nin: ["health", "identity", "payment"]}},
+            {group: {$in: role.sensitivePermissionGroups ?? []}},
+        ],
+    };
 
     if (ownGroups.length > 0) {
-        const own = await RolePermission.find({group: {$in: ownGroups}}).select("_id").session(dbSession);
+        const own = await RolePermission.find({group: {$in: ownGroups}, ...notSensitiveUnlessListed}).select("_id").session(dbSession);
         ids.push(...own.map((permission) => permission._id));
     }
 
     if (readGroups.length > 0) {
-        const reads = await RolePermission.find({group: {$in: readGroups}}).select("_id tag").session(dbSession);
+        const reads = await RolePermission.find({group: {$in: readGroups}, ...notSensitiveUnlessListed}).select("_id tag").session(dbSession);
         for (const permission of reads) {
             if (typeof permission.tag === "string" && permission.tag.includes("[read:")) {
                 ids.push(permission._id);

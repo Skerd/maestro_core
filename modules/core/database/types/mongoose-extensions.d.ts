@@ -57,6 +57,12 @@ declare module "mongoose" {
          * For ref fields: which populated keys to allow. Used by schemaToFieldAllowlist.
          */
         refAllowlist?: RefAllowlist;
+        /**
+         * Special-category data (SEC-06, D39). Its permission tags (this field and everything under it) are left
+         * out of default-role group grants unless the role lists the group in `sensitivePermissionGroups`, and the
+         * field may never appear in a snippet.
+         */
+        sensitivity?: "health" | "identity" | "payment";
 
         dynamicTableConfiguration?: {
             /**

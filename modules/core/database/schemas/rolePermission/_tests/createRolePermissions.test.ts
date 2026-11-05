@@ -6,8 +6,13 @@ import Role from "@coreModule/database/schemas/role/role";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
 import {createRolePermissions} from "@coreModule/database/schemas/rolePermission/rolePermission.default";
 import {registerModelAction} from "@coreModule/utilities/security/actionPermissions";
+import {resolveDefaultRolePermissionIds} from "@coreModule/database/schemas/role/role.defaults";
 
 const Booking = mongoose.model("PermissionSyncBooking", new Schema({title: String}));
+const Chart = mongoose.model("PermissionSyncChart", new Schema({
+    title: String,
+    history: {type: {notes: String, signedAt: Date}, sensitivity: "health"},
+}));
 const company = new ObjectId();
 const adminRole = new ObjectId();
 let mongo: MongoMemoryServer;
@@ -34,5 +39,33 @@ describe("createRolePermissions", () => {
         expect(tag).toMatchObject({name: "Confirm", group: "Permissionsyncbookings", module: "core"});
         const admin = await Role.collection.findOne({_id: adminRole});
         expect(admin!.permissions.map(String)).toContain(String(tag!._id));
+    });
+
+    it("marks a sensitive field's tags and leaves them out of default roles that do not list the group (SEC-06)", async () => {
+        await createRolePermissions();
+        const tags = await RolePermission.find({group: "Permissionsynccharts"}).lean();
+        const historyTags = tags.filter((permission) => permission.tag.includes(":history"));
+        expect(historyTags.length).toBeGreaterThanOrEqual(3); // history, history_notes, history_signedAt
+        expect(historyTags.every((permission) => permission.sensitivity === "health")).toBe(true);
+        expect(tags.find((permission) => permission.tag.endsWith(":title]"))?.sensitivity).toBeUndefined();
+
+        const role = {name: "Desk", slug: "desk", isAdmin: false, isSignupDefault: false, canEdit: true, canDelete: false, permissionGroups: ["Permissionsynccharts"]};
+        const withoutHealth = (await resolveDefaultRolePermissionIds(role)).map(String);
+        const withHealth = (await resolveDefaultRolePermissionIds({...role, sensitivePermissionGroups: ["Permissionsynccharts"]})).map(String);
+        const historyIds = historyTags.map((permission) => String(permission._id));
+        expect(withoutHealth.some((id) => historyIds.includes(id))).toBe(false);
+        expect(withoutHealth).toContain(String(tags.find((permission) => permission.tag.endsWith(":title]"))!._id));
+        expect(historyIds.every((id) => withHealth.includes(id))).toBe(true);
+
+        // Admin roles keep every tag, sensitive ones included (architect's choice, D39).
+        const admin = await Role.collection.findOne({_id: adminRole});
+        expect(historyIds.every((id) => admin!.permissions.map(String).includes(id))).toBe(true);
+    });
+
+    it("clears the mark when a field stops being sensitive", async () => {
+        await RolePermission.updateOne({tag: {$regex: ":title\\]$", $options: ""}, group: "Permissionsynccharts"}, {$set: {sensitivity: "payment"}});
+        await createRolePermissions();
+        const title = await RolePermission.findOne({group: "Permissionsynccharts", tag: {$regex: ":title\\]$"}}).lean();
+        expect(title?.sensitivity).toBeUndefined();
     });
 });

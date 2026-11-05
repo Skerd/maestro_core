@@ -9,7 +9,9 @@ export interface IRolePermission extends Document {
     tag: string,
     alwaysActive: boolean,
     /** Module owning the model the tag comes from; hidden from companies without it. */
-    module: string
+    module: string,
+    /** Set when the tag covers special-category data (SEC-06): default roles get it only where they list the group. */
+    sensitivity?: "health" | "identity" | "payment"
 }
 
 const RolePermissionSchema = new Schema<IRolePermission>(
@@ -58,6 +60,17 @@ const RolePermissionSchema = new Schema<IRolePermission>(
         module: {
             type: SchemaTypes.String,
             default: "core",
+            permissions: {
+                self: {
+                    publicRead: true,
+                    write: "no-permission"
+                }
+            }
+        },
+        sensitivity: {
+            type: SchemaTypes.String,
+            enum: ["health", "identity", "payment"],
+            required: false,
             permissions: {
                 self: {
                     publicRead: true,
