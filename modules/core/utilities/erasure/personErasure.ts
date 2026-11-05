@@ -95,10 +95,13 @@ export async function loadPersonErasers(logger: serverLogger = getLogger("person
     logger.debug(`Person erasers: ${erasers.map((eraser) => eraser.module).join(", ") || "none"}`);
 }
 
-/** Modules that can erase a person's data: a company's admins get the erasure screen only when it has one (D57). */
+/**
+ * Modules that can erase a person's data: a company's admins get the erasure screen only when it has one (D57).
+ * Core's own eraser (website chats) runs wherever erasure is offered but does not offer it: every company has core.
+ */
 export async function personErasureModules(): Promise<string[]> {
     await loadPersonErasers();
-    return erasers.map((eraser) => eraser.module);
+    return erasers.map((eraser) => eraser.module).filter((name) => name !== "core");
 }
 
 /** The person as they are written in records: trimmed, lower-cased emails and account ids. */

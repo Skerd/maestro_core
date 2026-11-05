@@ -1,7 +1,7 @@
 import {describe, expect, it, vi} from "vitest";
 
-// Core fixtures only (CORE-07): discovery sees no vertical module.
-vi.mock("@coreModule/utilities/modules/enabledModules", () => ({isModuleEnabled: (name: string) => name === "core"}));
+// Fixtures only (CORE-07): discovery loads no eraser, the test registers its own (core's chat eraser needs a database).
+vi.mock("@coreModule/utilities/modules/enabledModules", () => ({isModuleEnabled: () => false}));
 import {Types} from "mongoose";
 import {erasePersonInCompany, erasureSubject, objectIds, personErasureModules, registerPersonEraser, type ErasureContext} from "../personErasure";
 
