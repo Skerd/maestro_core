@@ -6,6 +6,7 @@ import Role from "@coreModule/database/schemas/role/role";
 import {getModelModule} from "@coreModule/utilities/modules/modelModules";
 import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {unknownDefaultRoleGroups} from "@coreModule/database/schemas/role/role.defaults";
 import {
     findSensitiveSnippetFields,
     sensitivePaths,
@@ -139,6 +140,11 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
 
     // safety check, remove duplicates
     allTags = [...new Set(allTags)];
+
+    // A default role naming a group no permission has grants nothing, silently (TD-B32).
+    for (const unknown of unknownDefaultRoleGroups(new Set(potentialPermissions.map((permission) => permission.group)))) {
+        logger.warn(`Default role names a permission group that does not exist: ${unknown}`);
+    }
 
     let alreadyFoundPermissions = await RolePermission.find({ tag: { $in: allTags } }).select("tag");
     let alreadyFoundPermissionTags = alreadyFoundPermissions.map((permission) => permission.tag);

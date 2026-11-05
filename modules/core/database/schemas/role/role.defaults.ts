@@ -76,6 +76,20 @@ export function getDefaultRoles(): DefaultRoleDefinition[] {
     return [...coreDefaultRoles, ...registeredPacks];
 }
 
+/**
+ * Groups that registered default roles name but no permission has (`slug: group`). A misspelt group grants nothing
+ * and says nothing, so the permission sync warns about each one at start-up (TD-B32).
+ */
+export function unknownDefaultRoleGroups(knownGroups: ReadonlySet<string>): string[] {
+    const unknown = new Set<string>();
+    for (const role of getDefaultRoles()) {
+        for (const group of [...(role.permissionGroups ?? []), ...(role.readPermissionGroups ?? []), ...(role.sensitivePermissionGroups ?? [])]) {
+            if (!knownGroups.has(group)) unknown.add(`${role.slug}: ${group}`);
+        }
+    }
+    return [...unknown];
+}
+
 /** Core roles plus the packs of the given modules (untagged packs are always included). */
 export function getDefaultRolesForModules(modules: string[]): DefaultRoleDefinition[] {
     const allowed = new Set(modules);

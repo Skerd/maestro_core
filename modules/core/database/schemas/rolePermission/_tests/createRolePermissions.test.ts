@@ -6,7 +6,7 @@ import Role from "@coreModule/database/schemas/role/role";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
 import {createRolePermissions} from "@coreModule/database/schemas/rolePermission/rolePermission.default";
 import {registerModelAction} from "@coreModule/utilities/security/actionPermissions";
-import {resolveDefaultRolePermissionIds} from "@coreModule/database/schemas/role/role.defaults";
+import {registerDefaultRoles, resolveDefaultRolePermissionIds, unknownDefaultRoleGroups} from "@coreModule/database/schemas/role/role.defaults";
 
 const Booking = mongoose.model("PermissionSyncBooking", new Schema({title: String}));
 const Chart = mongoose.model("PermissionSyncChart", new Schema({
@@ -67,5 +67,11 @@ describe("createRolePermissions", () => {
         await createRolePermissions();
         const title = await RolePermission.findOne({group: "Permissionsynccharts", tag: {$regex: ":title\\]$"}}).lean();
         expect(title?.sensitivity).toBeUndefined();
+    });
+
+    it("names default-role groups that no permission has, so a misspelt group is not silent (TD-B32)", () => {
+        registerDefaultRoles([{name: "Desk", slug: "fixture_desk", isAdmin: false, isSignupDefault: false, canEdit: true, canDelete: false, permissionGroups: ["Permissionsynccharts", "Permissionsyncchartz"]}]);
+        expect(unknownDefaultRoleGroups(new Set(["Permissionsynccharts"]))).toContain("fixture_desk: Permissionsyncchartz");
+        expect(unknownDefaultRoleGroups(new Set(["Permissionsynccharts"]))).not.toContain("fixture_desk: Permissionsynccharts");
     });
 });
