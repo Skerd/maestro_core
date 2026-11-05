@@ -36,7 +36,6 @@
       "@coreModule/*": ["./modules/core/*"],
       "@propertyManagement/*": ["./modules/propertyManagement/*"],
       "@propertyDevelopmentModule/*": ["./modules/propertyDevelopment/*"],
-      "@musicIndustry/*": ["./modules/musicIndustry/*"],
       "@eCommerceModule/*": ["./modules/eCommerce/*"],
       "@financeModule/*": ["./modules/finance/*"],
       "@swissOutreachModule/*": ["./modules/swissOutreach/*"],

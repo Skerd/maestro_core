@@ -22,9 +22,6 @@
     "dependsOn": ["core", "finance"],
     "description": "Product commerce and services marketplace"
   },
-  "musicIndustry": {
-    "dependsOn": ["core"]
-  },
   "carRental": {
     "dependsOn": ["core", "finance"],
     "description": "Car rental: fleet, locations, rental pricing and vehicle reservations"
