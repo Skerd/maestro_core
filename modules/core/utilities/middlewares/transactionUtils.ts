@@ -281,14 +281,16 @@ const commitTasks = new WeakMap<ClientSession, (() => Promise<void>)[]>();
 /**
  * Runs `task` only once the session's transaction has committed, or right away
  * when there is no transaction. Use it for side effects that must not happen
- * for rolled-back work, such as emails and push notifications.
+ * for rolled-back work, such as emails and push notifications. Without a
+ * `session` it waits for the request's own transaction (`requestContext`, D06).
  *
  * Whoever commits flushes the queue with {@link flushAfterCommitTasks}:
  * `asyncHandler` does so for routes using `transactionHandler`; code that runs
  * its own `withTransaction` must do the same (dropping at the start of each
  * attempt, running after it resolves). The task runs in the request context it was queued in.
  */
-export async function runAfterCommit(session: ClientSession | null | undefined, task: () => Promise<void>): Promise<void> {
+export async function runAfterCommit(given: ClientSession | null | undefined, task: () => Promise<void>): Promise<void> {
+    const session = given ?? requestContext.getStore()?.session;
     if (!session?.inTransaction()) {
         await task();
         return;

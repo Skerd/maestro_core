@@ -2,6 +2,7 @@ import type {ClientSession} from "mongoose";
 import {mongooseInstance} from "@coreModule/connections/connectToMongoDb";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {flushAfterCommitTasks} from "@coreModule/utilities/middlewares/transactionUtils";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 
 /**
  * Runs `work` in its own transaction, for code outside a request (webhook
@@ -15,7 +16,8 @@ export async function runInTransaction<T>(logger: serverLogger, work: (session: 
         let result: T;
         await session.withTransaction(async () => {
             await flushAfterCommitTasks(session, false, () => undefined);
-            result = await work(session);
+            // In the context, so side effects inside `work` wait for this commit (D06).
+            result = await requestContext.run({...requestContext.getStore(), session}, () => work(session));
         });
         await flushAfterCommitTasks(session, true, (error) => logger.err("After-commit task failed", error));
         return result!;

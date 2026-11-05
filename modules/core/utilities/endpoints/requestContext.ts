@@ -1,4 +1,5 @@
 import {AsyncLocalStorage} from 'async_hooks';
+import type {ClientSession} from 'mongoose';
 
 /**
  * Request-scoped context propagated through AsyncLocalStorage.
@@ -38,6 +39,11 @@ export interface RequestContextStore {
      * company's modules or its own documents.
      */
     studioSample?: boolean;
+    /**
+     * The open transaction of this request (`transactionHandler`) or job (`runInTransaction`). Side effects
+     * queued with `runAfterCommit` (and every `emitNotificationEvent`) wait for it to commit (D06).
+     */
+    session?: ClientSession;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContextStore>();

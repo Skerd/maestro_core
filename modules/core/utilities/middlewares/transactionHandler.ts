@@ -2,6 +2,7 @@ import {NextFunction, Request, Response} from 'express';
 import {ClientSession} from 'mongoose';
 import {mongooseInstance} from '@coreModule/connections/connectToMongoDb';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
+import {requestContext} from '@coreModule/utilities/endpoints/requestContext';
 
 /**
  * Transaction Middleware
@@ -47,6 +48,9 @@ export function transactionHandler() {
             // Attach session to request body so handlers can access it
             // This is the single source of truth for transaction sessions
             req.body.session = session;
+            // Core code below the handler (the notification bus, runAfterCommit) finds it here (D06).
+            const store = requestContext.getStore();
+            if (store) store.session = session;
 
             // Continue to next middleware
             next();

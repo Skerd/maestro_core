@@ -12,6 +12,7 @@
 import {EventEmitter} from "events";
 import type {ClientSession} from "mongodb";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {runAfterCommit} from "@coreModule/utilities/middlewares/transactionUtils";
 
 /** Core-platform notification event codes only. Module codes live under each package. */
 export const NotificationEventCodes = {
@@ -37,9 +38,8 @@ export interface NotificationEvent {
     receiverIds: string[];
     payload: Record<string, unknown>;
     /**
-     * Optional session from the caller for future use only. Persisted notifications do not use
-     * it: async EventEmitter handlers can run after the request transaction commits, which makes
-     * binding writes to `session` unsafe (MongoServerError 256).
+     * The caller's session. The event waits for its transaction to commit (D06); handlers never write
+     * with it (they run after the commit, MongoServerError 256).
      */
     session?: ClientSession;
 }
@@ -49,7 +49,7 @@ export type NotificationEventCode = string;
 export type EmitNotificationEventArgs = {
     receiverIds: string[];
     payload: Record<string, unknown>;
-    /** Ignored for DB writes — see {@link NotificationEvent.session}. */
+    /** Only to wait for its commit; the request's own transaction is waited for without it. */
     session?: ClientSession;
 };
 
@@ -57,9 +57,16 @@ export const notificationEventBus = new EventEmitter();
 notificationEventBus.setMaxListeners(50);
 
 /**
- * Emit a notification domain event; registered handlers create and push notifications.
+ * Emit a notification domain event; registered handlers create and push notifications. Inside a
+ * transaction (the caller's `session`, or the request's) the event waits for the commit and is dropped
+ * on a rollback or a retried attempt, so nobody is told about work that did not happen (D06).
  */
 export function emitNotificationEvent(code: string, args: EmitNotificationEventArgs): void {
+    // Without a transaction the task runs synchronously, before runAfterCommit's first await.
+    void runAfterCommit(args.session, async () => publish(code, args));
+}
+
+function publish(code: string, args: EmitNotificationEventArgs): void {
     const payload: NotificationEvent = {
         code,
         receiverIds: args.receiverIds,

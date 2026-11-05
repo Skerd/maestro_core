@@ -5,6 +5,10 @@ import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {flushAfterCommitTasks, runAfterCommit} from "@coreModule/utilities/middlewares/transactionUtils";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
+import {runInTransaction} from "@coreModule/utilities/middlewares/runInTransaction";
+import {getLogger} from "@coreModule/loggers/serverLog";
+import {emitNotificationEvent, notificationEventBus} from "@coreModule/domain/notifications/notificationEventBus";
 
 // Transactions need a replica set; WiredTiger, because the default in-memory
 // test engine has no document-level write conflicts
@@ -147,5 +151,93 @@ describe("asyncHandler transient-error retry (E-21)", {timeout: 30000}, () => {
             throw new Error("business rule");
         });
         expect(failure).toMatchObject({message: "business rule"});
+    });
+});
+
+/** A request through transactionHandler and asyncHandler, in its own request context as in production. */
+function runRoute(handler: (params: any) => Promise<unknown>): Promise<unknown> {
+    const req: any = {body: {logger}, params: {}};
+    return requestContext.run({}, () => new Promise((resolve) => {
+        // Settles on the answer (asyncHandler's res.json) or on the error passed to next.
+        const res: any = {headersSent: false, status: () => res, json: () => resolve(undefined)};
+        void transactionHandler()(req, res, (error?: unknown) => {
+            if (error) return resolve(error);
+            void asyncHandler(handler)(req, res, resolve);
+        });
+    }));
+}
+
+describe("side effects wait for the request's transaction (D06)", {timeout: 30000}, () => {
+    const heard: string[] = [];
+    const listener = (event: {payload: {label: string}}) => heard.push(event.payload.label);
+
+    beforeAll(() => {
+        notificationEventBus.on("D06_TEST_EVENT", listener);
+    });
+    afterAll(() => {
+        notificationEventBus.off("D06_TEST_EVENT", listener);
+    });
+
+    const emit = (label: string) => emitNotificationEvent("D06_TEST_EVENT", {receiverIds: ["u1"], payload: {label}});
+
+    it("emits a notification event after the commit, and never for a failed request", async () => {
+        heard.length = 0;
+        let insideTransaction: string[] = [];
+        expect(await runRoute(async () => {
+            emit("saved");
+            insideTransaction = [...heard];
+            return {ok: true};
+        })).toBeUndefined();
+        expect(insideTransaction).toEqual([]);
+        const failure = await runRoute(async () => {
+            emit("rolled back");
+            throw new Error("handler failed");
+        });
+
+        expect(failure).toBeInstanceOf(Error);
+        expect(heard).toEqual(["saved"]);
+    });
+
+    it("emits only the last attempt's event when a write conflict replays the handler", async () => {
+        heard.length = 0;
+        let attempts = 0;
+        await runRoute(async () => {
+            attempts += 1;
+            emit(`attempt ${attempts}`);
+            if (attempts === 1) {
+                throw Object.assign(new Error("write conflict"), {hasErrorLabel: (label: string) => label === "TransientTransactionError"});
+            }
+            return {ok: true};
+        });
+        expect(heard).toEqual(["attempt 2"]);
+    });
+
+    it("lets runAfterCommit without a session wait for the request's transaction", async () => {
+        const sent: string[] = [];
+        let insideTransaction: string[] = [];
+        expect(await runRoute(async () => {
+            await runAfterCommit(undefined, async () => { sent.push("after commit"); });
+            insideTransaction = [...sent];
+            return {ok: true};
+        })).toBeUndefined();
+        expect(insideTransaction).toEqual([]);
+        expect(sent).toEqual(["after commit"]);
+    });
+
+    it("waits for a job's own transaction (runInTransaction)", async () => {
+        heard.length = 0;
+        let insideTransaction: string[] = [];
+        await runInTransaction(getLogger("d06_test"), async () => {
+            emit("job saved");
+            insideTransaction = [...heard];
+        });
+        expect(insideTransaction).toEqual([]);
+        expect(heard).toEqual(["job saved"]);
+    });
+
+    it("emits right away outside any transaction (cron, Kafka, public reads)", () => {
+        heard.length = 0;
+        emit("no transaction");
+        expect(heard).toEqual(["no transaction"]);
     });
 });
