@@ -20,27 +20,17 @@ export type ModuleManifest = Record<string, ModuleManifestEntry>;
 
 let cachedManifest: ModuleManifest | undefined;
 
-function resolveModuleManifestPath(): string {
-    const candidates = [
-        // Docker / maestro-root layout: /maestro/scripts/modules.manifest.json
-        path.resolve(__dirname, "../../../../scripts/modules.manifest.json"),
-        // Monorepo dev layout: <repo>/scripts/modules.manifest.json
-        path.resolve(__dirname, "../../../../../scripts/modules.manifest.json"),
-        path.join(process.cwd(), "scripts", "modules.manifest.json"),
-    ];
-    for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-            return candidate;
-        }
-    }
-    throw new Error(`Module manifest not found. Tried: ${candidates.join(", ")}`);
-}
+/**
+ * The platform's one module manifest (D01a): `maestro/modules/core/modules.manifest.json`, versioned with core.
+ * Sinfonia's build and the root governance checks read the same file.
+ */
+export const MODULE_MANIFEST_PATH = path.resolve(__dirname, "../../modules.manifest.json");
 
 export function loadModuleManifest(): ModuleManifest {
     if (cachedManifest) {
         return cachedManifest;
     }
-    const raw = fs.readFileSync(resolveModuleManifestPath(), "utf-8");
+    const raw = fs.readFileSync(MODULE_MANIFEST_PATH, "utf-8");
     cachedManifest = JSON.parse(raw) as ModuleManifest;
     return cachedManifest;
 }

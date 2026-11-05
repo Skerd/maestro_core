@@ -1,0 +1,36 @@
+{
+  "core": {
+    "required": true,
+    "description": "Platform core"
+  },
+  "finance": {
+    "dependsOn": ["core"],
+    "description": "Payments, escrow ledger, and Stripe/Connect adapters"
+  },
+  "propertyManagement": {
+    "dependsOn": ["core"]
+  },
+  "propertyDevelopment": {
+    "dependsOn": ["core", "propertyManagement"],
+    "description": "Bauadministration: development, delivery, cost, tendering, FM"
+  },
+  "swissOutreach": {
+    "dependsOn": ["core"],
+    "description": "Swiss company outreach: ZEFIX discovery, enrichment, email drafts and approval"
+  },
+  "eCommerce": {
+    "dependsOn": ["core", "finance"],
+    "description": "Product commerce and services marketplace"
+  },
+  "musicIndustry": {
+    "dependsOn": ["core"]
+  },
+  "carRental": {
+    "dependsOn": ["core", "finance"],
+    "description": "Car rental: fleet, locations, rental pricing and vehicle reservations"
+  },
+  "dentalClinic": {
+    "dependsOn": ["core", "finance"],
+    "description": "Dental clinic: dentists, services, schedules and appointment booking"
+  }
+}
