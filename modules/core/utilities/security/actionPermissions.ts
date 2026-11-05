@@ -10,11 +10,8 @@ import type {UserContext} from "@coreModule/utilities/types/types";
  * Action permissions (D14, SEC-02). Every `@action` mounted on a model's router is a role permission of
  * that model, next to create/delete/restore: `reservations[action:self:cancel]` (`[action:cancel]` on a
  * "loose" model). Core checks it before the action's body runs, so the body needs no field-write checks
- * standing in for "may do this".
- *
- * Rollout (D54): `ACTION_PERMISSION_ENFORCE` lists the modules whose actions are enforced (comma-separated,
- * `*` = all). Elsewhere a missing permission is only logged (`Action permission would refuse …`), so the
- * roles that would lose an action are found before enforcement spreads.
+ * standing in for "may do this". Enforced in every module (D54: rolled out module by module, then made
+ * unconditional).
  */
 
 type Scope = "self" | "others";
@@ -26,7 +23,6 @@ interface ModelAction {
 
 const actions = new Map<string, ModelAction>();
 const logger = getLogger("actionPermissions");
-const reported = new Set<string>();
 
 /** Records `methodName` as an action of `model`; `createRolePermissions` turns each into its tags. */
 export function registerModelAction(model: Model<any>, methodName: string): void {
@@ -61,20 +57,6 @@ export function actionPermissionEntries(): {name: string; group: string; tag: st
     return entries;
 }
 
-let enforcedRaw: string | undefined;
-let enforcedModules: ReadonlySet<string> = new Set();
-
-/** Whether action permissions are enforced for work of `module` (D54 rollout). Read on every call so tests can switch it. */
-export function actionPermissionsEnforced(module: string | undefined): boolean {
-    const raw = process.env.ACTION_PERMISSION_ENFORCE?.trim() ?? "";
-    if (raw !== enforcedRaw) {
-        enforcedRaw = raw;
-        enforcedModules = new Set(raw.split(",").map((name) => name.trim()).filter(Boolean));
-    }
-    if (enforcedModules.has("*")) return true;
-    return module !== undefined && enforcedModules.has(module);
-}
-
 /**
  * Refuses the action unless the caller's role holds its permission. Runs after `authMW`; acting as
  * another user (impersonation) needs the `others` tag, like the model permissions.
@@ -84,17 +66,9 @@ export function actionPermissionMW(model: Model<any>, methodName: string): Reque
         const ctx: UserContext | undefined = req.body?.actionUserCtx;
         const tag = actionPermissionTag(model, methodName, ctx?.isSelf === false ? "others" : "self");
         if (tag && ctx?.permissions?.includes(tag)) return next();
-        const module = requestContext.getStore()?.routeModule;
         const label = tag ?? `${model.collection.name}[action:others:${methodName}]`;
-        if (actionPermissionsEnforced(module)) {
-            logger.warn(`Action permission refused ${label} for user ${ctx?.userId ?? "unknown"} in ${module ?? "no module"}`);
-            return next(apiValidationException("user_permissions_not_sufficient", null, null, req.body?.languageCode ?? DEFAULT_EXCEPTION_LANGUAGE));
-        }
-        const key = `${label}|${ctx?.userId ?? ""}`;
-        if (!reported.has(key)) {
-            reported.add(key);
-            logger.warn(`Action permission would refuse ${label} for user ${ctx?.userId ?? "unknown"} in ${module ?? "no module"}`);
-        }
-        next();
+        const module = requestContext.getStore()?.routeModule ?? "no module";
+        logger.warn(`Action permission refused ${label} for user ${ctx?.userId ?? "unknown"} in ${module}`);
+        next(apiValidationException("user_permissions_not_sufficient", null, null, req.body?.languageCode ?? DEFAULT_EXCEPTION_LANGUAGE));
     };
 }

@@ -1,5 +1,6 @@
-import mongoose, {Query, Schema, SchemaTypes, Types} from "mongoose";
+import mongoose, {Aggregate, Query, Schema, SchemaTypes, Types} from "mongoose";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {pipelineFilterIndex} from "@coreModule/database/plugins/ownershipPlugin";
 import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
 
 const DELETED_AT = "deletedAt";
@@ -20,6 +21,7 @@ export interface SoftDeletePluginOptions {
  *
  * - Adds deletedAt (Date) and optionally deletedBy (ObjectId) fields
  * - Excludes soft-deleted documents from find/findOne/countDocuments by default
+ * - Excludes them from aggregations too (D15), for every caller: `.option({withDeleted: true})` keeps them
  * - Admin users (actionUserCtx.isAdmin in request context) automatically see deleted documents in all queries, including populate refs
  * - Overrides deleteOne, deleteMany, findOneAndDelete (and findByIdAndDelete) to soft delete by default.
  *   Pass { hard: true } in options for physical delete. Pass auditUserId for deletedBy.
@@ -41,6 +43,9 @@ export interface SoftDeletePluginOptions {
  *
  * // Only deleted documents:
  * await MyModel.find({ name: "test" }).onlyDeleted();
+ *
+ * // An aggregation that must count deleted documents too:
+ * await MyModel.aggregate(pipeline).option({ withDeleted: true });
  *
  * // Soft delete:
  * await MyModel.softDeleteOne({ _id: id }, { deletedBy: userId });
@@ -128,6 +133,32 @@ export const softDeletePlugin = (
     schema.pre("updateOne", queryMiddleware);
     schema.pre("updateMany", queryMiddleware);
     schema.pre("replaceOne", queryMiddleware);
+
+    // D15: a pipeline drops soft-deleted documents for every caller, admins included (unlike find, where an
+    // admin sees them to restore them): a total or a chart never counts deleted records.
+    schema.pre("aggregate", function (this: Aggregate<unknown>, next: () => void) {
+        const keepDeleted = this.options.withDeleted === true;
+        // Mongoose reads the options after its pre hooks; the flag must not reach the server.
+        delete this.options.withDeleted;
+        if (keepDeleted) return next();
+        const pipeline = this.pipeline();
+        const at = pipelineFilterIndex(pipeline);
+        // The leading `$match` run holds the caller's first filter and the tenant scope's (ownershipPlugin's
+        // hook runs first); a `deletedAt` condition in any of them is the caller's choice.
+        let end = at;
+        while (pipeline[end] && "$match" in pipeline[end]) end++;
+        const leading = pipeline.slice(at, end).map((stage) => ("$match" in stage ? stage.$match : {}));
+        if (leading.some((match) => DELETED_AT in match)) return next();
+        const lead = pipeline[at];
+        if (lead && "$match" in lead) {
+            // Merged into the first `$match` (a copy, never the caller's object), so the tenant scope still
+            // reads the caller's `company` and the filter can use the same index.
+            pipeline[at] = {$match: {...lead.$match, [DELETED_AT]: null}};
+        } else {
+            pipeline.splice(at, 0, {$match: {[DELETED_AT]: null}});
+        }
+        next();
+    });
 
     // Query helpers
     (schema.query as any).withDeleted = function (this: Query<any, any>) {

@@ -316,8 +316,6 @@ export function validateConfiguration(): void {
         validateString('CLIENT_NAME', process.env.CLIENT_NAME, true),
         validateString('SINFONIA_CLIENT_URLS', process.env.SINFONIA_CLIENT_URLS, !isDevEnv),
         validateString('PORTAL_ROOT_DOMAIN', process.env.PORTAL_ROOT_DOMAIN, false),
-        // D14 rollout (D54): modules whose @action routes enforce action permissions (`*` = all); read in actionPermissions.ts.
-        validateString('ACTION_PERMISSION_ENFORCE', process.env.ACTION_PERMISSION_ENFORCE, false),
         validateString('AD_CAMPAIGN_API_BASE_URL', process.env.AD_CAMPAIGN_API_BASE_URL, !isDevEnv),
         validateString('AD_CAMPAIGN_REDIRECT_ALL_TO', process.env.AD_CAMPAIGN_REDIRECT_ALL_TO, false),
         validateBoolean('AD_CAMPAIGN_ALLOW_NONPROD_SEND', process.env.AD_CAMPAIGN_ALLOW_NONPROD_SEND, false),

@@ -48,7 +48,6 @@ const caller = (permissions: string[]): TestCaller => ({userId: "u1", companyId:
 const confirm = (permissions: string[]) => request(app).post("/api/bookings/confirmBooking").set(callerHeader(caller(permissions))).send({});
 
 afterEach(() => {
-    delete process.env.ACTION_PERMISSION_ENFORCE;
     ran.length = 0;
 });
 
@@ -63,8 +62,7 @@ describe("action permissions (D14)", () => {
         expect(actionPermissionEntries().some((entry) => /publicQuote|publicLink|myPreferences/.test(entry.tag))).toBe(false);
     });
 
-    it("refuses an enforced module's action before its body when the role lacks the permission", async () => {
-        process.env.ACTION_PERMISSION_ENFORCE = "pilot";
+    it("refuses the action before its body when the role lacks the permission, in every module", async () => {
         const refused = await confirm([]);
         expect(refused.status).toBe(403);
         expect(refused.body.error_code).toBe("user_permissions_not_sufficient");
@@ -75,20 +73,12 @@ describe("action permissions (D14)", () => {
         expect(ran).toEqual(["confirmBooking"]);
     });
 
-    it("only logs in a module that is not enforced yet", async () => {
-        process.env.ACTION_PERMISSION_ENFORCE = "someOtherModule";
-        expect((await confirm([])).status).toBe(200);
-        expect(ran).toEqual(["confirmBooking"]);
-    });
-
     it("lets any signed-in caller run a self-service action", async () => {
-        process.env.ACTION_PERMISSION_ENFORCE = "*";
         expect((await request(app).post("/api/bookings/myPreferences").set(callerHeader(caller([]))).send({})).status).toBe(200);
         expect(ran).toEqual(["myPreferences"]);
     });
 
     it("leaves public actions alone", async () => {
-        process.env.ACTION_PERMISSION_ENFORCE = "*";
         expect((await request(app).post("/api/bookings/publicQuote").send({})).status).toBe(200);
         // A public route still authenticates nothing: the harness takes the caller from the header.
         expect((await request(app).post("/api/bookings/publicLink").set(callerHeader(caller([]))).send({})).status).toBe(200);

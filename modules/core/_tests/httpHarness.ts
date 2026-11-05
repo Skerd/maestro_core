@@ -6,6 +6,9 @@
  *   vi.mock("@coreModule/utilities/middlewares/authMW", async () =>
  *       (await import("@coreModule/_tests/httpHarness")).authMWStub);
  */
+import http from "node:http";
+import {once} from "node:events";
+import {beforeAll} from "vitest";
 import express, {type Router} from "express";
 import type {Model} from "mongoose";
 import {ObjectId} from "mongodb";
@@ -54,7 +57,8 @@ export function callerHeader(caller: TestCaller): Record<string, string> {
 
 /**
  * `module` tags requests with their route module the way routeRegistry does, so module checks and
- * tenant-scope enforcement (D16) see the same context as in production.
+ * tenant-scope enforcement (D16) see the same context as in production. Call it at a test file's top level
+ * (it registers a `beforeAll` that waits for the loopback bind).
  */
 export function appFor(routes: {basePath: string; router: Router; module?: string}[]) {
     const app = express();
@@ -68,15 +72,20 @@ export function appFor(routes: {basePath: string; router: Router; module?: strin
             module ? requestContext.run({...requestContext.getStore(), routeModule: module}, () => next()) : next();
         app.use(basePath, stripServerKeys, tag, router);
     }
-    // supertest calls `app.listen(0)` (every interface) and then connects to 127.0.0.1. On macOS another process
-    // can hold the same port on 127.0.0.1 alone and answer instead (TD-T11): bind loopback only.
-    const listen = app.listen.bind(app);
-    Object.assign(app, {listen: (port = 0) => listen(port, "127.0.0.1")});
     app.use((error: unknown, _req: any, res: any, _next: any) => {
         if (error instanceof ServerError) return res.status(error.status).json(error);
         return res.status(500).json({error_code: "internal_error", message: (error as Error)?.message});
     });
-    return app;
+    // Given an app, supertest wraps it in its own server, listens on every interface and connects to 127.0.0.1;
+    // on macOS another process can hold the same port on 127.0.0.1 alone and answer instead (TD-T11, once an
+    // HTTP/2 server). A server already listening on loopback is used as is. `unref` lets the worker exit.
+    const server = http.createServer(app).listen(0, "127.0.0.1").unref();
+    // Node binds a named host asynchronously; a request made before that would make supertest listen again,
+    // on every interface. Called at a test file's top level, so the hook runs before its tests.
+    beforeAll(async () => {
+        if (!server.listening) await once(server, "listening");
+    });
+    return server;
 }
 
 /** Every permission tag of these models, their actions included: what an admin role holds after boot. */

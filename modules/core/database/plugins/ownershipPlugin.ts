@@ -80,8 +80,14 @@ const SCOPED_QUERIES: MongooseQueryMiddleware[] = [
     "findOneAndRemove", "findOneAndReplace", "findOneAndUpdate", "replaceOne", "update", "updateMany", "updateOne",
 ];
 
-/** Stages MongoDB requires first in a pipeline; the tenant `$match` goes right after them. */
+/** Stages MongoDB requires first in a pipeline; a plugin's own `$match` goes right after them. */
 const FIRST_ONLY_STAGES = ["$geoNear", "$search", "$searchMeta", "$collStats", "$indexStats", "$listSessions", "$changeStream"];
+
+/** Where a plugin's filter goes in `pipeline`: first, or right after a stage MongoDB requires first (D15, D16). */
+export function pipelineFilterIndex(pipeline: PipelineStage[]): number {
+    const lead = pipeline[0];
+    return lead && FIRST_ONLY_STAGES.some((stage) => stage in lead) ? 1 : 0;
+}
 
 const logger = getLogger("tenantScope");
 
@@ -184,8 +190,7 @@ function applyTenantScope(schema: Schema, sharedWith?: string): void {
     schema.pre("aggregate", function (this: Aggregate<unknown>, next: (error?: Error) => void) {
         const pipeline = this.pipeline();
         const model = this.model().modelName;
-        const lead = pipeline[0];
-        const insertAt = lead && FIRST_ONLY_STAGES.some((stage) => stage in lead) ? 1 : 0;
+        const insertAt = pipelineFilterIndex(pipeline);
         const leadingMatch = pipeline[insertAt];
         const matched = leadingMatch && "$match" in leadingMatch ? leadingMatch.$match.company : undefined;
         const error = judge(matched, model, "aggregate", (tenant) => {

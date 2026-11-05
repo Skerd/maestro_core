@@ -1279,12 +1279,11 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
         const { session, logger, timeOperations = true, withDeleted } = options;
 
         const operation = async () => {
-            // Soft-delete query middleware does not run on aggregation pipelines.
-            // withDeleted: false is the same force-exclude as Query.noDeleted().
-            const stages = withDeleted === false
-                ? [{ $match: { deletedAt: null } }, ...pipeline]
-                : pipeline;
-            let aggregation = this.model.aggregate(stages);
+            // softDeletePlugin drops deleted documents from every pipeline (D15); withDeleted: true keeps them.
+            let aggregation = this.model.aggregate(pipeline);
+            if (withDeleted === true) {
+                aggregation = aggregation.option({ withDeleted: true });
+            }
             
             if (session) {
                 aggregation = aggregation.session(session);
