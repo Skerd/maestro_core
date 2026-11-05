@@ -1,9 +1,10 @@
-import {ClientSession, Model, Schema, Types} from "mongoose";
+import {ClientSession, Model, Query, Schema, Types} from "mongoose";
 import AuditLog, {AuditAction, AuditDiffEntry} from "@coreModule/database/schemas/auditLog/auditLog";
 import {ObjectId} from "mongodb";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {sensitivePaths, type Sensitivity} from "@coreModule/utilities/security/sensitiveFields";
 
 const auditLogger = getLogger("audit_plugin");
 
@@ -77,9 +78,89 @@ export async function auditOperatorUpdate(
     }], {session: session ?? undefined}));
 }
 
+const sensitivePathsBySchema = new WeakMap<Schema, Map<string, Sensitivity>>();
+/** Reads already recorded in a request (`record:fields`), so a record opened twice in one request is one entry. */
+const recordedReadsByRequest = new WeakMap<object, Set<string>>();
+
+function isEmptyValue(value: unknown): boolean {
+    if (value == null) return true;
+    if (Array.isArray(value)) return value.length === 0;
+    if (typeof value === "object" && !(value instanceof Date) && !(value instanceof Types.ObjectId)) {
+        return Object.keys(value as Record<string, unknown>).length === 0;
+    }
+    return false;
+}
+
+/**
+ * Sensitive top-level fields (SEC-06) a query explicitly asked for. Only an inclusive projection counts: that is how a
+ * request reads what its caller may see (SchemaGuard's select). Code that loads whole documents for its own work
+ * (no projection) is not someone opening the record.
+ */
+function requestedSensitiveFields(query: Query<unknown, unknown>, marked: Map<string, Sensitivity>): string[] {
+    const projection = query.projection() as Record<string, unknown> | undefined;
+    if (!projection) return [];
+    const fields = new Set<string>();
+    for (const [path, include] of Object.entries(projection)) {
+        if (include !== 1 && include !== true) continue;
+        const top = path.split(".")[0]!;
+        if (marked.has(top)) fields.add(top);
+    }
+    return [...fields];
+}
+
+/**
+ * READ entry when a signed-in user's request loads sensitive fields (SEC-06, D56): who, which record, which fields,
+ * never the values. Written outside any transaction, so a read is on record even if the request fails afterwards.
+ */
+async function recordSensitiveReads(query: Query<unknown, unknown>, result: unknown): Promise<void> {
+    const store = requestContext.getStore();
+    const actorId = store?.actionUserCtx?.userId;
+    if (!store || !actorId || result == null) return;
+    const model = query.model as Model<any>;
+    let marked = sensitivePathsBySchema.get(model.schema);
+    if (!marked) {
+        marked = sensitivePaths(model.schema);
+        sensitivePathsBySchema.set(model.schema, marked);
+    }
+    if (marked.size === 0) return;
+    const requested = requestedSensitiveFields(query, marked);
+    if (requested.length === 0) return;
+
+    let recorded = recordedReadsByRequest.get(store);
+    if (!recorded) {
+        recorded = new Set();
+        recordedReadsByRequest.set(store, recorded);
+    }
+    for (const doc of (Array.isArray(result) ? result : [result]) as Record<string, any>[]) {
+        const fields = requested.filter((field) => !isEmptyValue(typeof doc.get === "function" ? doc.get(field) : doc[field]));
+        // The selection may leave `company` out; the request's company owns what it reads.
+        const companyId = doc.company?._id ?? doc.company ?? store.tenantCompanyId;
+        if (fields.length === 0 || !doc._id || !companyId) continue;
+        const key = `${String(doc._id)}:${fields.join(",")}`;
+        if (recorded.has(key)) continue;
+        recorded.add(key);
+        try {
+            await withTenant(companyId, () => AuditLog.create({
+                documentId: doc._id as Types.ObjectId,
+                collectionName: model.collection.name,
+                actorId: new ObjectId(actorId),
+                action: "READ" as AuditAction,
+                diff: Object.fromEntries(fields.map((field) => [field, {from: null, to: null}])),
+                company: companyId,
+            }));
+        } catch (err) {
+            auditLogger.err(`Failed to record a sensitive read: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+}
+
 export const auditPlugin = (schema: Schema): void => {
     auditedSchemas.add(schema);
     schema.set("timestamps", true);
+
+    schema.post(["find", "findOne"], async function (this: Query<unknown, unknown>, result: unknown) {
+        await recordSensitiveReads(this, result);
+    });
 
     schema.pre("save", async function (next) {
         const doc: any = this;

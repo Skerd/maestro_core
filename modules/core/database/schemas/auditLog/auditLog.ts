@@ -4,7 +4,8 @@ import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import {IOwnershipPluginFields} from "@coreModule/database/types/plugin-fields";
 
-export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "RESTORE";
+/** `READ` records an opening of sensitive fields (SEC-06): `diff` names them with null `from`/`to`, never values. */
+export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "RESTORE" | "READ";
 
 export interface AuditDiffEntry {
     from: unknown;
@@ -68,7 +69,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
         action: {
             type: SchemaTypes.String,
             required: true,
-            enum: ["CREATE", "UPDATE", "DELETE", "RESTORE"],
+            enum: ["CREATE", "UPDATE", "DELETE", "RESTORE", "READ"],
             permissions: {
                 self: {
                     write: "no-permission"

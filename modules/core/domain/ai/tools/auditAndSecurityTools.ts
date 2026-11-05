@@ -25,7 +25,9 @@
  */
 
 import {ObjectId} from "mongodb";
+import mongoose from "mongoose";
 import {z} from "zod";
+import {sensitivePaths, sensitivityOfPath} from "@coreModule/utilities/security/sensitiveFields";
 import {registerAssistantTool} from "@coreModule/domain/ai/tools/toolRegistry";
 import type {AssistantTool, AssistantToolContext} from "@coreModule/domain/ai/tools/assistantTool.types";
 import {auditLogService} from "@coreModule/database/schemas/auditLog/auditLog.service";
@@ -46,7 +48,7 @@ import {
     userDisplayName
 } from "@coreModule/domain/ai/tools/assistantToolKit";
 
-const AUDIT_ACTIONS = ["CREATE", "UPDATE", "DELETE", "RESTORE"];
+const AUDIT_ACTIONS = ["CREATE", "UPDATE", "DELETE", "RESTORE", "READ"];
 const LOGIN_STATUSES = ["success", "failure"];
 
 /**
@@ -67,6 +69,12 @@ const MAX_VALUE_CHARS = 120;
 function isSensitiveField(field: string): boolean {
     const lower = field.toLowerCase();
     return SENSITIVE_FIELD_STEMS.some((stem) => lower.includes(stem));
+}
+
+/** Special-category fields (SEC-06) of the audited collection, which never reach the model either (SEC-07). */
+function specialCategoryPaths(collectionName: unknown) {
+    const modelName = mongoose.modelNames().find((name) => mongoose.model(name).collection.name === collectionName);
+    return modelName ? sensitivePaths(mongoose.model(modelName).schema) : new Map();
 }
 
 /** Render one before/after value compactly, without dumping a whole subtree. */
@@ -90,7 +98,7 @@ function renderValue(value: unknown): unknown {
  * with a password diff happens to exist in a given database is an accident of
  * data, and this guarantee should not depend on one.
  */
-export function redactDiff(diff: unknown): {changes: any[]; fieldsChanged: number; redactedFields: string[]} {
+export function redactDiff(diff: unknown, collectionName?: unknown): {changes: any[]; fieldsChanged: number; redactedFields: string[]} {
     if (!diff || typeof diff !== "object") {
         return {changes: [], fieldsChanged: 0, redactedFields: []};
     }
@@ -98,9 +106,10 @@ export function redactDiff(diff: unknown): {changes: any[]; fieldsChanged: numbe
     const entries = Object.entries(diff as Record<string, any>);
     const redactedFields: string[] = [];
     const changes: any[] = [];
+    const specialCategory = specialCategoryPaths(collectionName);
 
     for (const [field, entry] of entries.slice(0, MAX_DIFF_FIELDS)) {
-        if (isSensitiveField(field)) {
+        if (isSensitiveField(field) || sensitivityOfPath(field, specialCategory)) {
             redactedFields.push(field);
             changes.push({field, from: "[redacted]", to: "[redacted]"});
             continue;
@@ -216,7 +225,7 @@ async function executeAuditLog(rawArgs: unknown, ctx: AssistantToolContext): Pro
     );
 
     const results = entries.map((e: any) => {
-        const {changes, fieldsChanged, redactedFields} = redactDiff(e.diff);
+        const {changes, fieldsChanged, redactedFields} = redactDiff(e.diff, e.collectionName);
         return {
             id: e._id?.toString(),
             collection: e.collectionName ?? null,
