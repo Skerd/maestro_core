@@ -18,6 +18,7 @@ import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import {
     ValidateTokenFormResponseType
 } from "armonia/src/modules/core/api/user/public/validateToken/validateToken.form.response.type";
+import {personErasureModules} from "@coreModule/utilities/erasure/personErasure";
 
 const router = Router();
 
@@ -55,6 +56,7 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
             username: userInfo.username,
             company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company)},
             isPlatformAdmin: isPlatformCompany(company) && actionUserCtx.isAdmin,
+            canErasePeople: actionUserCtx.isAdmin === true && (await personErasureModules()).some((name) => (actionUserCtx.modules ?? []).includes(name)),
             email: userInfo.username,
             maxClearance: 0,
             name: userInfo.name,

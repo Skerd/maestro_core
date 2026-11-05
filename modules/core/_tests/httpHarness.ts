@@ -19,7 +19,7 @@ import {ServerError} from "armonia/src/modules/core/types";
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
 
-export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]};
+export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]; modules?: string[]};
 
 export const authMWStub = {
     default: (scope?: string) => (req: any, _res: any, next: any) => {
@@ -31,6 +31,7 @@ export const authMWStub = {
             isAdmin: caller.isAdmin ?? false,
             permissions: caller.permissions ?? [],
             isSelf: true,
+            ...(caller.modules ? {modules: caller.modules} : {}),
         };
         req.body.languageCode = "en-US";
         req.body.logger = getLogger(req.originalUrl);

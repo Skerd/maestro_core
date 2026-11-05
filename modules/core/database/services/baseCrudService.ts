@@ -1150,6 +1150,21 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
     }
 
     /**
+     * Person erasure only (D57, SEC-06): rewrites personal fields of one company's documents at the collection level,
+     * past Mongoose casting, immutability, middleware and soft delete, so even immutable contact snapshots and
+     * deleted documents are erased. The filter must name the company: nothing else scopes this write.
+     */
+    async eraseFields(
+        filter: FilterQuery<T> & {company: unknown},
+        update: {$set?: Record<string, unknown>; $unset?: Record<string, "">},
+        options: Pick<CrudOptions, "session"> = {},
+    ): Promise<number> {
+        if (!filter.company) throw new Error(`${this.modelName}.eraseFields needs a company in its filter`);
+        const result = await this.model.collection.updateMany(filter as Record<string, unknown>, update, {session: options.session ?? undefined});
+        return result.modifiedCount;
+    }
+
+    /**
      * Delete multiple documents
      * 
      * @param query - MongoDB query
