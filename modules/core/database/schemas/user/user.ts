@@ -23,7 +23,8 @@ import {
     SendActivationEmail,
     SendForgotPasswordEmail,
     SendInvitationEmail,
-    SendMfaDisableEmail
+    SendMfaDisableEmail,
+    sendAccountEmailAfterCommit,
 } from "@coreModule/utilities/database/user";
 import {
     ActivationEmailEvent,
@@ -1036,7 +1037,7 @@ UserSchema.methods.addLoginHistory = async function (companyId: ObjectId, req: a
         // Not awaited, so a slow broker never delays the login; stored directly when the publish fails.
         publishLoginHistoryEvent(loginEvent)
             .then(async (published) => { if (!published) await AddToLoginHistory(loginEvent); })
-            .catch((err) => {console.error(`Failed to persist login history: ${err.message}`);});
+            .catch((err) => getLogger("login_history").warn(`Failed to persist login history: ${err instanceof Error ? err.message : String(err)}`));
     }
     else{
         try{
@@ -1114,15 +1115,7 @@ UserSchema.methods.sendActivationEmail = async function (emailAddress: string, l
         ...(origin ? {origin} : {}),
     }
 
-    if (isKafkaConnected()) {
-        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
-        publishActivationEmailEvent(activationEmail)
-            .then(async (published) => { if (!published) await SendActivationEmail(activationEmail); })
-            .catch((err) => {console.error(`Failed to send activation email: ${err.message}`);});
-    }
-    else {
-        await SendActivationEmail(activationEmail, session);
-    }
+    await sendAccountEmailAfterCommit(session, logger, "activation", () => publishActivationEmailEvent(activationEmail), () => SendActivationEmail(activationEmail));
 
     const { userService } = await getServices();
     // Use auditUserId from $locals if set (for public endpoints, this will be the user's own ID for self-action)
@@ -1371,15 +1364,7 @@ UserSchema.methods.sendDisableMfaEmail = async function (languageCode: string = 
         companyId: mfaCompanyId,
     }
 
-    if (isKafkaConnected()) {
-        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
-        publishMfaDisableEmailEvent(mfaDisableEmail)
-            .then(async (published) => { if (!published) await SendMfaDisableEmail(mfaDisableEmail); })
-            .catch((err) => {console.error(`Failed to send mfa disable email: ${err.message}`);});
-    }
-    else {
-        await SendMfaDisableEmail(mfaDisableEmail, session);
-    }
+    await sendAccountEmailAfterCommit(session, logger, "MFA deactivation", () => publishMfaDisableEmailEvent(mfaDisableEmail), () => SendMfaDisableEmail(mfaDisableEmail));
 
     const { userService } = await getServices();
     // Use auditUserId from $locals if set (for public endpoints, this will be the user's own ID for self-action)
@@ -1466,15 +1451,7 @@ UserSchema.methods.sendForgotPasswordEmail = async function (languageCode: strin
         ...(origin ? {origin} : {}),
     }
 
-    if (isKafkaConnected()) {
-        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
-        publishForgotPasswordEmailEvent(forgotPasswordEmail)
-            .then(async (published) => { if (!published) await SendForgotPasswordEmail(forgotPasswordEmail); })
-            .catch((err) => {console.error(`Failed to send forgot password email: ${err.message}`);});
-    }
-    else {
-        await SendForgotPasswordEmail(forgotPasswordEmail, session);
-    }
+    await sendAccountEmailAfterCommit(session, logger, "password reset", () => publishForgotPasswordEmailEvent(forgotPasswordEmail), () => SendForgotPasswordEmail(forgotPasswordEmail));
 
     const { userService } = await getServices();
     // Use auditUserId from $locals if set (for public endpoints, this will be the user's own ID for self-action)
@@ -1564,15 +1541,7 @@ UserSchema.methods.sendInvitationEmail = async function (welcomeMessage: string,
         companyId: companyId.toString(),
     }
 
-    if (isKafkaConnected()) {
-        // Not awaited, so a slow broker never delays the request; sent directly when the publish fails.
-        publishInvitationEmailEvent(invitationEmail)
-            .then(async (published) => { if (!published) await SendInvitationEmail(invitationEmail); })
-            .catch((err) => {console.error(`Failed to send invitation email: ${err.message}`);});
-    }
-    else {
-        await SendInvitationEmail(invitationEmail, session);
-    }
+    await sendAccountEmailAfterCommit(session, logger, "invitation", () => publishInvitationEmailEvent(invitationEmail), () => SendInvitationEmail(invitationEmail));
 
     const { userService } = await getServices();
     await userService.updateByIdOrThrow(

@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, describe, expect, it} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Schema} from "mongoose";
 import {ObjectId} from "mongodb";
 import Role from "@coreModule/database/schemas/role/role";
@@ -15,17 +15,14 @@ const Chart = mongoose.model("PermissionSyncChart", new Schema({
 }));
 const company = new ObjectId();
 const adminRole = new ObjectId();
-let mongo: MongoMemoryServer;
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
     await Role.collection.insertOne({_id: adminRole, company, name: "SysAdmin", slug: "x:sysadmin", isAdmin: true, permissions: []});
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 describe("createRolePermissions", () => {
@@ -67,6 +64,33 @@ describe("createRolePermissions", () => {
         await createRolePermissions();
         const title = await RolePermission.findOne({group: "Permissionsynccharts", tag: {$regex: ":title\\]$"}}).lean();
         expect(title?.sensitivity).toBeUndefined();
+    });
+
+    it("removes a permission no model or action produces any more, from the catalog and every company's roles (TD-T13)", async () => {
+        registerModelAction(Booking, "confirm");
+        await createRolePermissions();
+        const current = await RolePermission.findOne({tag: "permissionsyncbookings[action:self:confirm]"}).lean();
+        // A retired action of a mounted module, and one of a module whose routers this process did not mount.
+        const [retired, unmounted] = [new ObjectId(), new ObjectId()];
+        await RolePermission.collection.insertMany([
+            {_id: retired, name: "Retire", group: "Permissionsyncbookings", tag: "permissionsyncbookings[action:self:retire]", alwaysActive: false, module: "core"},
+            {_id: unmounted, name: "Elsewhere", group: "Unmountedthings", tag: "unmountedthings[action:self:elsewhere]", alwaysActive: false, module: "unmountedFixture"},
+        ]);
+        const deskRole = new ObjectId();
+        await Role.collection.insertOne({_id: deskRole, company: new ObjectId(), name: "Desk", slug: "y:desk", isAdmin: false, permissions: [current!._id, retired, unmounted]});
+        await Role.collection.updateOne({_id: adminRole}, {$addToSet: {permissions: {$each: [retired, unmounted]}}});
+
+        await createRolePermissions();
+
+        expect(await RolePermission.exists({_id: retired})).toBeNull();
+        expect(await RolePermission.exists({_id: current!._id})).not.toBeNull();
+        expect(await RolePermission.exists({_id: unmounted})).not.toBeNull();
+        for (const roleId of [deskRole, adminRole]) {
+            const granted = (await Role.collection.findOne({_id: roleId}))!.permissions.map(String);
+            expect(granted).not.toContain(String(retired));
+            expect(granted).toContain(String(current!._id));
+            expect(granted).toContain(String(unmounted));
+        }
     });
 
     it("names default-role groups that no permission has, so a misspelt group is not silent (TD-B32)", () => {

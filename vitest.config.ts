@@ -20,9 +20,10 @@ loadEnv({path: path.join(__dirname, ".env.test")});
 export default defineConfig({
     plugins: [tsconfigPaths()],
     test: {
-        // ~26 files each boot their own in-memory MongoDB replica set. Run in parallel they contend for the
-        // machine and fail at random (hook timeouts, transactions exhausting their retries); run one file at a
-        // time (each still isolated) the suite is deterministic: 778/778 on 2026-11-04, ~3 min.
+        // One in-memory MongoDB replica set for the whole run; each DB-backed file connects to it with
+        // `connectTestDatabase` in a database of its own (TD-T14: one replica set per file died mid-file under
+        // load). Files still run one at a time: run in parallel they contended for the machine (TD-B19).
+        globalSetup: ["./modules/core/_tests/mongoGlobalSetup.ts"],
         fileParallelism: false,
         hookTimeout: 60_000,
         // The modules' API error messages, which the servers register at start-up.

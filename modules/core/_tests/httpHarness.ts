@@ -77,12 +77,21 @@ export function appFor(routes: {basePath: string; router: Router; module?: strin
         if (error instanceof ServerError) return res.status(error.status).json(error);
         return res.status(500).json({error_code: "internal_error", message: (error as Error)?.message});
     });
-    // Given an app, supertest wraps it in its own server, listens on every interface and connects to 127.0.0.1;
-    // on macOS another process can hold the same port on 127.0.0.1 alone and answer instead (TD-T11, once an
-    // HTTP/2 server). A server already listening on loopback is used as is. `unref` lets the worker exit.
+    return loopbackServer(app);
+}
+
+/**
+ * `app` behind a server listening on loopback only, to hand to supertest instead of the app. Given an app,
+ * supertest wraps it in its own server, listens on every interface and connects to 127.0.0.1; on macOS another
+ * process can hold the same port on 127.0.0.1 alone and answer instead (TD-T11, once an HTTP/2 server). A
+ * server already listening is used as is. Call it at a test file's (or describe's) top level: it registers a
+ * `beforeAll` that waits for the bind.
+ */
+export function loopbackServer(app: express.Application): http.Server {
+    // `unref` lets the worker exit.
     const server = http.createServer(app).listen(0, "127.0.0.1").unref();
     // Node binds a named host asynchronously; a request made before that would make supertest listen again,
-    // on every interface. Called at a test file's top level, so the hook runs before its tests.
+    // on every interface.
     beforeAll(async () => {
         if (!server.listening) await once(server, "listening");
     });

@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Schema} from "mongoose";
 import {ObjectId} from "mongodb";
 
@@ -31,11 +31,9 @@ const acrossCompanies = <T>(fn: () => PromiseLike<T>): Promise<T> => asCrossTena
 const ran: string[] = [];
 /** Each run's tenant context (D16): `code@company tenant module`. */
 const contexts: string[] = [];
-let mongo: MongoMemoryServer;
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
     await Promise.all([CronJobModel, CronExecution, CronLock].map((model) => model.init()));
 
     for (const code of ["test.core", "test.rental"]) {
@@ -53,8 +51,7 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 beforeEach(async () => {

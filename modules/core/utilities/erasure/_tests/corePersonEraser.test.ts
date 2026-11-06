@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
-import {MongoMemoryReplSet} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Types} from "mongoose";
 
 // Core only (CORE-07): core's own eraser, no vertical module.
@@ -18,15 +18,13 @@ import Channel from "@coreModule/database/schemas/channel/channel";
 import Message from "@coreModule/database/schemas/message/message";
 import Media from "@coreModule/database/schemas/media/media";
 
-let replSet: MongoMemoryReplSet;
 const company = new Types.ObjectId();
 const ids = {chat: new Types.ObjectId(), otherChat: new Types.ObjectId(), staffChat: new Types.ObjectId(), photo: new Types.ObjectId()};
 const photoFile = new Types.ObjectId();
 const raw = <T>(fn: () => Promise<T>) => asCrossTenant("test reads raw collections", fn);
 
 beforeAll(async () => {
-    replSet = await MongoMemoryReplSet.create({replSet: {count: 1, storageEngine: "wiredTiger"}});
-    await mongoose.connect(replSet.getUri());
+    await connectTestDatabase();
     await loadPersonErasers();
     await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
     await raw(async () => {
@@ -45,8 +43,7 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await replSet.stop();
+    await disconnectTestDatabase();
 });
 
 describe("core person eraser (D57, TD-B35)", {timeout: 60000}, () => {

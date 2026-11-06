@@ -1,4 +1,7 @@
+import http from "http";
 import net from "net";
+import {once} from "events";
+import type {Duplex} from "stream";
 import WebSocket, {ClientOptions} from "ws";
 import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} from "vitest";
 
@@ -22,6 +25,8 @@ const state = vi.hoisted(() => ({
     platformCompany: true,
     channels: {} as Record<string, string[]>,
     authDelayMs: 0,
+    /** When set, the session check waits for it (after `authDelayMs`). */
+    sessionGate: undefined as Promise<void> | undefined,
     sessionExpiresAt: undefined as Date | undefined,
 }));
 
@@ -40,6 +45,7 @@ vi.mock("@coreModule/utilities/security/sessionValidator", () => ({
     getTokenSessionId: (user: {sessionId: string}) => user.sessionId,
     validateActiveUserSession: async () => {
         await new Promise((resolve) => setTimeout(resolve, state.authDelayMs));
+        await state.sessionGate;
         return {expiresAt: state.sessionExpiresAt};
     },
 }));
@@ -109,6 +115,8 @@ type Client = {
 
 let port = 0;
 const openClients: WebSocket[] = [];
+/** The raw server-side socket of each upgrade request, in arrival order. */
+const upgradeSockets: Duplex[] = [];
 
 function freePort(): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -176,7 +184,10 @@ function addUser(token: string, id: string, username: string, sessionId = `sessi
 describe("websocket server", () => {
     beforeAll(async () => {
         port = await freePort();
+        const createServer = vi.spyOn(http, "createServer");
         await startWebSocketServer(port);
+        createServer.mock.results[0].value.on("upgrade", (_req: unknown, socket: Duplex) => upgradeSockets.push(socket));
+        createServer.mockRestore();
     });
 
     afterAll(async () => {
@@ -192,7 +203,9 @@ describe("websocket server", () => {
             [ids.visitorChannel]: [ids.visitor, ids.agent],
         };
         state.authDelayMs = 0;
+        state.sessionGate = undefined;
         state.sessionExpiresAt = undefined;
+        upgradeSockets.length = 0;
         addUser("token-alice", ids.alice, "alice");
         addUser("token-bob", ids.bob, "bob");
         addUser("token-carol", ids.carol, "carol");
@@ -218,12 +231,21 @@ describe("websocket server", () => {
     });
 
     it("never registers a client that leaves while it is being authenticated", async () => {
-        state.authDelayMs = 40;
+        let releaseSession = () => {};
+        state.sessionGate = new Promise<void>((resolve) => {
+            releaseSession = resolve;
+        });
         addUser("token-late", ids.late, "late");
         const client = socketFor("/token-late/en-US");
-        await pause(10);
+        // The session check holds until the server has seen the client leave, whatever the machine's load; the
+        // server then drops the socket instead of upgrading it.
+        const serverSocket = await waitFor(() => upgradeSockets[0]);
+        const serverEnded = once(serverSocket, "end");
+        const serverClosed = once(serverSocket, "close");
         client.socket.terminate();
-        await pause(80);
+        await serverEnded;
+        releaseSession();
+        await serverClosed;
 
         expect(getWebSocketPresenceStats().rooms.flatMap((room) => room.users).some((user) => user.id === ids.late)).toBe(false);
         expect(vi.mocked(userService.updateById)).not.toHaveBeenCalled();

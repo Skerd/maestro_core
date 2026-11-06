@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
-import {MongoMemoryReplSet} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Schema, type Document} from "mongoose";
 import {ObjectId} from "mongodb";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
@@ -25,19 +25,16 @@ const Gadget = mongoose.model<IGadget>("CrudWriteGadget", GadgetSchema);
 // Named after a model whose `<model>_already_exists` code has a message
 const gadgets = new BaseCrudService<IGadget, typeof Gadget>(Gadget, "Warehouse");
 
-let replSet: MongoMemoryReplSet;
 const company = new ObjectId();
 const actor = new ObjectId();
 
 beforeAll(async () => {
-    replSet = await MongoMemoryReplSet.create({replSet: {count: 1}});
-    await mongoose.connect(replSet.getUri());
+    await connectTestDatabase();
     await Gadget.init();
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await replSet.stop();
+    await disconnectTestDatabase();
 });
 
 beforeEach(async () => {

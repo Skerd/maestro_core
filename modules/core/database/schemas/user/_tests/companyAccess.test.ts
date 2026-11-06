@@ -1,6 +1,5 @@
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
-import mongoose from "mongoose";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import {ObjectId} from "mongodb";
 
 // Redis down: every lookup reads the roles from the database.
@@ -13,20 +12,17 @@ import User from "@coreModule/database/schemas/user/user";
 import Role from "@coreModule/database/schemas/role/role";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
-let mongo: MongoMemoryServer;
 const shop = new ObjectId();
 const clinic = new ObjectId();
 const clinicAdminRole = new ObjectId();
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
     await Role.collection.insertOne({_id: clinicAdminRole, company: clinic, name: "SysAdmin", slug: "clinic:sysadmin", isAdmin: true, permissions: []});
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 describe("a user's access in one of their companies (D16)", () => {

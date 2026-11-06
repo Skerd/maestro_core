@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Schema} from "mongoose";
 import {ObjectId} from "mongodb";
 import {ownershipPlugin} from "../ownershipPlugin";
@@ -23,7 +23,6 @@ const Invoice = mongoose.model<IInvoice>("SoftDeleteAggregateInvoice", invoiceSc
 
 const companyA = new ObjectId();
 const companyB = new ObjectId();
-let mongo: MongoMemoryServer;
 
 /** Runs `fn` like a request of `company`, as an admin (who sees deleted documents in find). */
 const asAdmin = <T>(company: ObjectId, fn: () => PromiseLike<T>) =>
@@ -32,13 +31,11 @@ const asAdmin = <T>(company: ObjectId, fn: () => PromiseLike<T>) =>
 const titles = (rows: {title: string}[]) => rows.map((row) => row.title).sort();
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
 });
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 beforeEach(async () => {

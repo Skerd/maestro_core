@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Schema} from "mongoose";
 
 // Redis down: every lookup reads the roles from the database.
@@ -17,16 +17,13 @@ const roleSchema = new Schema({isAdmin: Boolean, permissions: [Schema.Types.Obje
 const Role = mongoose.model("Role", roleSchema);
 const RolePermission = mongoose.model("RolePermission", new Schema({tag: String, module: String}));
 
-let mongo: MongoMemoryServer;
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 describe("getRolesAccess module filter", () => {

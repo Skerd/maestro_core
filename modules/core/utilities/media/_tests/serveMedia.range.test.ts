@@ -1,6 +1,5 @@
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
-import {MongoMemoryReplSet} from "mongodb-memory-server";
-import mongoose from "mongoose";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import {ObjectId} from "mongodb";
 import express from "express";
 import request from "supertest";
@@ -8,10 +7,10 @@ import Media from "@coreModule/database/schemas/media/media";
 import {createGridFSStorage} from "@coreModule/utilities/gridfs/gridfsStorage";
 import {parseByteRange, serveMedia} from "@coreModule/utilities/media/serveMedia";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {loopbackServer} from "@coreModule/_tests/httpHarness";
 
 const logger: any = {err: vi.fn(), warn: vi.fn(), debug: vi.fn(), start: vi.fn(), finish: vi.fn(), info: vi.fn()};
 const body = Buffer.from(Array.from({length: 1000}, (_, i) => i % 256));
-let replSet: MongoMemoryReplSet;
 let mediaId: string;
 /** The media's company: the test route serves it as a request of that company would (D16). */
 const company = new ObjectId();
@@ -20,10 +19,10 @@ const app = express();
 app.get("/media/:id", (req, res) => {
     withTenant(company, () => serveMedia({mediaId: req.params.id, req, res, logger, languageCode: "en-US"})).catch(() => res.status(500).end());
 });
+const server = loopbackServer(app);
 
 beforeAll(async () => {
-    replSet = await MongoMemoryReplSet.create({replSet: {count: 1}});
-    await mongoose.connect(replSet.getUri());
+    await connectTestDatabase();
     const fileId = await createGridFSStorage("en-US", "media", logger).uploadFile(body, "clip.mp4", {});
     const media = await withTenant(company, () => Media.create({
         type: "video",
@@ -42,8 +41,7 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await replSet.stop();
+    await disconnectTestDatabase();
 });
 
 describe("parseByteRange", () => {
@@ -74,7 +72,7 @@ describe("parseByteRange", () => {
 
 describe("serveMedia byte ranges", () => {
     it("sends the whole file with Accept-Ranges when no range is asked", async () => {
-        const res = await request(app).get(`/media/${mediaId}`).responseType("blob");
+        const res = await request(server).get(`/media/${mediaId}`).responseType("blob");
         expect(res.status).toBe(200);
         expect(res.headers["accept-ranges"]).toBe("bytes");
         expect(res.headers["content-length"]).toBe("1000");
@@ -82,7 +80,7 @@ describe("serveMedia byte ranges", () => {
     });
 
     it("sends 206 with the requested slice", async () => {
-        const res = await request(app).get(`/media/${mediaId}`).set("Range", "bytes=100-199").responseType("blob");
+        const res = await request(server).get(`/media/${mediaId}`).set("Range", "bytes=100-199").responseType("blob");
         expect(res.status).toBe(206);
         expect(res.headers["content-range"]).toBe("bytes 100-199/1000");
         expect(res.headers["content-length"]).toBe("100");
@@ -90,14 +88,14 @@ describe("serveMedia byte ranges", () => {
     });
 
     it("sends the tail for a suffix range", async () => {
-        const res = await request(app).get(`/media/${mediaId}`).set("Range", "bytes=-10").responseType("blob");
+        const res = await request(server).get(`/media/${mediaId}`).set("Range", "bytes=-10").responseType("blob");
         expect(res.status).toBe(206);
         expect(res.headers["content-range"]).toBe("bytes 990-999/1000");
         expect(Buffer.compare(res.body, body.subarray(990))).toBe(0);
     });
 
     it("answers 416 for a range past the end", async () => {
-        const res = await request(app).get(`/media/${mediaId}`).set("Range", "bytes=2000-");
+        const res = await request(server).get(`/media/${mediaId}`).set("Range", "bytes=2000-");
         expect(res.status).toBe(416);
         expect(res.headers["content-range"]).toBe("bytes */1000");
     });

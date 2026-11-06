@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, describe, expect, it} from "vitest";
-import {MongoMemoryReplSet} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose from "mongoose";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {flushAfterCommitTasks, runAfterCommit} from "@coreModule/utilities/middlewares/transactionUtils";
@@ -10,18 +10,12 @@ import {runInTransaction} from "@coreModule/utilities/middlewares/runInTransacti
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {emitNotificationEvent, notificationEventBus} from "@coreModule/domain/notifications/notificationEventBus";
 
-// Transactions need a replica set; WiredTiger, because the default in-memory
-// test engine has no document-level write conflicts
-let replSet: MongoMemoryReplSet;
-
 beforeAll(async () => {
-    replSet = await MongoMemoryReplSet.create({replSet: {count: 1, storageEngine: "wiredTiger"}});
-    await mongoose.connect(replSet.getUri());
+    await connectTestDatabase();
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await replSet.stop();
+    await disconnectTestDatabase();
 });
 
 const logger = {err: () => undefined, fail: () => undefined, warn: () => undefined};

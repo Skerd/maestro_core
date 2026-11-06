@@ -16,7 +16,8 @@ import {
     sendSignUpMail
 } from "@coreModule/utilities/emails/notifiers";
 import {resolveCompanyIdForEmail} from "@coreModule/utilities/emails/mailDeliveryService";
-import {getLogger} from "@coreModule/loggers/serverLog";
+import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
+import {isKafkaConnected} from "@coreModule/connections/connectToKafka";
 
 const UAParser = require('ua-parser-js');
 
@@ -112,3 +113,40 @@ export async function SendInvitationEmail(data: InvitationEmailEvent, session?: 
     );
 }
 
+
+/**
+ * Sends an account email (activation, invitation, password reset, MFA deactivation) once the write that stored its
+ * code is durable (D06, BE-08): after `session`'s transaction commits, or right away when the caller wrote without a
+ * session (that write is already committed). A rolled-back request therefore never mails a link that does not exist.
+ *
+ * The email goes through Kafka when it is connected (not awaited, so a slow broker never delays the response) and
+ * directly when the publish fails or Kafka is off. A failed send is logged, never thrown: the request has already
+ * succeeded, and the user can ask for the email again.
+ */
+export async function sendAccountEmailAfterCommit(
+    session: ClientSession | undefined,
+    logger: serverLogger | undefined,
+    kind: string,
+    publish: () => Promise<boolean>,
+    sendDirectly: () => Promise<void>,
+): Promise<void> {
+    const log = logger ?? getLogger("account_email");
+    const reportFailure = (error: unknown) => log.err(`Could not send the ${kind} email`, error);
+    const deliver = async (): Promise<void> => {
+        if (isKafkaConnected()) {
+            publish()
+                .then(async (published) => { if (!published) await sendDirectly(); })
+                .catch(reportFailure);
+            return;
+        }
+        try {
+            await sendDirectly();
+        } catch (error) {
+            reportFailure(error);
+        }
+    };
+    if (!session) return deliver();
+    // Loaded on use: `transactionUtils` reaches the database initializer, which the User model must not load.
+    const {runAfterCommit} = await import("@coreModule/utilities/middlewares/transactionUtils");
+    await runAfterCommit(session, deliver);
+}

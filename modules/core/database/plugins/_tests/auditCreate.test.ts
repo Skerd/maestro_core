@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, describe, expect, it} from "vitest";
-import {MongoMemoryReplSet} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Document, Schema, Types} from "mongoose";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
@@ -18,17 +18,14 @@ softDeletePlugin(schema);
 lifeCyclePlugin(schema);
 const Thing = mongoose.model<IThing>("AuditCreateThing", schema);
 const company = new Types.ObjectId();
-let replSet: MongoMemoryReplSet;
 
 beforeAll(async () => {
-    replSet = await MongoMemoryReplSet.create({replSet: {count: 1, storageEngine: "wiredTiger"}});
-    await mongoose.connect(replSet.getUri());
+    await connectTestDatabase();
     await Promise.all(Object.values(mongoose.models).map((model) => model.init()));
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await replSet.stop();
+    await disconnectTestDatabase();
 });
 
 describe("audit of a create (TD-B36)", {timeout: 60000}, () => {

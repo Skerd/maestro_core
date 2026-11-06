@@ -1,6 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
-import mongoose from "mongoose";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import {ObjectId} from "mongodb";
 
 // Redis down: locks go through the CronLock collection and the heartbeat is skipped.
@@ -25,11 +24,9 @@ const asCompany = <T>(fn: () => PromiseLike<T>): Promise<T> => withTenant(compan
 const seen: CronHandlerContext[] = [];
 let failNext = false;
 
-let mongo: MongoMemoryServer;
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
     await Promise.all([CronJobModel, CronExecution, CronLock].map((model) => model.init()));
 
     registerCronHandler({
@@ -48,8 +45,7 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 beforeEach(async () => {

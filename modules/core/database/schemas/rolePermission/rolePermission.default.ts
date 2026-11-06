@@ -169,6 +169,24 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
         logger.debug(`Added new permissions to admin roles=${adminRoleUpdateResult.modifiedCount}`);
     }
 
+    // A tag no model or @action produces any more (a field or action removed or renamed, or an action made
+    // self-service or public) leaves the catalog and every role (TD-T13). Only modules with mounted routers are
+    // pruned: their route imports load the rest of their models and register their actions, so only their tags
+    // are complete. A script that syncs without routers, or an instance with fewer modules on the same
+    // database, prunes nothing it cannot see.
+    const completeModules = [...new Set(actionPermissionEntries().map((entry) => entry.module))];
+    const stalePermissions = await RolePermission.find({module: {$in: completeModules}, tag: {$nin: allTags}}).select("tag");
+    if( stalePermissions.length > 0 ){
+        const staleIds = stalePermissions.map((permission) => permission._id);
+        // Grants first: a crash before the delete leaves only an ungranted row, which the next sync removes.
+        const roleUpdateResult = await asCrossTenant("removed permissions leave every company's roles", () => Role.updateMany(
+            {permissions: {$in: staleIds}},
+            {$pull: {permissions: {$in: staleIds}}}
+        ));
+        await RolePermission.deleteMany({_id: {$in: staleIds}});
+        logger.debug(`Removed permissions no model or action produces=${stalePermissions.map((permission) => permission.tag).join(", ")}, roles updated=${roleUpdateResult.modifiedCount}`);
+    }
+
     // Existing rows (including ones written before `module` existed) follow their model's module.
     for (const [moduleName, tags] of tagsByModule) {
         await RolePermission.updateMany({tag: {$in: tags}, module: {$ne: moduleName}}, {$set: {module: moduleName}});

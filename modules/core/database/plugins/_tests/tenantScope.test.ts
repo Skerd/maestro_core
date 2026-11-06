@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Schema} from "mongoose";
 import {ObjectId} from "mongodb";
 import {ownershipPlugin} from "../ownershipPlugin";
@@ -35,7 +35,6 @@ const SharedFile = mongoose.model<IFile>("TenantScopeSharedFile", fileSchema);
 
 const companyA = new ObjectId();
 const companyB = new ObjectId();
-let mongo: MongoMemoryServer;
 
 /** Runs `fn` like a request of the `pilot` module working on `company`. */
 const asRequest = <T>(company: ObjectId | undefined, fn: () => PromiseLike<T>) =>
@@ -44,13 +43,11 @@ const asRequest = <T>(company: ObjectId | undefined, fn: () => PromiseLike<T>) =
 const titles = (rows: {title: string}[]) => rows.map((row) => row.title).sort();
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
 });
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 beforeEach(async () => {

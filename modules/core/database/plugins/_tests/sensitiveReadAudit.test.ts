@@ -1,5 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from "vitest";
-import {MongoMemoryServer} from "mongodb-memory-server";
+import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose, {Schema} from "mongoose";
 import {ObjectId} from "mongodb";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
@@ -18,7 +18,6 @@ const Chart = mongoose.model("SensitiveReadChart", chartSchema);
 
 const company = new ObjectId();
 const reader = new ObjectId();
-let mongo: MongoMemoryServer;
 let chartId: ObjectId;
 let emptyChartId: ObjectId;
 
@@ -27,8 +26,7 @@ const asUser = <T>(fn: () => Promise<T>, store: RequestContextStore = {tenantCom
 const reads = () => asCrossTenant("test reads every audit entry", () => AuditLog.find({action: "READ"}).lean());
 
 beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
-    await mongoose.connect(mongo.getUri());
+    await connectTestDatabase();
     const [chart, empty] = await Chart.insertMany([
         {company, title: "A", history: {notes: "allergic to penicillin"}},
         {company, title: "B"},
@@ -38,8 +36,7 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-    await mongoose.disconnect();
-    await mongo.stop();
+    await disconnectTestDatabase();
 });
 
 beforeEach(async () => {
