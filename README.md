@@ -33,14 +33,16 @@ modules/core/
 ├── environment/      # Config, constants, startup validator
 ├── kafka/            # Kafka producers/consumers
 ├── loggers/          # Winston-based server logging
+├── modules.manifest.json  # The one module manifest: required modules and `dependsOn` (D01a)
 ├── utilities/
 │   ├── endpoints/    # Route registry (auto-discovery)
 │   ├── middlewares/  # auth, rate limiter, validateFormZod, dslFilter, …
-│   ├── modules/      # ENABLED_MODULES resolution
+│   ├── modules/      # ENABLED_MODULES resolution against the manifest
+│   ├── erasure/      # Person erasure seam (modules plug in erasers, D57)
 │   └── …             # emails, gridfs, mappers, security, metrics
 └── websocket/        # WebSocket server helpers
 
-xServers/             # Process entry points (api, websocket, kafka, cron)
+xServers/             # Process entry points (api, websocket, kafka, cron, assistant, telegram)
 initializer/          # MongoDB bootstrap — core + optional module models
 ```
 
@@ -82,7 +84,7 @@ Standard plugins: `ownershipPlugin`, `auditPlugin`, `softDeletePlugin`, `lifeCyc
 
 ## Module selection
 
-Set `ENABLED_MODULES` (comma-separated) to limit which folders under `modules/` load at runtime. When unset, every present module folder is enabled. `core` is always included.
+Set `ENABLED_MODULES` (comma-separated) to limit which folders under `modules/` load at runtime. When unset, every present module folder is enabled. `core` is always included, and each requested module brings the modules it `dependsOn` in `modules/core/modules.manifest.json` (the one manifest, also read by the sinfonia build and the root checks).
 
 Mirrors sinfonia's `VITE_ENABLED_MODULES` for client-side filtering.
 
@@ -92,10 +94,13 @@ Mirrors sinfonia's `VITE_ENABLED_MODULES` for client-side filtering.
 |-------|------|
 | `@coreModule/*` | `modules/core/*` |
 | `@eCommerceModule/*` | `modules/eCommerce/*` |
-| `@propertyManagement/*` | `modules/propertyManagement/*` |
+| `@financeModule/*` | `modules/finance/*` |
+| `@propertyManagement/*` | `modules/propertyManagement/*` (no `Module` suffix) |
 | `@propertyDevelopmentModule/*` | `modules/propertyDevelopment/*` |
 | `@carRentalModule/*` | `modules/carRental/*` |
 | `@dentalClinicModule/*` | `modules/dentalClinic/*` |
+| `@swissOutreachModule/*` | `modules/swissOutreach/*` |
+| `@initializer` | `initializer/index.ts` |
 | `armonia/*` | `../armonia/*` |
 
 ## Server entry points
@@ -106,6 +111,10 @@ Mirrors sinfonia's `VITE_ENABLED_MODULES` for client-side filtering.
 | `npm run websocket:development` | `xServers/webSocketServer.ts` | WebSocket server |
 | `npm run kafka:development` | `xServers/kafkaServer.ts` | Kafka consumers/producers |
 | `npm run cron:development` | `xServers/cronServer.ts` | Scheduled jobs |
+| `npm run assistant:development` | `xServers/assistantServer.ts` | AI assistant (chat channel bot) |
+| `npm run telegram:development` | `xServers/telegramServer.ts` | Telegram bot |
+
+The root `npm run dev -- up <profile>` starts a whole vertical with its own database, Redis DB, Kafka prefix and ports ([`../scripts/dev/README.md`](../scripts/dev/README.md)).
 
 ## Related modules
 
@@ -114,6 +123,10 @@ Feature modules extend core and are documented separately:
 - [`modules/eCommerce`](modules/eCommerce/README.md)
 - [`modules/propertyManagement`](modules/propertyManagement/README.md)
 - [`modules/propertyDevelopment`](modules/propertyDevelopment/README.md)
+- [`modules/carRental`](modules/carRental/README.md)
+- [`modules/dentalClinic`](modules/dentalClinic/README.md)
+- [`modules/swissOutreach`](modules/swissOutreach/README.md)
+- `modules/finance` (invoices, payments, Stripe) has no README of its own.
 
 Armonia contract docs: [`../armonia/README.md`](../armonia/README.md)
 
@@ -121,15 +134,16 @@ Armonia contract docs: [`../armonia/README.md`](../armonia/README.md)
 
 ```bash
 npm run api:development   # start API with hot reload
-npm test                  # vitest
+npm test                  # vitest (needs no .env: vitest.config.ts supplies test defaults)
+npm run lint              # ESLint governance rules
 npm run build             # compile TypeScript
 ```
 
-Database initialization is controlled by `MONGO_DB.INIT` in environment config. See `initializer/index.ts` for core seed data and optional module model registration.
+Database initialization is controlled by `MONGODB_INIT` (`MONGO_DB.INIT` in the environment config). See `initializer/index.ts` for core seed data and optional module model registration.
 
 ## TypeScript (do not flip global `strict`)
 
-`maestro/tsconfig.json` leaves `strict`, `noImplicitAny`, and `strictNullChecks` **off**. Turning them on for the whole package is out of scope: Core factories still use `form: any`, `asyncHandler`, and `createCrudRouter` config `any`. New core files still follow those flags as coding discipline (see `.cursor/rules/arpeggio-typescript.mdc`). There is no Maestro ESLint config; Sinfonia's `eslint.config.js` is the workspace TS lint and is React-oriented — do not copy it here.
+`maestro/tsconfig.json` leaves `strict`, `noImplicitAny`, and `strictNullChecks` **off**. Turning them on for the whole package is out of scope: Core factories still use `form: any`, `asyncHandler`, and `createCrudRouter` config `any`. New code is written as if those flags were on (TS-01, `docs/architecture/rules/typescript.md`). TypeScript is 5.9.3, the same version as armonia and sinfonia. `eslint.config.mjs` holds the governance rules only: no `console.*` outside tests (D38, use the logger) and no date-fns/moment (D36). The root `npm run lint` freezes existing findings in a baseline.
 
 ## New non-CRUD handlers: `AuthenticatedMWType` vs Zod form
 
@@ -139,9 +153,9 @@ For **new** routes only, type the handler as `AuthenticatedMWType & SomeFormType
 
 Maestro stays on `mongodb` ^4 (Mongoose 6). Filter **types** live in Armonia; Mongo query handlers (`OPERATOR_HANDLERS`) live in `modules/core/database/filter/operators.ts` so they use this package's driver. Do not bump Maestro's `mongodb` major without a Mongoose upgrade.
 
-## Dates (new code)
+## Dates
 
-New Maestro code uses **dayjs**. Do not introduce a second date library. View-engine display dates are a Sinfonia concern (`dateTime.ts` / view-engine `date-fns`) and are not rewritten from here.
+dayjs is the only date library in all three packages (D36). Business rules ("today", expiry) use the company timezone; calendar values are local `YYYY-MM-DD` strings.
 
 ## Token refresh
 
