@@ -1,4 +1,5 @@
 import {Document, model, Schema, SchemaTypes} from "mongoose";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 
 export interface ICronLock extends Document {
     key: string;
@@ -22,5 +23,6 @@ const CronLockSchema = new Schema<ICronLock>(
 
 CronLockSchema.index({expiresAt: 1}, {expireAfterSeconds: 0});
 
+lifeCyclePlugin(CronLockSchema);
 const CronLock = model<ICronLock>("CronLock", CronLockSchema);
 export default CronLock;

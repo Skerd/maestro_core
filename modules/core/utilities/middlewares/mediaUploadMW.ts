@@ -143,16 +143,16 @@ function validateFileType(mimeType: string, filename: string, languageCode: stri
 /**
  * Validates file content against MIME type using magic bytes
  */
-function validateFileContentBySignature(buffer: Buffer, expectedMimeType: string): boolean {
+function validateFileContentBySignature(buffer: Buffer, expectedMimeType: string, logger: serverLogger): boolean {
     try {
         const signatures = FILE_SIGNATURES[expectedMimeType];
         if (!signatures || signatures.length === 0) {
-            console.log(`[validate] No signatures for MIME type: ${expectedMimeType}`);
+            logger.debug(`[validate] No signatures for MIME type: ${expectedMimeType}`);
             return true;
         }
 
         if (buffer.length === 0) {
-            console.log(`[validate] Buffer is empty`);
+            logger.debug(`[validate] Buffer is empty`);
             return false;
         }
 
@@ -171,7 +171,7 @@ function validateFileContentBySignature(buffer: Buffer, expectedMimeType: string
             return match;
         });
     } catch (error) {
-        console.log(`[validate] Error validating file:`, error);
+        logger.warn(`[validate] Error validating file: ${error instanceof Error ? error.message : String(error)}`);
         return false;
     }
 }
@@ -693,7 +693,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
 
                     // Security: Validate file content against MIME type using magic bytes
                     if (validateFileContent) {
-                        const isValid = validateFileContentBySignature(fileBuffer, file.mimetype);
+                        const isValid = validateFileContentBySignature(fileBuffer, file.mimetype, logger);
                         if (!isValid) {
                             throw apiValidationException(
                                 "file_content_does_not_match_type",

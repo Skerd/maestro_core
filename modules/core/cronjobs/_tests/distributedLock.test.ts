@@ -18,7 +18,7 @@ vi.mock("@coreModule/connections/connectToRedis", () => ({
     redisReleaseLock: (...args: unknown[]) => redis.release(...args),
 }));
 vi.mock("@coreModule/database/schemas/cronLock/cronLock", () => ({default: mongo}));
-vi.mock("@coreModule/environment", () => ({CRON: {SERVER_ID: "cron-1"}}));
+vi.mock("@coreModule/environment", () => ({CRON: {SERVER_ID: "cron-1"}, CONSTANTS: {DEFAULT_LANGUAGE: "en-US"}}));
 
 import {acquireCronLock, releaseCronLock, renewCronLock} from "../locking/distributedLock";
 

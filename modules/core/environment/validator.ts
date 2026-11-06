@@ -5,9 +5,11 @@
  * Fails fast with clear error messages if configuration is invalid.
  */
 
+import fs from "fs";
+import path from "path";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 
-interface ValidationError {
+export interface ValidationError {
     key: string;
     message: string;
 }
@@ -163,8 +165,6 @@ export function validateConfiguration(): void {
             validateString('KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL', process.env.KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL, true),
             validateString('KAFKA_TOPIC_INVITATION_EMAIL', process.env.KAFKA_TOPIC_INVITATION_EMAIL, true),
             validateString('KAFKA_TOPIC_API_ACCESS', process.env.KAFKA_TOPIC_API_ACCESS, true),
-            validateString('KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE, false),
-            validateString('KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE', process.env.KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE, false),
             validateString('KAFKA_CONSUMER_GROUP_LOGIN_HISTORY', process.env.KAFKA_CONSUMER_GROUP_LOGIN_HISTORY, true),
             validateString('KAFKA_CONSUMER_GROUP_ACTIVATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_ACTIVATION_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL, true),
@@ -172,24 +172,6 @@ export function validateConfiguration(): void {
             validateString('KAFKA_CONSUMER_GROUP_INVITATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_API_ACCESS', process.env.KAFKA_CONSUMER_GROUP_API_ACCESS, true),
         ].filter((e): e is ValidationError => e !== null));
-
-        if (isModuleEnabled("propertyManagement")) {
-            errors.push(...[
-                validateString('KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_TOPIC_RESERVATION_CLIENT_EMAIL, true),
-                validateString('KAFKA_TOPIC_SALE_CLIENT_EMAIL', process.env.KAFKA_TOPIC_SALE_CLIENT_EMAIL, true),
-                validateString('KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_RESERVATION_CLIENT_EMAIL, true),
-                validateString('KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_SALE_CLIENT_EMAIL, true),
-            ].filter((e): e is ValidationError => e !== null));
-        }
-
-        if (isModuleEnabled("eCommerce")) {
-            errors.push(...[
-                validateString('KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_TOPIC_MANAGER_PIN_RESET_EMAIL, true),
-                validateString('KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_TOPIC_PRODUCT_ORDER_CLIENT_EMAIL, true),
-                validateString('KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MANAGER_PIN_RESET_EMAIL, true),
-                validateString('KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_PRODUCT_ORDER_CLIENT_EMAIL, true),
-            ].filter((e): e is ValidationError => e !== null));
-        }
 
         if (!['PLAINTEXT', 'SSL', 'SASL_PLAINTEXT', 'SASL_SSL'].includes(kafkaSecurityProtocol)) {
             errors.push({
@@ -419,15 +401,22 @@ export function validateConfiguration(): void {
         ].filter((e): e is ValidationError => e !== null));
     }
 
-    // SWISS OUTREACH (optional module; soft validation only)
-    if ((process.env.ENABLED_MODULES || "").split(",").map((s) => s.trim()).includes("swissOutreach")) {
-        errors.push(...[
-            validateString('SWISS_OUTREACH_ZEFIX_BASE_URL', process.env.SWISS_OUTREACH_ZEFIX_BASE_URL, false),
-            validateNumber('SWISS_OUTREACH_MAX_COMPANIES_DEFAULT', process.env.SWISS_OUTREACH_MAX_COMPANIES_DEFAULT, false, 1, 500),
-            validateNumber('SWISS_OUTREACH_REQUEST_TIMEOUT_MS', process.env.SWISS_OUTREACH_REQUEST_TIMEOUT_MS, false, 1000, 300000),
-            validateNumber('SWISS_OUTREACH_RETRY_COUNT', process.env.SWISS_OUTREACH_RETRY_COUNT, false, 1, 10),
-        ].filter((e): e is ValidationError => e !== null));
-    }
+    // REQUEST LIMITS (optional)
+    errors.push(...[
+        validateNumber('REQUEST_MAX_ARRAY_SIZE', process.env.REQUEST_MAX_ARRAY_SIZE, false, 1, 1000),
+        validateNumber('REQUEST_MAX_DEPTH', process.env.REQUEST_MAX_DEPTH, false, 1, 10),
+        validateNumber('REQUEST_MAX_STRING_LENGTH', process.env.REQUEST_MAX_STRING_LENGTH, false, 1, 200000),
+    ].filter((e): e is ValidationError => e !== null));
+
+    // Each enabled module's own variables (D67): core names no vertical.
+    errors.push(...collectModuleEnvironmentErrors({
+        env: process.env,
+        kafkaEnabled: process.env.KAFKA_ENABLED === 'true',
+        validateString,
+        validateNumber,
+        validateBoolean,
+        validateArray,
+    }));
 
     if (errors.length > 0) {
         const errorMessages = errors.map(e => `  - ${e.key}: ${e.message}`).join('\n');
@@ -436,12 +425,61 @@ export function validateConfiguration(): void {
             `Please check your .env file and ensure all required environment variables are set correctly.`
         );
     }
-
-    errors.push(...[
-        validateNumber('REQUEST_MAX_ARRAY_SIZE', process.env.REQUEST_MAX_ARRAY_SIZE, false, 1, 1000),
-        validateNumber('REQUEST_MAX_DEPTH', process.env.REQUEST_MAX_DEPTH, false, 1, 10),
-        validateNumber('REQUEST_MAX_STRING_LENGTH', process.env.REQUEST_MAX_STRING_LENGTH, false, 1, 200000),
-    ].filter((e): e is ValidationError => e !== null));
-
 }
 
+
+/**
+ * What a module's environment validator gets (D67): the environment, whether Kafka is on, and core's checks,
+ * which each return an error or null.
+ */
+export interface ModuleEnvironmentContext {
+    env: NodeJS.ProcessEnv;
+    /** Kafka topics and consumer groups are only required while Kafka is enabled. */
+    kafkaEnabled: boolean;
+    validateString: typeof validateString;
+    validateNumber: typeof validateNumber;
+    validateBoolean: typeof validateBoolean;
+    validateArray: typeof validateArray;
+}
+
+/** A module's `environment.validator.ts` exports this as `validateEnvironment`: its own variables' errors. */
+export type ModuleEnvironmentValidator = (ctx: ModuleEnvironmentContext) => ValidationError[];
+
+/** File each module may add to validate its own environment variables at boot. */
+export const MODULE_ENVIRONMENT_VALIDATOR_FILE = "environment.validator.ts";
+
+/**
+ * Environment-validator seam (D67, CORE-01): runs `validateEnvironment(ctx)` from every enabled module's
+ * `<module>/environment.validator.ts`, so each module checks its own variables and core names none of them.
+ * A module without the file has nothing to check. Loaded synchronously: validation runs before the server starts.
+ *
+ * @param ctx - handed unchanged to every module's validator
+ * @param options - where the modules live, which are enabled, and how a file is loaded (tests use fixtures)
+ * @returns every module's errors, in module folder order
+ */
+export function collectModuleEnvironmentErrors(
+    ctx: ModuleEnvironmentContext,
+    options: {
+        modulesRoot?: string;
+        isEnabled?: (moduleName: string) => boolean;
+        load?: (file: string) => {validateEnvironment?: ModuleEnvironmentValidator};
+    } = {},
+): ValidationError[] {
+    const modulesRoot = options.modulesRoot ?? path.resolve(__dirname, "../..");
+    const isEnabled = options.isEnabled ?? isModuleEnabled;
+    // ts-node resolves the TypeScript file at boot.
+    const load = options.load ?? ((file: string) => require(file.replace(/\.ts$/, "")));
+    const errors: ValidationError[] = [];
+    for (const entry of fs.readdirSync(modulesRoot, {withFileTypes: true})) {
+        if (!entry.isDirectory() || entry.name.startsWith(".") || !isEnabled(entry.name)) continue;
+        const file = path.join(modulesRoot, entry.name, MODULE_ENVIRONMENT_VALIDATOR_FILE);
+        if (!fs.existsSync(file)) continue;
+        const {validateEnvironment} = load(file);
+        if (typeof validateEnvironment !== "function") {
+            errors.push({key: entry.name, message: `${file} must export validateEnvironment`});
+            continue;
+        }
+        errors.push(...validateEnvironment(ctx));
+    }
+    return errors;
+}

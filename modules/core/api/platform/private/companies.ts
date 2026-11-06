@@ -140,7 +140,7 @@ async function setCompanyModules(params: SetCompanyModulesType, routeParams: {id
         throw apiValidationException("not_found", "", null, languageCode);
     }
 
-    const target = await Company.findById(new ObjectId(routeParams.id)).session(session);
+    const target = await companyService.findById(new ObjectId(routeParams.id), {session});
     if (!target) {
         throw apiValidationException("not_found", "", null, languageCode);
     }
@@ -190,7 +190,7 @@ async function setPortalVisibility(params: SetPortalVisibilityType, routeParams:
     if (!ObjectId.isValid(routeParams.id)) {
         throw apiValidationException("not_found", "", null, languageCode);
     }
-    const target = await Company.findById(new ObjectId(routeParams.id)).session(session);
+    const target = await companyService.findById(new ObjectId(routeParams.id), {session});
     if (!target) {
         throw apiValidationException("not_found", "", null, languageCode);
     }

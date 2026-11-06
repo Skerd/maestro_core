@@ -33,9 +33,7 @@ import {getDeadLetterBacklog, replayDeadLetters} from "@coreModule/kafka/deadLet
 import {KafkaDeadLetterReplayDto, ServerHealthDto} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {HEALTH_SNAPSHOT_KEY} from "@coreModule/utilities/timing/healthSnapshot";
-import ServerHealth1m from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
-import ServerHealth1h from "@coreModule/database/schemas/performance/serverHealth/serverHealth1h";
-import ServerHealth1d from "@coreModule/database/schemas/performance/serverHealth/serverHealth1d";
+import {serverHealthService} from "@coreModule/database/schemas/performance/serverHealth/serverHealth.service";
 import {
     ServerHealthHistoryDto,
     ServerHealthHistoryGranularity,
@@ -319,10 +317,7 @@ async function readHistorySeries(
     to: Date
 ): Promise<SeriesPoint[]> {
     if (granularity === "1m") {
-        const rows = await ServerHealth1m
-            .find({ bucketStart: { $gte: from, $lt: to } })
-            .sort({ bucketStart: 1 })
-            .lean();
+        const rows = await serverHealthService.findWindow("1m", from, to);
         return rows.map((r: any) => ({
             service: r.meta.service,
             bucketStart: new Date(r.bucketStart).toISOString(),
@@ -334,11 +329,7 @@ async function readHistorySeries(
         }));
     }
 
-    const Model = granularity === "1h" ? ServerHealth1h : ServerHealth1d;
-    const rows = await Model
-        .find({ bucketStart: { $gte: from, $lt: to } })
-        .sort({ bucketStart: 1 })
-        .lean();
+    const rows = await serverHealthService.findWindow(granularity, from, to);
     return rows.map((r: any) => ({
         service: r.meta.service,
         bucketStart: new Date(r.bucketStart).toISOString(),

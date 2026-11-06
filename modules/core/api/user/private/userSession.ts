@@ -1,5 +1,5 @@
 import {ObjectId} from "mongodb";
-import {z} from "zod";
+import {userSessionWriteFormSchema} from "armonia/src/modules/core/api/user/private/userSession/userSessionWrite.form.validator";
 import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
@@ -28,8 +28,8 @@ export const {router} = createCrudRouter({
     model: UserSession,
     service: userSessionService,
     entityName: "User session",
-    createSchema: () => z.looseObject({}),
-    editSchema: () => z.looseObject({}),
+    createSchema: userSessionWriteFormSchema,
+    editSchema: userSessionWriteFormSchema,
     listSchema: userSessionFormSchema,
     selectSchema: userSessionsSelectFormSchema,
     toDTO: userSessionToDTO,

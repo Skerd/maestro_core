@@ -719,7 +719,7 @@ async function deleteMessage(params: DeleteMessageType): Promise<DeleteMessageFo
         {
             _id: { $in: messageObjectIds },
             sender: userInfo._id,
-            deletedAt: {$exists: false}
+            deletedAt: null
         },
         { session, logger, languageCode }
     );
@@ -748,7 +748,7 @@ async function deleteMessage(params: DeleteMessageType): Promise<DeleteMessageFo
                 $nin: myMessages.map(x => x._id)
             },
             sender: userInfo._id,
-            deletedAt: {$exists: true}
+            deletedAt: {$ne: null}
         },
         { session, logger, languageCode }
     );

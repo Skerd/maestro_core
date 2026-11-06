@@ -22,10 +22,8 @@
 import {ObjectId} from "mongodb";
 import os from "os";
 import {getLogger} from "@coreModule/loggers/serverLog";
-import ServiceUptime, {
-    IServiceUptime,
-    ServiceUptimeName
-} from "@coreModule/database/schemas/performance/serviceUptime/serviceUptime";
+import type {IServiceUptime, ServiceUptimeName} from "@coreModule/database/schemas/performance/serviceUptime/serviceUptime";
+import {serviceUptimeService} from "@coreModule/database/schemas/performance/serviceUptime/serviceUptime.service";
 
 export type {ServiceUptimeName};
 
@@ -55,7 +53,7 @@ class UptimeKeeper {
                 startedAt: now,
                 lastSeenAt: now
             };
-            const created = await ServiceUptime.create(doc);
+            const created = await serviceUptimeService.recordStart(doc);
             this.lastStartByService.set(service, now.getTime());
             this.rowIdByService.set(service, created._id);
             logger.debug(`[uptime] markStart ${service} at ${now.toISOString()}`);
@@ -77,7 +75,7 @@ class UptimeKeeper {
         const id = this.rowIdByService.get(service);
         if (!id) return;
         try {
-            await ServiceUptime.updateOne({ _id: id }, { $set: { lastSeenAt: new Date() } });
+            await serviceUptimeService.touch(id, "lastSeenAt");
         }
         catch {
             // Heartbeats are best-effort; never log noisily on failure.
@@ -91,7 +89,7 @@ class UptimeKeeper {
         const id = this.rowIdByService.get(service);
         if (!id) return;
         try {
-            await ServiceUptime.updateOne({ _id: id }, { $set: { stoppedAt: new Date() } });
+            await serviceUptimeService.touch(id, "stoppedAt");
         }
         catch (e: any) {
             logger.warn(`[uptime] markStop persistence failed for ${service}: ${e?.message}`);
@@ -118,15 +116,7 @@ class UptimeKeeper {
     async hydrate(): Promise<void> {
         try {
             const host = os.hostname();
-            const rows = await ServiceUptime.aggregate<IServiceUptime>([
-                { $match: { host, stoppedAt: { $exists: false } } },
-                { $sort: { startedAt: -1 } },
-                { $group: {
-                    _id: "$service",
-                    doc: { $first: "$$ROOT" }
-                }},
-                { $replaceRoot: { newRoot: "$doc" } }
-            ]).exec();
+            const rows = await serviceUptimeService.latestOpenRowsOnHost(host);
             for (const row of rows) {
                 this.lastStartByService.set(row.service as ServiceUptimeName, new Date(row.startedAt).getTime());
                 this.rowIdByService.set(row.service as ServiceUptimeName, row._id as ObjectId);

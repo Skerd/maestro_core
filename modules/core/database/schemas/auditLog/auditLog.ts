@@ -1,4 +1,5 @@
 import {Document, model, Schema, SchemaTypes, Types} from "mongoose";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {applyAuditLogIndexes} from "@coreModule/database/schemas/auditLog/auditLog.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
@@ -118,6 +119,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
 
 ownershipPlugin(AuditLogSchema);
 applyAuditLogIndexes(AuditLogSchema);
+lifeCyclePlugin(AuditLogSchema);
 export const AuditLog = model<IAuditLog>("AuditLog", AuditLogSchema);
 normalizeSchemaPermissions(AuditLog);
 export default AuditLog;

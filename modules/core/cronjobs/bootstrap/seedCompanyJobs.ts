@@ -1,5 +1,5 @@
 import type {ClientSession, Types} from "mongoose";
-import CronJobModel, {type ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
+import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
 import {computeNextRunAt} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
 import {cronHandlerAllowed, listCronHandlerRegistrations} from "@coreModule/cronjobs/registry/handlerRegistry";
 import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
@@ -27,28 +27,18 @@ async function seedJobs(companyId: Types.ObjectId, modules: readonly string[], s
         await loadAllCronHandlers(logger);
     }
     const registrations = listCronHandlerRegistrations().filter((registration) => cronHandlerAllowed(registration, modules));
-    const sessionOpt = session ? {session} : {};
-
-    const existing = await CronJobModel.find(
-        {company: companyId, code: {$in: registrations.map((r) => r.code)}},
-        "code",
-        sessionOpt,
-    ).lean<Pick<ICronJob, "code">[]>();
-    const seeded = new Set(existing.map((job) => job.code));
+    const seeded = await cronJobService.existingCodes(companyId, registrations.map((r) => r.code), session);
 
     const now = new Date();
     for (const {code, defaultJob} of registrations) {
         if (seeded.has(code)) continue;
-        await CronJobModel.create(
-            [{
-                ...defaultJob,
-                code,
-                handler: code,
-                company: companyId,
-                nextRunAt: computeNextRunAt(defaultJob, now) ?? undefined,
-            }],
-            sessionOpt,
-        );
+        await cronJobService.insertSeeded({
+            ...defaultJob,
+            code,
+            handler: code,
+            company: companyId,
+            nextRunAt: computeNextRunAt(defaultJob, now) ?? undefined,
+        }, session);
         logger.debug(`Seeded cron job ${code} for company ${companyId.toString()}`);
     }
 }
@@ -73,8 +63,7 @@ export async function skipMissedCronRuns(
 
 async function skipOverdue(companyId: Types.ObjectId, codes: string[], session?: ClientSession | null): Promise<void> {
     const now = new Date();
-    const overdue = await CronJobModel.find({company: companyId, handler: {$in: codes}, nextRunAt: {$lt: now}})
-        .session(session ?? null);
+    const overdue = await cronJobService.findOverdue(companyId, codes, now, session);
     for (const job of overdue) {
         job.nextRunAt = computeNextRunAt(job, now) ?? job.nextRunAt;
         await job.save({session: session ?? undefined});

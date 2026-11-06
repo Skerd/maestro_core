@@ -12,6 +12,7 @@
  */
 
 import mongoose, {Schema, SchemaTypes} from "mongoose";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {ServerHealthServiceName} from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
 
 const TTL_SECONDS = 90 * 24 * 60 * 60;
@@ -61,6 +62,7 @@ export const ServerHealth1hSchema = new Schema<IServerHealth1h>(
     } as any
 );
 
+lifeCyclePlugin(ServerHealth1hSchema);
 const ServerHealth1h = mongoose.model<IServerHealth1h>(
     "ServerHealth1h",
     ServerHealth1hSchema,

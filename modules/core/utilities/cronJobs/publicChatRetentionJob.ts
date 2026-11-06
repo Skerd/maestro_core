@@ -21,9 +21,9 @@
 
 import {ObjectId} from "mongodb";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import Channel from "@coreModule/database/schemas/channel/channel";
-import Message from "@coreModule/database/schemas/message/message";
-import User from "@coreModule/database/schemas/user/user";
+import {channelService} from "@coreModule/database/schemas/channel/channel.service";
+import {messageService} from "@coreModule/database/schemas/message/message.service";
+import {userService} from "@coreModule/database/schemas/user/user.service";
 import {PUBLIC_CHAT} from "@coreModule/environment";
 
 /** Batch size per sweep, so one run cannot lock the database for long. */
@@ -51,7 +51,7 @@ export async function runPublicChatRetention(
 
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
 
-    const candidates = await Channel.find({
+    const candidates = await channelService.find({
         company: companyId,
         isPublicChat: true,
         "publicChat.lastVisitorActivity": {$lt: cutoff},
@@ -65,9 +65,7 @@ export async function runPublicChatRetention(
             // worth being able to review.
             {"publicChat.status": {$ne: "requested_human"}},
         ],
-    })
-        .select("_id aiOwnerUser")
-        .limit(MAX_DELETIONS_PER_RUN);
+    }, {}, undefined, "_id aiOwnerUser", undefined, MAX_DELETIONS_PER_RUN);
 
     if (candidates.length === 0) {
         logger.finish("No public chats to sweep");
@@ -82,13 +80,13 @@ export async function runPublicChatRetention(
 
     // Messages first: an orphaned message is harder to find later than an
     // orphaned channel, so delete inward-out.
-    const messageResult = await Message.deleteMany({channel: {$in: channelIds}});
-    const channelResult = await Channel.deleteMany({_id: {$in: channelIds}});
+    const messageResult = await messageService.deleteMany({channel: {$in: channelIds}});
+    const channelResult = await channelService.deleteMany({_id: {$in: channelIds}});
 
     // Only ever delete users that are actually visitors — a guard against a
     // malformed `aiOwnerUser` pointing at a real person.
     const visitorResult = visitorIds.length > 0
-        ? await User.deleteMany({_id: {$in: visitorIds}, isVisitor: true})
+        ? await userService.deleteMany({_id: {$in: visitorIds}, isVisitor: true})
         : {deletedCount: 0};
 
     const result: PublicChatRetentionResult = {

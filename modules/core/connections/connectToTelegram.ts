@@ -50,7 +50,7 @@
 import {randomUUID} from "crypto";
 import os from "os";
 import {Context, Telegraf} from "telegraf";
-import User from "@coreModule/database/schemas/user/user";
+import {userService} from "@coreModule/database/schemas/user/user.service";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {CONSTANTS, TELEGRAM} from "@coreModule/environment";
 import {telegramCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
@@ -336,8 +336,12 @@ export async function connectToTelegramInstance(parentLogger: serverLogger): Pro
                 let linkedUsername: string | null = null;
                 try {
                     // Find user with matching verification code
-                    const user = await User.findOne({"requests.telegram.code": startPayload})
-                        .select("userProfile username companies telegram requests.telegram");
+                    const user = await userService.findOne(
+                        {"requests.telegram.code": startPayload},
+                        {},
+                        undefined,
+                        "userProfile username companies telegram requests.telegram",
+                    );
 
                     if( !!user ){
 

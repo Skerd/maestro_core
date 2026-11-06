@@ -15,6 +15,8 @@ import {
 import {addModelData} from "@coreModule/database/collections";
 import {invalidateRoleAccess} from "@coreModule/utilities/security/roleAccessCache";
 import {roleViews} from "@coreModule/database/schemas/role/role.views";
+import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
+import {RoleSchemaDef} from "armonia/src/modules/core/api/company/private/roles/role.schema-def";
 
 export interface IRole extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string,
@@ -209,6 +211,8 @@ auditPlugin(RoleSchema);
 softDeletePlugin(RoleSchema);
 lifeCyclePlugin(RoleSchema);
 applyRoleIndexes(RoleSchema);
+/** Required paths the server sets: the admin/sign-up flags, the edit/delete guards and the company-prefixed slug. */
+validateSchemaDefAgainstMongoose(RoleSchema, RoleSchemaDef, "Role", ["isAdmin", "isSignupDefault", "canEdit", "canDelete", "slug"]);
 const Role = mongoose.model<IRole>("Role", RoleSchema);
 normalizeSchemaPermissions(Role);
 export default Role;

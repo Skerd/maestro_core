@@ -28,10 +28,10 @@ import Company from "@coreModule/database/schemas/company/company";
 import {EncryptString} from "@coreModule/utilities/security/encryption";
 import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
-import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
-import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
-import Role from "@coreModule/database/schemas/role/role";
-import User from "@coreModule/database/schemas/user/user";
+import {actionPermissionTag} from "@coreModule/utilities/security/actionPermissions";
+import {rolePermissionService} from "@coreModule/database/schemas/rolePermission/rolePermission.service";
+import {roleService} from "@coreModule/database/schemas/role/role.service";
+import {userService} from "@coreModule/database/schemas/user/user.service";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 
 /** What the visitor is told when the conversation is escalated. */
@@ -89,39 +89,38 @@ async function postBotNotice(params: {
 }
 
 /**
- * Users who may answer public chats in a company.
- *
- * Permission tags in this codebase are DERIVED from schema field permissions
- * (see `rolePermission.default.ts`) rather than declared as free-form strings,
- * so rather than invent a tag we reuse the one that already means "may change
- * who is in a channel" — `channels[write:users]` — and read it off the schema at
- * runtime so a change in tag format cannot silently break this lookup.
- *
- * Company admins are always included.
+ * The action permission for answering website chats (D71): joining, releasing and closing one. Admin roles hold
+ * it; any role can be granted it in the roles UI.
+ */
+export const ANSWER_WEBSITE_CHATS = "answerWebsiteChats";
+
+/**
+ * Users who may answer public chats in a company: members of an admin role or of a role holding
+ * {@link ANSWER_WEBSITE_CHATS}.
  */
 export async function resolvePublicChatAgentIds(
     companyId: ObjectId,
     logger?: serverLogger,
 ): Promise<string[]> {
     try {
-        const normalized = normalizeSchemaPermissions(Channel);
-        const tag = (normalized.permissions as any)?.users?.self?.write;
+        const tag = actionPermissionTag(Channel, ANSWER_WEBSITE_CHATS, "self");
 
         const roleFilter: Record<string, unknown>[] = [{company: companyId, isAdmin: true}];
-        if (tag && tag !== "no-permission") {
-            const permission = await RolePermission.findOne({tag}).select("_id");
+        if (tag) {
+            const permission = await rolePermissionService.findOne({tag}, {}, undefined, "_id");
             if (permission) {
                 roleFilter.push({company: companyId, permissions: permission._id});
             }
         }
 
-        const roles = await Role.find({$or: roleFilter}).select("_id");
+        const roles = await roleService.find({$or: roleFilter}, {}, undefined, "_id");
         if (roles.length === 0) {
             return [];
         }
         const roleIds = roles.map((role) => role._id);
 
-        const agents = await User.find({
+        // Users have no soft delete: a removed member has no active role in the company.
+        const agents = await userService.find({
             companies: companyId,
             isBot: {$ne: true},
             isVisitor: {$ne: true},
@@ -132,7 +131,7 @@ export async function resolvePublicChatAgentIds(
                     roles: {$in: roleIds},
                 },
             },
-        }).noDeleted().select("_id");
+        }, {}, undefined, "_id");
 
         return agents.map((agent) => agent._id.toString());
     }

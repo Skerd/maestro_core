@@ -1,4 +1,5 @@
 import axios from "axios";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import {Response} from "express";
@@ -13,6 +14,8 @@ import {ActionException} from "armonia/src/modules/core/types";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
 import {applyUserIndexes} from "./user.indexes";
+import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
+import {UserSchemaDef} from "armonia/src/modules/core/api/company/private/users/user.schema-def";
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {isKafkaConnected} from "@coreModule/connections/connectToKafka";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
@@ -1747,8 +1750,8 @@ UserSchema.methods.isAdmin = async function (companyId: ObjectId): Promise<boole
 
 // Plugin exceptions (do not apply the Country stack):
 // - ownershipPlugin: a user belongs to many companies (`companies` / `roles`), not one `company`.
-// - lifeCyclePlugin: indexes `{company: 1, _id: 1}`; User has no `company` field. `registerDate`
-//   remains the join timestamp. `auditPlugin` still enables mongoose timestamps.
+// lifeCyclePlugin applies (D68) and keeps the timestamp fields declared below; its `{company: 1, _id: 1}` index
+// stays empty here, and `registerDate` remains the join timestamp.
 // - softDeletePlugin: users are not soft-deleted (model delete/restore are no-permission).
 auditPlugin(UserSchema);
 for (const path of ["createdAt", "updatedAt"] as const) {
@@ -1765,6 +1768,9 @@ for (const path of ["createdAt", "updatedAt"] as const) {
     };
 }
 applyUserIndexes(UserSchema);
+lifeCyclePlugin(UserSchema);
+/** Required account fields set by their own flows: the email-derived username, the hashed password, the derived full name. */
+validateSchemaDefAgainstMongoose(UserSchema, UserSchemaDef, "User", ["username", "password", "fullName"]);
 const User = model<IUser>("User", UserSchema);
 normalizeSchemaPermissions(User);
 export default User;

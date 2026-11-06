@@ -13,7 +13,6 @@ import type {ICompany} from "@coreModule/database/schemas/company/company";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {companyModuleClause, isModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
-import Company from "@coreModule/database/schemas/company/company";
 import {publicMediaUrl} from "@coreModule/utilities/media/publicMediaUrl";
 import {clientHostFor} from "@coreModule/environment";
 import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
@@ -141,10 +140,7 @@ export async function portalCompanyCards(
     companyIds: ObjectId[],
     citiesByCompany: Map<string, string[]>,
 ): Promise<PortalCompanyCard[]> {
-    const companies = await Company.find({_id: {$in: companyIds}})
-        .select("_id name siteSlug logo description")
-        .sort({name: 1})
-        .lean<{_id: ObjectId; name: string; siteSlug?: string; logo?: ObjectId; description?: string}[]>();
+    const companies = await companyService.findPortalCards(companyIds);
     return companies.map((company) => ({
         _id: company._id.toString(),
         name: company.name,
@@ -200,22 +196,18 @@ export async function portalListedCompanyIds(
             .select("company").lean<{company: ObjectId}[]>();
         filter._id = {$in: configs.map((config) => config.company)};
     }
-    const companies = await Company.find(filter).select("_id").lean<{_id: ObjectId}[]>();
-    return companies.map((company) => company._id);
+    return companyService.findIds(filter);
 }
 
 /** Name and portal slug per company id, for labelling search hits. */
 export async function portalCompanyRefs(companyIds: ObjectId[]): Promise<Map<string, {name: string; slug: string}>> {
-    const companies = await Company.find({_id: {$in: companyIds}}).select("_id name siteSlug").lean<{_id: ObjectId; name: string; siteSlug?: string}[]>();
+    const companies = await companyService.findPortalRefs(companyIds);
     return new Map(companies.map((company) => [company._id.toString(), {name: company.name, slug: portalSlug(company)}]));
 }
 
 /** City names from the companies' own addresses (sections without locations of their own). */
 export async function companyAddressCities(companyIds: ObjectId[]): Promise<Map<string, string[]>> {
-    const companies = await Company.find({_id: {$in: companyIds}})
-        .select("_id addresses.city")
-        .populate({path: "addresses.city", select: "name"})
-        .lean<{_id: ObjectId; addresses?: {city?: {name?: string}}[]}[]>();
+    const companies = await companyService.findAddressCities(companyIds);
     return new Map(companies.map((company) => [
         company._id.toString(),
         [...new Set((company.addresses ?? []).map((address) => address.city?.name).filter((name): name is string => !!name))].sort(),

@@ -336,8 +336,8 @@ export async function createCompanies(parentLogger?: serverLogger, demoData: boo
         logger.finish(`Finished creating companies!`);
     }
     catch(e: any){
-        console.log(e);
         logger.err(`Error creating companies: ${e.message}`);
+        if (e instanceof Error && e.stack) logger.debug(e.stack);
         logger.fail("Failed to create companies!");
     }
 }

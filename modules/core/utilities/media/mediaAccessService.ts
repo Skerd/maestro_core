@@ -1,7 +1,7 @@
 import {ObjectId} from "mongodb";
 import type {SchemaDef} from "armonia/src/modules/core/helpers/schemaDefBuilder";
 import {collectPublicMediaIds} from "armonia/src/modules/core/helpers/collectPublicMediaIds";
-import Media from "@coreModule/database/schemas/media/media";
+import {mediaService} from "@coreModule/database/schemas/media/media.service";
 
 /**
  * Denormalized cache for the public media GET path.
@@ -21,7 +21,7 @@ export async function markPublic(
     if (companyId) {
         filter.company = new ObjectId(String(companyId));
     }
-    const result = await Media.updateMany(filter, {$set: {isPublic: true}});
+    const result = await mediaService.updateMany(filter, {$set: {isPublic: true}});
     return result.modifiedCount ?? 0;
 }
 

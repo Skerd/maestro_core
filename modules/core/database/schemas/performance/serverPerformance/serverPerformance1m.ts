@@ -16,6 +16,7 @@
  */
 
 import mongoose, {Schema, SchemaTypes} from "mongoose";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import {addModelData} from "@coreModule/database/collections";
 
@@ -72,6 +73,7 @@ export const ServerPerformance1mSchema = new Schema<IServerPerformance1m>(
     } as any
 );
 
+lifeCyclePlugin(ServerPerformance1mSchema);
 const ServerPerformance1m = mongoose.model<IServerPerformance1m>(
     "ServerPerformance1m",
     ServerPerformance1mSchema,

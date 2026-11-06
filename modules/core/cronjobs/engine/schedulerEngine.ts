@@ -1,5 +1,6 @@
-import CronJobModel, {type ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
-import CronExecution from "@coreModule/database/schemas/cronExecution/cronExecution";
+import type {ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
+import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
+import {cronExecutionService} from "@coreModule/database/schemas/cronExecution/cronExecution.service";
 import {CRON} from "@coreModule/environment";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {computeNextRunAt, countDueOccurrences} from "@coreModule/cronjobs/scheduling/nextRunCalculator";
@@ -92,18 +93,9 @@ export class SchedulerEngine {
         const now = new Date();
         const runnable = await runnableJobClauses();
         if (runnable.length === 0) return;
-        const dueJobs = await CronJobModel.find({
-            active: true,
-            pausedAt: null,
-            nextRunAt: {$lte: now},
-            // Jobs of a module that is disabled on this deployment have no handler here, and a
-            // module's jobs only run for companies that have the module. Filtered in the query
-            // so skipped jobs never fill the batch.
-            $or: runnable,
-        }).noDeleted()
-            .sort({priority: -1, nextRunAt: 1})
-            .limit(CRON.SCHEDULER_BATCH_SIZE)
-            .lean<ICronJob[]>();
+        // Jobs of a module that is disabled on this deployment have no handler here, and a module's jobs only
+        // run for companies that have the module. Filtered in the query so skipped jobs never fill the batch.
+        const dueJobs = await cronJobService.findDue(runnable, now, CRON.SCHEDULER_BATCH_SIZE);
 
         for (const job of dueJobs) {
             if (!this.tickTimer) return;
@@ -124,11 +116,7 @@ export class SchedulerEngine {
      */
     private async claim(job: ICronJob, now: Date, log: serverLogger): Promise<number> {
         const nextRunAt = computeNextRunAt(job, now);
-        const result = await CronJobModel.updateOne(
-            {_id: job._id, nextRunAt: job.nextRunAt},
-            nextRunAt ? {$set: {nextRunAt}} : {$unset: {nextRunAt: ""}},
-        );
-        if (result.modifiedCount === 0) return 0;
+        if (!(await cronJobService.claimOccurrence(job, nextRunAt))) return 0;
 
         const due = countDueOccurrences(job, now, CATCH_UP_MAX);
         const runs = selectRunCount(job.missedRunPolicy, due);
@@ -142,15 +130,11 @@ export class SchedulerEngine {
         await this.recoverStuckExecutions(log);
 
         // A job left without nextRunAt (for example one saved before scheduling existed) gets one.
-        const unscheduled = await CronJobModel.find({active: true, nextRunAt: null})
-            .noDeleted()
-            .select("cronExpression")
-            .limit(50)
-            .lean<ICronJob[]>();
+        const unscheduled = await cronJobService.findUnscheduled(50);
         for (const job of unscheduled) {
             const next = computeNextRunAt(job, new Date());
             if (next) {
-                await CronJobModel.updateOne({_id: job._id}, {$set: {nextRunAt: next}});
+                await cronJobService.setNextRunAt(job._id, next);
             }
         }
     }
@@ -162,15 +146,10 @@ export class SchedulerEngine {
      */
     private async recoverStuckExecutions(log: serverLogger): Promise<void> {
         const now = Date.now();
-        const candidates = await CronExecution.find({
-            status: "running",
-            startedAt: {$lt: new Date(now - STUCK_GRACE_MS)},
-        }).select("jobId startedAt").limit(100).lean();
+        const candidates = await cronExecutionService.findRunningSince(new Date(now - STUCK_GRACE_MS), 100);
         if (candidates.length === 0) return;
 
-        const jobs = await CronJobModel.find({_id: {$in: candidates.map((c) => c.jobId)}})
-            .select("timeoutSeconds")
-            .lean<ICronJob[]>();
+        const jobs = await cronJobService.findTimeouts(candidates.map((c) => c.jobId));
         const timeoutMsById = new Map(
             jobs.map((j) => [j._id.toString(), (j.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1_000]),
         );
@@ -182,10 +161,7 @@ export class SchedulerEngine {
             .map((c) => c._id);
         if (stuckIds.length === 0) return;
 
-        await CronExecution.updateMany(
-            {_id: {$in: stuckIds}, status: "running"},
-            {$set: {status: "timeout", finishedAt: new Date(), error: {message: "Stuck execution recovered by self-heal"}}},
-        );
+        await cronExecutionService.markTimedOut(stuckIds, "Stuck execution recovered by self-heal");
         log.warn(`Recovered ${stuckIds.length} stuck cron execution(s)`);
     }
 }

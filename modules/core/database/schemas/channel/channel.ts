@@ -1,4 +1,5 @@
 import {IUser} from "@coreModule/database/schemas/user/user";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import mongoose, {Document, SchemaTypes} from "mongoose";
 import {ObjectId} from "mongodb";
@@ -331,6 +332,7 @@ auditPlugin(ChannelSchema);
 applyChannelIndexes(ChannelSchema);
 // Channel.syncIndexes(); // Uncomment to manually sync indexes
 
+lifeCyclePlugin(ChannelSchema);
 const Channel = mongoose.model<IChannel>("Channel", ChannelSchema);
 normalizeSchemaPermissions(Channel);
 export default Channel;

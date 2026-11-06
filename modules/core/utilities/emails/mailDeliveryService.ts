@@ -3,9 +3,8 @@ import type {SendMailOptions as NodemailerSendMailOptions} from "nodemailer";
 import {ObjectId} from "mongodb";
 import {EMAIL, SERVER} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
-import SmtpServer, {type ISmtpServer} from "@coreModule/database/schemas/smtpServer/smtpServer";
-import User from "@coreModule/database/schemas/user/user";
-import Company from "@coreModule/database/schemas/company/company";
+import type {ISmtpServer} from "@coreModule/database/schemas/smtpServer/smtpServer";
+import {smtpServerService} from "@coreModule/database/schemas/smtpServer/smtpServer.service";
 import {DecryptString, EncryptString} from "@coreModule/utilities/security/encryption";
 import type {SmtpAuthType, SmtpEncryptionType} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.constants";
 import {
@@ -117,19 +116,14 @@ async function loadActiveServers(companyId: ObjectId | string): Promise<ISmtpSer
         return cached.servers;
     }
 
-    const servers = await SmtpServer.find({
-        company: new ObjectId(key),
-        active: true,
-    }).noDeleted()
-        .sort({sequence: 1, name: 1})
-        .lean<ISmtpServer[]>();
+    const servers = await smtpServerService.findActiveInSequence(new ObjectId(key));
 
     companyServerCache.set(key, {
-        servers: servers as ISmtpServer[],
+        servers,
         expiresAt: Date.now() + CACHE_TTL_MS,
     });
 
-    return servers as ISmtpServer[];
+    return servers;
 }
 
 function getEnvTransporter(): Transporter | null {
@@ -199,21 +193,25 @@ export async function resolveCompanyIdForEmail(
         return companyId;
     }
 
-    const user = await User.findById(userId)
-        .select("roles.company requests.invitation.company")
-        .lean();
+    // Loaded at call time: the User and Company models import this module (their account emails), so a static
+    // import of their services would build a service before its model exists.
+    const [{userService}, {companyService}] = await Promise.all([
+        import("@coreModule/database/schemas/user/user.service"),
+        import("@coreModule/database/schemas/company/company.service"),
+    ]);
+    const user = await userService.findById(userId, {}, undefined, "roles.company requests.invitation.company");
 
-    const invitationCompany = (user as any)?.requests?.invitation?.company;
+    const invitationCompany = user?.requests?.invitation?.company;
     if (invitationCompany) {
         return invitationCompany.toString();
     }
 
-    const roleCompany = (user as any)?.roles?.[0]?.company;
+    const roleCompany = user?.roles?.[0]?.company;
     if (roleCompany) {
         return roleCompany.toString();
     }
 
-    const defaultCompany = await Company.findOne({isDefaultForSignUp: true}).select("_id").lean();
+    const defaultCompany = await companyService.findOne({isDefaultForSignUp: true}, {}, undefined, "_id");
     return defaultCompany?._id?.toString();
 }
 

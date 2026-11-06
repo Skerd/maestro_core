@@ -165,7 +165,6 @@ export const KAFKA = {
         INVITATION_EMAIL: process.env.KAFKA_TOPIC_INVITATION_EMAIL,
         API_ACCESS: process.env.KAFKA_TOPIC_API_ACCESS,
         AI_CHANNEL_MESSAGE: process.env.KAFKA_TOPIC_AI_CHANNEL_MESSAGE,
-        SWISS_OUTREACH_PIPELINE: process.env.KAFKA_TOPIC_SWISS_OUTREACH_PIPELINE || "swissOutreach.pipeline",
     },
     CONSUMER_GROUP: {
         LOGIN_HISTORY: process.env.KAFKA_CONSUMER_GROUP_LOGIN_HISTORY,
@@ -175,7 +174,6 @@ export const KAFKA = {
         INVITATION_EMAIL: process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL,
         API_ACCESS: process.env.KAFKA_CONSUMER_GROUP_API_ACCESS,
         AI_CHANNEL_MESSAGE: process.env.KAFKA_CONSUMER_GROUP_AI_CHANNEL_MESSAGE,
-        SWISS_OUTREACH_PIPELINE: process.env.KAFKA_CONSUMER_GROUP_SWISS_OUTREACH_PIPELINE || "SWISS_OUTREACH_PIPELINE",
     },
 };
 
@@ -389,12 +387,4 @@ export const CRON = {
     GRACEFUL_SHUTDOWN_MS: parseInt(process.env.CRON_GRACEFUL_SHUTDOWN_MS || "30000", 10),
     SEED_PLATFORM_JOBS: process.env.CRON_SEED_PLATFORM_JOBS === "true",
     SERVER_ID: process.env.CRON_SERVER_ID || `${os.hostname()}:${process.pid}`,
-};
-/** Optional swissOutreach module settings (full config via getSwissOutreachConfig()). */
-export const SWISS_OUTREACH = {
-    ZEFIX_BASE_URL:
-        process.env.SWISS_OUTREACH_ZEFIX_BASE_URL ||
-        "https://www.zefix.ch/ZefixREST/api/v1",
-    WEB_SEARCH_PROVIDER: process.env.SWISS_OUTREACH_WEB_SEARCH_PROVIDER || "none",
-    LLM_PROVIDER: process.env.SWISS_OUTREACH_LLM_PROVIDER || "ollama",
 };

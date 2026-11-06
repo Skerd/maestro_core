@@ -4,13 +4,22 @@
  * CRUD service for AuditLog model.
  */
 
-import {ClientSession, Types} from 'mongoose';
+import {ClientSession, FilterQuery, Types} from 'mongoose';
 import {BaseCrudService} from '@coreModule/database/services/baseCrudService';
 import AuditLog, {IAuditLog} from '@coreModule/database/schemas/auditLog/auditLog';
 
 export class AuditLogService extends BaseCrudService<IAuditLog, typeof AuditLog> {
     constructor() {
         super(AuditLog, 'AuditLog');
+    }
+
+    /** One page of a document's change history, newest first, with each actor's name (the record's history panel). */
+    async findDocumentHistory(filter: FilterQuery<IAuditLog>, limit: number) {
+        return this.model.find(filter)
+            .sort({createdAt: -1, _id: -1})
+            .limit(limit)
+            .populate({path: "actorId", select: "name surname email"})
+            .lean();
     }
 
     /** Person erasure (D57): one ERASE entry per erased record (who and when), written in the erasure's transaction. */

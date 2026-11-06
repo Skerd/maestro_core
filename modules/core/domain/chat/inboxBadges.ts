@@ -1,7 +1,7 @@
 import {ObjectId} from "mongodb";
-import Channel from "@coreModule/database/schemas/channel/channel";
-import Message from "@coreModule/database/schemas/message/message";
-import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage";
+import {channelService} from "@coreModule/database/schemas/channel/channel.service";
+import {messageService} from "@coreModule/database/schemas/message/message.service";
+import {lastChannelReadMessageService} from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage.service";
 import type {InboxBadgesFormResponseType} from "armonia/src/modules/core/api/user/private/chats/channels/inboxBadges.form.response.type";
 import type {PublicChatStatusType} from "armonia/src/modules/core/api/user/public/publicChat/publicChat.types";
 
@@ -37,12 +37,7 @@ async function unreadCountsForChannels(channelIds: ObjectId[], userId: ObjectId)
         return counts;
     }
 
-    const reads = await LastChannelReadMessage.find({
-        user: userId,
-        channel: {$in: channelIds},
-    })
-        .select("channel time")
-        .lean();
+    const reads = await lastChannelReadMessageService.findReadTimes(userId, channelIds);
 
     const lastReadByChannel = new Map<string, Date>();
     for (const row of reads) {
@@ -57,7 +52,7 @@ async function unreadCountsForChannels(channelIds: ObjectId[], userId: ObjectId)
             createdAt: {$gt: lastReadByChannel.get(String(channelId)) ?? epoch},
         }));
 
-        const grouped = await Message.aggregate<{_id: ObjectId; unread: number}>([
+        const grouped: {_id: ObjectId; unread: number}[] = await messageService.aggregate([
             {
                 $match: {
                     $or: or,
@@ -96,27 +91,23 @@ export async function computeInboxBadges(params: {
     const {companyId, memberUserId, assignedUserId} = params;
 
     const [waitingCount, internalChannels, mineChannels] = await Promise.all([
-        Channel.countDocuments({
+        channelService.count({
             company: companyId,
             deleted: false,
             isPublicChat: true,
             "publicChat.status": "requested_human",
             "publicChat.assignedTo": null,
         }),
-        Channel.find({
+        channelService.findRows<{_id: ObjectId}>({
             ...membershipMatch(companyId, memberUserId),
             isPublicChat: {$ne: true},
-        })
-            .select("_id")
-            .lean<Array<{_id: ObjectId}>>(),
-        Channel.find({
+        }, "_id"),
+        channelService.findRows<ChannelUnreadMeta>({
             company: companyId,
             deleted: false,
             isPublicChat: true,
             "publicChat.assignedTo": assignedUserId,
-        })
-            .select("_id isPublicChat publicChat.status")
-            .lean<ChannelUnreadMeta[]>(),
+        }, "_id isPublicChat publicChat.status"),
     ]);
 
     const internalIds = internalChannels.map((channel) => channel._id);

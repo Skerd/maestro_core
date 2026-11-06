@@ -1,4 +1,5 @@
 import {IUser} from "@coreModule/database/schemas/user/user";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import mongoose, {Document, SchemaTypes} from "mongoose";
 import {IMedia} from "@coreModule/database/schemas/media/media";
 import {applyMessageIndexes} from "./message.indexes";
@@ -368,6 +369,7 @@ auditPlugin(MessageSchema);
 applyMessageIndexes(MessageSchema);
 // Message.syncIndexes(); // Uncomment to manually sync indexes
 
+lifeCyclePlugin(MessageSchema);
 const Message = mongoose.model<IMessage>("Message", MessageSchema);
 normalizeSchemaPermissions(Message);
 export default Message;

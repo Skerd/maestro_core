@@ -1,4 +1,5 @@
 import mongoose, {Document, Schema, SchemaTypes, Types} from 'mongoose';
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {applyMediaIndexes} from "./media.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
@@ -42,7 +43,7 @@ export interface IMedia extends Document, IOwnershipPluginFields, ISoftDeletePlu
     /** Uploaded ahead of the record that will use it and not yet found referenced (see `orphanUploadCleanup`). */
     pendingReference?: boolean;
     /** Other tenants that may read this file through the private media route */
-    sharedWithCompanies: Schema.Types.ObjectId[];
+    sharedWithCompanies: Types.ObjectId[];
     createdAt: Date;
     uploadedAt: Date;
 }
@@ -368,6 +369,7 @@ ownershipPlugin(MediaSchema, {sharedWith: "sharedWithCompanies"});
 auditPlugin(MediaSchema);
 softDeletePlugin(MediaSchema);
 applyMediaIndexes(MediaSchema);
+lifeCyclePlugin(MediaSchema);
 const Media = mongoose.model<IMedia>('Media', MediaSchema);
 normalizeSchemaPermissions(Media);
 export default Media;

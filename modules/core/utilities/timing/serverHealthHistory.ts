@@ -36,12 +36,9 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {
     ServerHealthFormResponseType
 } from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
-import ServerHealth1m, {
-    IServerHealth1m,
-    ServerHealthServiceName
-} from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
-import ServerHealth1h, {IServerHealth1h} from "@coreModule/database/schemas/performance/serverHealth/serverHealth1h";
-import ServerHealth1d from "@coreModule/database/schemas/performance/serverHealth/serverHealth1d";
+import type {IServerHealth1m, ServerHealthServiceName} from "@coreModule/database/schemas/performance/serverHealth/serverHealth1m";
+import type {IServerHealth1h} from "@coreModule/database/schemas/performance/serverHealth/serverHealth1h";
+import {serverHealthService} from "@coreModule/database/schemas/performance/serverHealth/serverHealth.service";
 
 const ONE_HOUR_MS = 60 * 60 * 1_000;
 const ONE_DAY_MS = 24 * ONE_HOUR_MS;
@@ -241,7 +238,7 @@ async function takeHealthSnapshot(
         }
 
         if (docs.length > 0) {
-            await ServerHealth1m.insertMany(docs, {ordered: false});
+            await serverHealthService.insertSnapshots(docs);
         }
     }
     catch (err: any) {
@@ -266,7 +263,7 @@ async function runHourlyRollup(parentLogger?: serverLogger): Promise<void> {
     const toHour = hourStart;
 
     try {
-        const docs: any[] = await ServerHealth1m.aggregate([
+        const docs: any[] = await serverHealthService.aggregate("1m", [
             {$match: {bucketStart: {$gte: new Date(fromHour), $lt: new Date(toHour)}}},
             {
                 $group: {
@@ -291,7 +288,7 @@ async function runHourlyRollup(parentLogger?: serverLogger): Promise<void> {
                     }
                 }
             }
-        ]).exec();
+        ]);
 
         if (docs.length === 0) {
             log.finish("No 1m rows in the previous hour; skipping");
@@ -321,7 +318,7 @@ async function runHourlyRollup(parentLogger?: serverLogger): Promise<void> {
         });
 
         if (inserts.length > 0) {
-            await ServerHealth1h.bulkWrite(inserts, {ordered: false});
+            await serverHealthService.insertRollups("1h", inserts);
         }
         log.finish(`Hourly health rollup wrote ${inserts.length} rows for window ${new Date(fromHour).toISOString()} -> ${new Date(toHour).toISOString()}`);
     }
@@ -344,7 +341,7 @@ async function runDailyRollup(parentLogger?: serverLogger): Promise<void> {
     const toDay = dayStart;
 
     try {
-        const docs: IServerHealth1h[] = await ServerHealth1h.aggregate([
+        const docs = await serverHealthService.aggregate<IServerHealth1h>("1h", [
             {$match: {bucketStart: {$gte: new Date(fromDay), $lt: new Date(toDay)}}},
             {
                 $group: {
@@ -364,7 +361,7 @@ async function runDailyRollup(parentLogger?: serverLogger): Promise<void> {
                     }
                 }
             }
-        ]).exec();
+        ]);
 
         if (docs.length === 0) {
             log.finish("No 1h rows in the previous day; skipping");
@@ -394,7 +391,7 @@ async function runDailyRollup(parentLogger?: serverLogger): Promise<void> {
         });
 
         if (inserts.length > 0) {
-            await ServerHealth1d.bulkWrite(inserts, {ordered: false});
+            await serverHealthService.insertRollups("1d", inserts);
         }
         log.finish(`Daily health rollup wrote ${inserts.length} rows for window ${new Date(fromDay).toISOString()} -> ${new Date(toDay).toISOString()}`);
     }

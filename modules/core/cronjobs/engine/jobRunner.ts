@@ -8,8 +8,10 @@ import {acquireCronLock, keepCronLockAlive, releaseCronLock} from "@coreModule/c
 import {computeRetryDelayMs, resolveRunAttempt, shouldRetry} from "@coreModule/cronjobs/engine/retryEngine";
 import {awaitHandlerWithTimeout} from "@coreModule/cronjobs/engine/awaitHandlerWithTimeout";
 import {recordCronResult} from "@coreModule/cronjobs/health/cronSchedulerHealth";
-import CronJobModel, {type ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
-import CronExecution, {type CronExecutionStatus} from "@coreModule/database/schemas/cronExecution/cronExecution";
+import type {ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
+import type {CronExecutionStatus} from "@coreModule/database/schemas/cronExecution/cronExecution";
+import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
+import {cronExecutionService} from "@coreModule/database/schemas/cronExecution/cronExecution.service";
 
 const MAX_LOG_LINES = 500;
 /** CronJob schema default; rows saved before the field existed have none. */
@@ -106,15 +108,11 @@ export class JobRunner {
     }
 
     private async execute(job: ICronJob, company: Types.ObjectId, handler: CronHandlerFn, logger: serverLogger): Promise<void> {
-        const last = await CronExecution.findOne({jobId: job._id})
-            .sort({startedAt: -1})
-            .select("status attempt nextRetryAt")
-            .lean();
+        const last = await cronExecutionService.findLatestForJob(job._id);
         const attempt = resolveRunAttempt(last);
-        const execution = await CronExecution.create({
+        const execution = await cronExecutionService.start({
             jobId: job._id,
             company,
-            status: "running",
             startedAt: new Date(),
             serverId: CRON.SERVER_ID,
             attempt,
@@ -153,27 +151,9 @@ export class JobRunner {
         const retryAt = outcome.status !== "success" && shouldRetry(attempt, job.maxRetries)
             ? new Date(finishedAt.getTime() + computeRetryDelayMs(job, attempt))
             : null;
-        await CronExecution.updateOne(
-            {_id: execution._id},
-            {
-                $set: {
-                    status: outcome.status,
-                    finishedAt,
-                    durationMs,
-                    logs,
-                    ...(outcome.error ? {error: outcome.error} : {}),
-                    ...(retryAt ? {nextRetryAt: retryAt} : {}),
-                },
-            },
-        );
+        await cronExecutionService.finish(execution._id, {status: outcome.status, finishedAt, durationMs, logs, error: outcome.error, nextRetryAt: retryAt});
         // The scheduler already moved nextRunAt to the next occurrence; a retry can only pull it earlier.
-        await CronJobModel.updateOne(
-            {_id: job._id},
-            {
-                $set: {lastRunAt: finishedAt},
-                ...(retryAt ? {$min: {nextRunAt: retryAt}} : {}),
-            },
-        );
+        await cronJobService.recordRun(job._id, finishedAt, retryAt);
     }
 }
 

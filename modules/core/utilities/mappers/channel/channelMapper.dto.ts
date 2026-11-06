@@ -1,6 +1,6 @@
 import Message, {IMessage} from "@coreModule/database/schemas/message/message";
 import {IChannel} from "@coreModule/database/schemas/channel/channel";
-import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage";
+import {lastChannelReadMessageService} from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage.service";
 import {Channel} from "armonia/src/modules/core/api/user/private/chats/channels/channels.form.response.type";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
@@ -19,7 +19,7 @@ export async function channelToDTO(channel: IChannel, actionUserId: string, acti
     let populate = SchemaGuard.generatePopulate(sanitizedFields, Message.schema);
 
     const [lastChannelReadResult, lastMessagesResult] = await Promise.allSettled([
-        LastChannelReadMessage.findOne({channel: channel._id, user: actionUserId}),
+        lastChannelReadMessageService.findOne({channel: channel._id, user: actionUserId}),
         messageService.find(
             {
                 channel: channel._id,

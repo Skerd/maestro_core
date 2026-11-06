@@ -219,8 +219,8 @@ export interface CrudRouterConfig<
 
     /**
      * Called before deletion. Receives the full validated params and the found document.
-     * Throw to abort deletion (e.g. entity is in use). When provided, replaces the default
-     * `assertCanDelete` relation check so the callback owns all pre-delete validation.
+     * Throw to abort deletion (e.g. entity is in use). Core's relation check (`assertCanDelete`) still runs,
+     * after `afterDelete` in the same transaction (D66), so records the hooks delete with it do not block.
      */
     beforeDelete?: (params: DeleteParams, doc: T) => Promise<void>;
 
@@ -238,11 +238,11 @@ export interface CrudRouterConfig<
     afterRestore?: (params: RestoreParams, doc: T) => Promise<void>;
 
     /**
-     * When provided, replaces the built-in restore route handler entirely.
-     * The middleware chain (auth, rate limiting, form validation, transaction) still runs.
+     * When provided, replaces the built-in restore itself (finding and restoring the record).
+     * Core still runs the middleware chain (auth, rate limiting, form validation, transaction) and
+     * checks the model's `restore` permission before calling it (CORE-04), so the override does not.
      * Use when restore requires pre-restore validation or post-restore side effects that
      * cannot be expressed as simple before/after hooks (e.g. checking related entity availability).
-     * The override is responsible for calling `SchemaGuard.checkModelPermission` itself.
      */
     overrideRestoreHandler?: (params: RestoreParams) => Promise<RestoreResponse>;
 
@@ -331,7 +331,7 @@ export interface CrudRouterConfig<
  *
  * All routes apply `authMW("private")`, rate limiting, Zod validation,
  * SchemaGuard field sanitization, and (for write routes) transaction wrapping.
- * The DELETE route calls `assertCanDelete` before deleting.
+ * The DELETE route runs `assertCanDelete` after the delete and its hooks, in the same transaction.
  *
  * @example
  * export const { router } = createCrudRouter({
@@ -655,15 +655,15 @@ export function createCrudRouter<
                 {session, logger, languageCode, withDeleted: false},
             );
 
-            if (config.beforeDelete) {
-                await config.beforeDelete(params, doc);
-            } else {
-                await assertCanDelete(model.modelName, doc._id, languageCode, session);
-            }
+            await config.beforeDelete?.(params, doc);
 
             await service.deleteById(_id, {session, logger, languageCode, auditUserId: actionUserCtx.userId});
 
             await config.afterDelete?.(params, doc);
+
+            // Relation safety is core's, whatever the hooks do (CORE-04, D66). It runs last, in the same transaction:
+            // what the hooks cascaded no longer counts, and a reference left behind refuses (rolls back) the delete.
+            await assertCanDelete(model.modelName, doc._id, languageCode, session);
 
             let response: DeleteResponse = {message: `${entityName} successfully deleted`};
             try {
@@ -701,14 +701,15 @@ export function createCrudRouter<
         validateFormZod(validateRestoreForm),
         transactionHandler(),
         asyncHandler(async (params: RestoreParams) => {
+            const {logger, languageCode, session, _id, actionUserCtx, company} = params;
+
+            // The restore permission is core's, whoever restores (CORE-04): an override only replaces the restore itself.
+            SchemaGuard.checkModelPermission(model, "restore", actionUserCtx, languageCode);
             if (config.overrideRestoreHandler) {
                 return config.overrideRestoreHandler(params);
             }
 
-            const {logger, languageCode, session, _id, actionUserCtx, company} = params;
-
             logger.start(`Restoring ${entityName} ${_id}...`);
-            SchemaGuard.checkModelPermission(model, "restore", actionUserCtx, languageCode);
 
             const restored = await service.restoreOneOrThrow(
                 await docFilterForId(params, _id),
@@ -743,8 +744,9 @@ export function mountActions(router: Router, ActionsClass: new () => any, model:
             mw.push(authMW(auth as any));
             // A public action has no signed-in caller to hold a permission; a self-service one needs none.
             if (auth !== "public" && !options.selfService) {
-                registerModelAction(model, methodName);
-                mw.push(actionPermissionMW(model, methodName));
+                const permission = options.permission ?? methodName;
+                registerModelAction(model, permission, options.scope);
+                mw.push(actionPermissionMW(model, permission, options.scope));
             }
         }
         if (options.rateLimit)      mw.push(rateLimiter(options.rateLimit));

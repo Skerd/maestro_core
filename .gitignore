@@ -19,4 +19,12 @@ secrets/*
 /modules/propertyManagement/utilities/edifice/floorAndUnitsGenerator/_test/results/
 /logs/
 /secrets/
-/scripts/
+# Operator scripts are versioned (TD-T12). Still ignored: anything backup/restore-like, and the scripts that import a
+# vertical: a core clone without that module would fail the deploy-gate typecheck, so their home is the vertical's repo.
+/scripts/**/*backup*
+/scripts/**/*restore*
+/scripts/emails/
+/scripts/export-property-hierarchy.ts
+/scripts/seed-dental-clinic-demo.ts
+/scripts/seed-ecommerce-demo.ts
+/scripts/syncAriaEstatesDemo.ts

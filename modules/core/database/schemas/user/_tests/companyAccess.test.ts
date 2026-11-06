@@ -10,6 +10,8 @@ vi.mock("@coreModule/connections/connectToRedis", async (importOriginal) => ({
 
 import User from "@coreModule/database/schemas/user/user";
 import Role from "@coreModule/database/schemas/role/role";
+// roleAccessCache reads it by model name; the servers load every model at start-up.
+import "@coreModule/database/schemas/rolePermission/rolePermission";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const shop = new ObjectId();

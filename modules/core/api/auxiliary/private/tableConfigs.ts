@@ -55,7 +55,7 @@ async function getTableConfigurations(
     _routeParams: unknown,
     request: {query?: {scope?: unknown}},
 ): Promise<TableConfiguration> {
-    const {actionUserCtx, languageCode} = params;
+    const {actionUserCtx, languageCode, logger} = params;
     const installed = wantsInstalledModuleScope(request.query);
     const returnThis: TableConfiguration = {};
 
@@ -72,7 +72,7 @@ async function getTableConfigurations(
             if (Object.keys(sanitizedReadFields).length === 0) continue;
             returnThis[key] = filterTableConfigBySanitizedFields(tableConfiguration, sanitizedReadFields);
         }catch(err){
-            console.log(err);
+            logger.warn(`Skipped table configuration ${key}: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 

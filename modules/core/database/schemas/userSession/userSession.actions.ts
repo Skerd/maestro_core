@@ -61,6 +61,36 @@ export class UserSessionActions {
         rateLimit: {windowMs: 60000, max: 30},
         transaction: true,
         schema: validateSingleForm,
+        // Ending one of the caller's own sessions (another device) needs no role (D14, TD-B24); `revoke` is for others'.
+        selfService: true,
+    })
+    async revokeOwn(params: Record<string, any>): Promise<{message: string}> {
+        const {logger, languageCode, session, _id, company, actionUserCtx} = params;
+
+        logger.start(`Revoking own user session: ${_id}...`);
+
+        // Owner check from the caller's identity, never the body: another user's session is not found.
+        const existing = await userSessionService.findOneOrThrow(
+            {_id: new ObjectId(_id), user: new ObjectId(actionUserCtx.userId), company: company._id},
+            {session, logger, languageCode},
+        );
+
+        await userSessionService.updateById(
+            existing._id,
+            {$set: {isActive: false}},
+            {session, logger, languageCode, auditUserId: actionUserCtx.userId, returnNew: true},
+        );
+        notifySessionRevoked(actionUserCtx.userId, existing._id.toString(), logger);
+
+        logger.finish(`Successfully revoked own user session: ${_id}`);
+        return {message: "User session access revoked"};
+    }
+
+    @action({
+        auth: "private",
+        rateLimit: {windowMs: 60000, max: 30},
+        transaction: true,
+        schema: validateSingleForm,
     })
     async revoke(params: Record<string, any>): Promise<{message: string}> {
         const {logger, languageCode, session, _id, company, actionUserCtx} = params;

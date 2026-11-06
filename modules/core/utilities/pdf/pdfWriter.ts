@@ -16,8 +16,9 @@ export function safePdfText(text: string | number | undefined): string {
     return String(text ?? "").replace(/[^\x20-\x7E\xA0-\xFF€—–‘’“”•]/g, "?");
 }
 
-export function pdfMoney(amount: number, currency?: string): string {
-    const formatted = amount.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+/** `decimals` is the currency's `decimalPlaces` (GLB-08): JPY prints none, KWD three. */
+export function pdfMoney(amount: number, currency?: string, decimals = 2): string {
+    const formatted = amount.toLocaleString("en-US", {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
     return currency ? `${currency} ${formatted}` : formatted;
 }
 

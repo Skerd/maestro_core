@@ -10,7 +10,7 @@
 
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {ClosedBucket, metricsAggregator} from "@coreModule/utilities/timing/metricsAggregator";
-import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
+import {serverPerformanceService} from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance.service";
 
 const logger = getLogger("performance_persistence");
 let unsubscribe: (() => void) | null = null;
@@ -53,7 +53,7 @@ async function handleClosedBuckets(buckets: ClosedBucket[]): Promise<void> {
                 }
             }
         }));
-        await ServerPerformance1m.bulkWrite(ops, { ordered: false });
+        await serverPerformanceService.insertBuckets("1m", ops);
     }
     catch (err: any) {
         logger.warn(`Failed to persist ${buckets.length} performance buckets: ${err?.message}`);

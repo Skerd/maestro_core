@@ -18,6 +18,7 @@
  */
 
 import mongoose, {Document, Schema, SchemaTypes} from "mongoose";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {applyServiceUptimeIndexes} from "./serviceUptime.indexes";
 
 /**
@@ -57,5 +58,6 @@ export const ServiceUptimeSchema = new Schema<IServiceUptime>(
 
 applyServiceUptimeIndexes(ServiceUptimeSchema);
 
+lifeCyclePlugin(ServiceUptimeSchema);
 const ServiceUptime = mongoose.model<IServiceUptime>("ServiceUptime", ServiceUptimeSchema);
 export default ServiceUptime;

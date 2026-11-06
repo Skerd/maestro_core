@@ -21,11 +21,13 @@ import {
     NotificationImportance,
     NotificationStatus
 } from "@coreModule/database/schemas/notification/notification";
-import {serverLogger} from "@coreModule/loggers/serverLog";
+import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {sendMessagingNotification} from "@coreModule/utilities/messaging/messagingDispatchService";
 import {sendTelegramNotification} from "@coreModule/utilities/messaging/telegramDispatchService";
-import User from "@coreModule/database/schemas/user/user";
+import {userService} from "@coreModule/database/schemas/user/user.service";
 import {NotificationDeliveryChannel} from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
+
+const notificationLogger = getLogger("notification_domain");
 
 export interface CreateNotificationInput {
     receiver: ObjectId;
@@ -107,15 +109,15 @@ export async function createAndPushNotification(
         const needsWhatsapp = channels.includes(NotificationDeliveryChannel.WHATSAPP);
         if (needsSms || needsWhatsapp) {
             try {
-                const receiverUser = await User.findById(receiver).select("phoneNumber").lean();
-                const phone = (receiverUser as any)?.phoneNumber as string | undefined;
+                const receiverUser = await userService.findById(receiver, {}, undefined, "phoneNumber");
+                const phone = receiverUser?.phoneNumber;
                 if (phone) {
                     const channel = needsWhatsapp ? "whatsapp" : "sms";
                     await sendMessagingNotification({to: phone, body: description, channel, companyId: company});
                 }
             } catch (e) {
                 // Non-fatal — log but don't fail the notification creation
-                console.error("Messaging dispatch failed:", e);
+                notificationLogger.warn(`Messaging dispatch failed: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     }
@@ -123,14 +125,14 @@ export async function createAndPushNotification(
     // Auto-dispatch to Telegram when the receiver has a linked chatId
     if (description) {
         try {
-            const receiverUser = await User.findById(receiver).select("telegram.chatId").lean();
-            const chatId = (receiverUser as any)?.telegram?.chatId as number | undefined;
+            const receiverUser = await userService.findById(receiver, {}, undefined, "telegram.chatId");
+            const chatId = receiverUser?.telegram?.chatId;
             if (chatId) {
                 await sendTelegramNotification({chatId, body: description});
             }
         } catch (e) {
             // Non-fatal — log but don't fail the notification creation
-            console.error("Telegram dispatch failed:", e);
+            notificationLogger.warn(`Telegram dispatch failed: ${e instanceof Error ? e.message : String(e)}`);
         }
     }
 
@@ -171,7 +173,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create MESSAGE_MENTIONED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create MESSAGE_MENTIONED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -199,7 +201,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create ROLE_ASSIGNED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create ROLE_ASSIGNED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -227,7 +229,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create USER_LOGGED_IN notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create USER_LOGGED_IN notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -256,7 +258,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create USER_LOGGED_IN_NEW_DEVICE notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create USER_LOGGED_IN_NEW_DEVICE notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -281,7 +283,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create MFA_DISABLED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create MFA_DISABLED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -306,7 +308,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create MFA_ENABLED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create MFA_ENABLED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -331,7 +333,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create TELEGRAM_LINKED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create TELEGRAM_LINKED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -356,7 +358,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create TELEGRAM_UNLINKED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create TELEGRAM_UNLINKED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -381,7 +383,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create ACCOUNT_SELF_DEACTIVATED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create ACCOUNT_SELF_DEACTIVATED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -412,7 +414,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create ACCOUNT_STATUS_CHANGED_BY_ADMIN notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create ACCOUNT_STATUS_CHANGED_BY_ADMIN notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -444,7 +446,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create INVITATION_RECEIVED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create INVITATION_RECEIVED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -474,7 +476,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create ACCOUNT_ACTIVATED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create ACCOUNT_ACTIVATED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });
@@ -505,7 +507,7 @@ export function registerNotificationEventHandlers(): void {
                     opts
                 );
             } catch (e) {
-                console.error(`Failed to create COMPANY_UPDATED notification for ${receiverId}:`, e);
+                notificationLogger.err(`Failed to create COMPANY_UPDATED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
     });

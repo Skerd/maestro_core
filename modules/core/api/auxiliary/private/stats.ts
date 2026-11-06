@@ -26,6 +26,7 @@ import {STATS_SNAPSHOT_KEY, StatsSnapshotEnvelope} from "@coreModule/utilities/t
 import {WEBSOCKET_PRESENCE_SNAPSHOT_KEY} from "@coreModule/utilities/timing/healthSnapshot";
 import ServerPerformance1h from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1h";
 import ServerPerformance1d from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1d";
+import {serverPerformanceService} from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance.service";
 import {
     EndpointStatType,
     ServerStatsDto,
@@ -153,29 +154,29 @@ async function readHistoricalAggregate(window: HistoricalWindow): Promise<{
     timestamp: string;
 }> {
     const now = Date.now();
-    let model: typeof ServerPerformance1h | typeof ServerPerformance1d;
+    let resolution: "1h" | "1d";
     let from: Date;
 
     switch (window) {
         case "1h":
-            model = ServerPerformance1h;
+            resolution = "1h";
             from = new Date(now - 60 * 60 * 1000);
             break;
         case "24h":
-            model = ServerPerformance1h;
+            resolution = "1h";
             from = new Date(now - 24 * 60 * 60 * 1000);
             break;
         case "7d":
-            model = ServerPerformance1d;
+            resolution = "1d";
             from = new Date(now - 7 * 24 * 60 * 60 * 1000);
             break;
         case "30d":
-            model = ServerPerformance1d;
+            resolution = "1d";
             from = new Date(now - 30 * 24 * 60 * 60 * 1000);
             break;
     }
 
-    const docs: Array<{
+    const docs = await serverPerformanceService.aggregate<{
         _id: { method: string; endpoint: string };
         count: number;
         errors: number;
@@ -186,7 +187,7 @@ async function readHistoricalAggregate(window: HistoricalWindow): Promise<{
         p95Weighted: number;
         p99Weighted: number;
         lastExecuted: Date;
-    }> = await (model as any).aggregate([
+    }>(resolution, [
         { $match: { bucketStart: { $gte: from } } },
         {
             $group: {
@@ -202,7 +203,7 @@ async function readHistoricalAggregate(window: HistoricalWindow): Promise<{
                 lastExecuted: { $max: "$lastExecuted" }
             }
         }
-    ]).exec();
+    ]);
 
     const stats: EndpointStatType[] = docs.map((d) => {
         const avg = d.count === 0 ? 0 : d.sum / d.count;

@@ -18,13 +18,9 @@
 
 import {CronJob} from "cron";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
-import ServerPerformance1m, {
-    IServerPerformance1m
-} from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
-import ServerPerformance1h, {
-    IServerPerformance1h
-} from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1h";
-import ServerPerformance1d from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1d";
+import type {IServerPerformance1m} from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
+import type {IServerPerformance1h} from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1h";
+import {serverPerformanceService} from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance.service";
 
 const ONE_HOUR_MS = 60 * 60 * 1_000;
 const ONE_DAY_MS = 24 * ONE_HOUR_MS;
@@ -45,7 +41,7 @@ async function runHourlyRollup(parentLogger?: serverLogger): Promise<void> {
     const toHour = hourStart;
 
     try {
-        const docs: IServerPerformance1m[] = await ServerPerformance1m.aggregate([
+        const docs = await serverPerformanceService.aggregate<IServerPerformance1m>("1m", [
             { $match: { bucketStart: { $gte: new Date(fromHour), $lt: new Date(toHour) } } },
             {
                 $group: {
@@ -62,7 +58,7 @@ async function runHourlyRollup(parentLogger?: serverLogger): Promise<void> {
                     lastExecuted: { $max: "$lastExecuted" }
                 }
             }
-        ]).exec();
+        ]);
 
         if (docs.length === 0) {
             log.finish("No 1m buckets in the previous hour; nothing to roll up");
@@ -90,7 +86,7 @@ async function runHourlyRollup(parentLogger?: serverLogger): Promise<void> {
         }));
 
         if (inserts.length > 0) {
-            await ServerPerformance1h.bulkWrite(inserts, { ordered: false });
+            await serverPerformanceService.insertBuckets("1h", inserts);
         }
         log.finish(`Hourly rollup wrote ${inserts.length} buckets for window ${new Date(fromHour).toISOString()} -> ${new Date(toHour).toISOString()}`);
     }
@@ -113,7 +109,7 @@ async function runDailyRollup(parentLogger?: serverLogger): Promise<void> {
     const toDay = dayStart;
 
     try {
-        const docs: IServerPerformance1h[] = await ServerPerformance1h.aggregate([
+        const docs = await serverPerformanceService.aggregate<IServerPerformance1h>("1h", [
             { $match: { bucketStart: { $gte: new Date(fromDay), $lt: new Date(toDay) } } },
             {
                 $group: {
@@ -130,7 +126,7 @@ async function runDailyRollup(parentLogger?: serverLogger): Promise<void> {
                     lastExecuted: { $max: "$lastExecuted" }
                 }
             }
-        ]).exec();
+        ]);
 
         if (docs.length === 0) {
             log.finish("No 1h buckets in the previous day; nothing to roll up");
@@ -158,7 +154,7 @@ async function runDailyRollup(parentLogger?: serverLogger): Promise<void> {
         }));
 
         if (inserts.length > 0) {
-            await ServerPerformance1d.bulkWrite(inserts, { ordered: false });
+            await serverPerformanceService.insertBuckets("1d", inserts);
         }
         log.finish(`Daily rollup wrote ${inserts.length} buckets for window ${new Date(fromDay).toISOString()} -> ${new Date(toDay).toISOString()}`);
     }

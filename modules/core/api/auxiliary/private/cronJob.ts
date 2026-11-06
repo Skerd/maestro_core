@@ -1,4 +1,4 @@
-import {z} from "zod";
+import {createCronJobFormSchema} from "armonia/src/modules/core/api/auxiliary/private/cronJob/createCronJob.form.validator";
 import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
 import CronJob, {type ICronJob} from "@coreModule/database/schemas/cronJob/cronJob";
 import {cronJobService} from "@coreModule/database/schemas/cronJob/cronJob.service";
@@ -18,7 +18,7 @@ export const {router} = createCrudRouter({
     collectionName: "cronjobs",
     model: CronJob,
     service: cronJobService,
-    createSchema: () => z.looseObject({}),
+    createSchema: createCronJobFormSchema,
     editSchema: editCronJobFormSchema,
     toDTO: cronJobToDTO,
     toDTOArray: cronJobsToDTO,

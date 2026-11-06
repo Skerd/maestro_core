@@ -33,6 +33,17 @@ export interface ActionOptions {
      * itself (owner or party check on `actionUserCtx`), never trusting the body.
      */
     selfService?: boolean;
+    /**
+     * The permission scope the action always needs (D65). Omitted, it follows the request (`self`, or `others`
+     * when acting as another user). `"others"` is for an action on another user's record named in the body,
+     * e.g. unlocking a colleague's account: only that scope's permission exists and is checked.
+     */
+    scope?: "others";
+    /**
+     * The permission this action is checked against, when several actions are one grant (D71): e.g. joining,
+     * releasing and closing a website chat are all `answerWebsiteChats`. Omitted, the method name.
+     */
+    permission?: string;
 }
 
 export interface RegisteredAction {

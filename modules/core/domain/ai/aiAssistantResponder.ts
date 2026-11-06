@@ -31,8 +31,9 @@
  * @module aiAssistantResponder
  */
 
-import User from "@coreModule/database/schemas/user/user";
+import {userService} from "@coreModule/database/schemas/user/user.service";
 import Company from "@coreModule/database/schemas/company/company";
+import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {messageService} from "@coreModule/database/schemas/message/message.service";
@@ -44,7 +45,7 @@ import {recordAssistantResult} from "@coreModule/domain/ai/assistantHealth";
 import {AiChannelMessageEvent} from "@coreModule/kafka/types";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import {ObjectId} from "mongodb";
-import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage";
+import {lastChannelReadMessageService} from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage.service";
 
 /**
  * How many prior messages to load as conversation context. One exchange is two
@@ -188,7 +189,7 @@ async function composeAndDeliverAiReply(
 
     // The bot user that authors the reply, and the human it answers.
     const botId = await Company.findRobotId(new ObjectId(event.companyId));
-    const human = await User.findById(event.userId).select("username name surname");
+    const human = await userService.findById(event.userId, {}, undefined, "username name surname");
     if (!botId) {
         logger.err(`No bot user for company ${event.companyId}; cannot answer`);
         return false;
@@ -212,7 +213,7 @@ async function composeAndDeliverAiReply(
     let companyName: string | undefined;
     let companyPersona: string | undefined;
     if (isPublic) {
-        const company = await Company.findById(event.companyId).select("name publicAiChat");
+        const company = await companyService.findById(event.companyId, {}, undefined, "name publicAiChat");
         companyName = company?.name;
         companyPersona = company?.publicAiChat?.persona;
     }
@@ -271,11 +272,7 @@ async function composeAndDeliverAiReply(
 
     // Same as PUT /messages updating last-read for the sender: the human just
     // triggered this turn and receives the reply on the open channel.
-    await LastChannelReadMessage.findOneAndUpdate(
-        {user: new ObjectId(event.userId), channel: channel._id },
-        { $set: { time: new Date(reply.createdAt.getTime() + 1) } },
-        { upsert: true }
-    );
+    await lastChannelReadMessageService.markReadUntil(new ObjectId(event.userId), channel._id, new Date(reply.createdAt.getTime() + 1));
 
     // Mark the human's triggering message as read by the bot. Nobody else does
     // this for the AI channel (the bot has no client), so without it the user's

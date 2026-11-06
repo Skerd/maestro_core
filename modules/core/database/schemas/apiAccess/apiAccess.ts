@@ -1,4 +1,5 @@
 import mongoose, {Document, SchemaTypes} from "mongoose";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {applyApiAccessIndexes} from "./apiAccess.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import {IUser} from "@coreModule/database/schemas/user/user";
@@ -157,6 +158,7 @@ applyApiAccessIndexes(ApiAccessSchema);
 // optional without rewriting the plugin contract. 
 ApiAccessSchema.path("company").required(false);
 
+lifeCyclePlugin(ApiAccessSchema);
 const ApiAccess = mongoose.model<IApiAccess>("ApiAccess", ApiAccessSchema);
 normalizeSchemaPermissions(ApiAccess);
 export default ApiAccess;

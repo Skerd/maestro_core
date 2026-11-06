@@ -2,6 +2,7 @@ import {existsSync, mkdirSync, writeFileSync} from "fs";
 import nodePath from "path";
 import {AccessMode, FieldPermissions, Model, ModelPermissionAction, ModelPermissionRule, ModelPermissions, PermissionAction, PermissionRule, Schema, SchemaType, SchemaTypes} from "mongoose";
 import {isPlainObject} from "@coreModule/utilities/helpers";
+import {getLogger} from "@coreModule/loggers/serverLog";
 
 type NormalizedPermissions = {self: PermissionRule | ModelPermissionRule, others: PermissionRule | ModelPermissionRule};
 
@@ -247,7 +248,7 @@ export function normalizeSchemaPermissions(model: Model<any>): {permissions: Rec
         );
     }
     catch (e) {
-        console.error(`Failed to write normalization snapshot for ${permissionKey}:`, (e as any)?.message);
+        getLogger("schema_permissions").warn(`Failed to write normalization snapshot for ${permissionKey}: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     return writeSchemaSnapshot

@@ -1,6 +1,7 @@
 import {Request, Router} from "express";
 import {ObjectId} from "mongodb";
-import AuditLog, {AuditDiffEntry} from "@coreModule/database/schemas/auditLog/auditLog";
+import type {AuditDiffEntry} from "@coreModule/database/schemas/auditLog/auditLog";
+import {auditLogService} from "@coreModule/database/schemas/auditLog/auditLog.service";
 import {resolveAuditReferenceLabels} from "@coreModule/database/schemas/auditLog/auditReferenceLabels";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
@@ -231,14 +232,7 @@ async function getDocumentAuditLogs(reqBody: DocAuditParams, _routeParams: unkno
 
     logger.start(`Fetching audit logs for ${collectionName}/${documentId}...`);
 
-    const rawEntries = await AuditLog.find(filter)
-        .sort({createdAt: -1, _id: -1})
-        .limit(limit + 1)
-        .populate({
-            path: "actorId",
-            select: "name surname email",
-        })
-        .lean();
+    const rawEntries = await auditLogService.findDocumentHistory(filter, limit + 1);
 
     const hasMore = rawEntries.length > limit;
     const slice = hasMore ? rawEntries.slice(0, limit) : rawEntries;

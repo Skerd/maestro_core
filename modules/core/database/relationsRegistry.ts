@@ -108,6 +108,7 @@ export async function assertCanDelete(
     if (!relations?.length) return;
 
     const blockers: string[] = [];
+    const blockingCollections = new Set<string>();
 
     for (const rel of relations) {
         if (!rel.required) continue;
@@ -119,15 +120,18 @@ export async function assertCanDelete(
             .session(session ?? null);
 
         if (count > 0) {
-            blockers.push(`${rel.fromCollection}.${rel.field} (${count} record${count === 1 ? "" : "s"})`);
+            // The blocking record type and how many, with no English words inside the localized sentence (D72).
+            blockers.push(`${rel.fromCollection} (${count})`);
+            blockingCollections.add(rel.fromCollection);
         }
     }
 
     if (blockers.length > 0) {
+        // `content` lists the blocking collections so the panel can show its own labels for them.
         throw apiValidationException(
             "cannot_delete_has_relations",
             null,
-            null,
+            [...blockingCollections],
             languageCode,
             [blockers.join(", ")]
         );

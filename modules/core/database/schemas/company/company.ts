@@ -533,8 +533,7 @@ async function createDefaultRolesFor(this: ICompany, parentLogger?: serverLogger
         logger.finish(`Finished creating/updating company roles for company named '${this.name}' with VAT '${this.vat}'!`);
     }
     catch (e){
-        console.log(e);
-        logger.err(`Failed to create/update company roles for company named '${this.name}' with VAT '${this.vat}'!`);
+        logger.err(`Failed to create/update company roles for company named '${this.name}' with VAT '${this.vat}'!: ${e instanceof Error ? e.message : String(e)}`);
         logger.fail("Failed to create/update company roles for company named '" + this.name + "' with VAT '" + this.vat + "'!");
     }
 }
@@ -593,7 +592,7 @@ CompanySchema.methods.addCompanyDemoData = async function (parentLogger?: server
         await createCities(logger, this);
         logger.debug(`Added currencies, countries, states and cities!`);
     }catch (e){
-        console.log(e);
+        logger.err(e instanceof Error ? (e.stack ?? e.message) : String(e));
         logger.fail("Failed to add company demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
     }
 
@@ -602,7 +601,7 @@ CompanySchema.methods.addCompanyDemoData = async function (parentLogger?: server
         await seedCoreDemoData(logger, this);
         logger.debug(`Added core demo data!`);
     }catch (e){
-        console.log(e);
+        logger.err(e instanceof Error ? (e.stack ?? e.message) : String(e));
         logger.fail("Failed to add core demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
     }
 
@@ -611,7 +610,7 @@ CompanySchema.methods.addCompanyDemoData = async function (parentLogger?: server
         await runModuleCompanyDemoSeeds(logger, this);
         logger.debug(`Added optional module demo data!`);
     }catch (e){
-        console.log(e);
+        logger.err(e instanceof Error ? (e.stack ?? e.message) : String(e));
         logger.fail("Failed to add module demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
     }
 

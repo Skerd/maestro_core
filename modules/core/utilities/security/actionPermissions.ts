@@ -19,14 +19,16 @@ type Scope = "self" | "others";
 interface ModelAction {
     model: Model<any>;
     methodName: string;
+    /** The only scope the action has, when it declares one (`ActionOptions.scope`). */
+    scope?: Scope;
 }
 
 const actions = new Map<string, ModelAction>();
 const logger = getLogger("actionPermissions");
 
 /** Records `methodName` as an action of `model`; `createRolePermissions` turns each into its tags. */
-export function registerModelAction(model: Model<any>, methodName: string): void {
-    actions.set(`${model.collection.name}:${methodName}`, {model, methodName});
+export function registerModelAction(model: Model<any>, methodName: string, scope?: Scope): void {
+    actions.set(`${model.collection.name}:${methodName}`, {model, methodName, scope});
 }
 
 /** The tag for performing `methodName` on `model` in `scope`, or undefined where the model has no such scope. */
@@ -46,10 +48,10 @@ function actionName(methodName: string): string {
 /** Every registered action's permission rows, grouped under their model like its field and model tags. */
 export function actionPermissionEntries(): {name: string; group: string; tag: string; alwaysActive: false; module: string}[] {
     const entries: {name: string; group: string; tag: string; alwaysActive: false; module: string}[] = [];
-    for (const {model, methodName} of actions.values()) {
+    for (const {model, methodName, scope: only} of actions.values()) {
         const key = model.collection.name;
         const group = key.charAt(0).toUpperCase() + key.slice(1);
-        for (const scope of ["self", "others"] as const) {
+        for (const scope of only ? [only] : (["self", "others"] as const)) {
             const tag = actionPermissionTag(model, methodName, scope);
             if (tag) entries.push({name: actionName(methodName), group, tag, alwaysActive: false, module: getModelModule(model.modelName)});
         }
@@ -59,12 +61,13 @@ export function actionPermissionEntries(): {name: string; group: string; tag: st
 
 /**
  * Refuses the action unless the caller's role holds its permission. Runs after `authMW`; acting as
- * another user (impersonation) needs the `others` tag, like the model permissions.
+ * another user (impersonation) needs the `others` tag, like the model permissions. An action that declares
+ * its `scope` always needs that scope's tag.
  */
-export function actionPermissionMW(model: Model<any>, methodName: string): RequestHandler {
+export function actionPermissionMW(model: Model<any>, methodName: string, scope?: Scope): RequestHandler {
     return (req, _res, next) => {
         const ctx: UserContext | undefined = req.body?.actionUserCtx;
-        const tag = actionPermissionTag(model, methodName, ctx?.isSelf === false ? "others" : "self");
+        const tag = actionPermissionTag(model, methodName, scope ?? (ctx?.isSelf === false ? "others" : "self"));
         if (tag && ctx?.permissions?.includes(tag)) return next();
         const label = tag ?? `${model.collection.name}[action:others:${methodName}]`;
         const module = requestContext.getStore()?.routeModule ?? "no module";

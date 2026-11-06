@@ -35,7 +35,7 @@ import {isAssistantResponderOnline} from "@coreModule/domain/ai/assistantHealth"
 import {AI_ASSISTANT} from "@coreModule/environment";
 import {publishAiChannelMessageEvent} from "@coreModule/kafka/kafkaProducer";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
-import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage";
+import {lastChannelReadMessageService} from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage.service";
 
 /**
  * Message shown when the assistant responder process is unreachable. Shares
@@ -148,11 +148,7 @@ export async function postAssistantUnavailableNotice(params: AssistantUnavailabl
         };
         pushWebsocketMessage(websocketMessage);
 
-        await LastChannelReadMessage.findOneAndUpdate(
-            {user: new ObjectId(userId), channel: channelObjectId},
-            {$set: {time: new Date(notice.createdAt.getTime() + 1)}},
-            {upsert: true}
-        );
+        await lastChannelReadMessageService.markReadUntil(new ObjectId(userId), channelObjectId, new Date(notice.createdAt.getTime() + 1));
 
         logger.debug(`Posted assistant-offline notice in AI channel ${channelId} for user ${userId}`);
         return true;

@@ -1,4 +1,5 @@
 import {IUser} from "@coreModule/database/schemas/user/user";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import mongoose, {Document, SchemaTypes} from "mongoose";
 import {applyLastChannelReadMessageIndexes} from "./lastChannelReadMessage.indexes";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
@@ -71,6 +72,7 @@ export const LastChannelReadMessageSchema = new mongoose.Schema<ILastChannelRead
 
 auditPlugin(LastChannelReadMessageSchema);
 applyLastChannelReadMessageIndexes(LastChannelReadMessageSchema);
+lifeCyclePlugin(LastChannelReadMessageSchema);
 const LastChannelReadMessage = mongoose.model<ILastChannelReadMessage>("LastChannelReadMessage", LastChannelReadMessageSchema);
 normalizeSchemaPermissions(LastChannelReadMessage);
 export default LastChannelReadMessage;

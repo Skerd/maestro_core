@@ -31,8 +31,8 @@ vi.mock("telegraf", () => {
     }
     return {Telegraf: FakeTelegraf};
 });
-vi.mock("@coreModule/database/schemas/user/user", () => ({
-    default: {findOne: (query: object) => ({select: () => state.findOne(query)})},
+vi.mock("@coreModule/database/schemas/user/user.service", () => ({
+    userService: {findOne: (query: object) => state.findOne(query)},
 }));
 vi.mock("@coreModule/environment", () => ({
     TELEGRAM: {TOKEN: "token", NAME: "bot"},

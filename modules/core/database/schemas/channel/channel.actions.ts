@@ -4,6 +4,7 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import type {IChannel} from "@coreModule/database/schemas/channel/channel";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
 import {
+    ANSWER_WEBSITE_CHATS,
     assignAgentToPublicChat,
     closePublicChatByAgent,
     releasePublicChatToBot,
@@ -47,6 +48,7 @@ export class ChannelActions {
     @action({
         auth: "private",
         rateLimit: {windowMs: 60000, max: 60},
+        permission: ANSWER_WEBSITE_CHATS,
         middleware: [schemaSanitizer({model: "channels", requiredModes: ["read"]})],
         schema: validateSingleForm,
     })
@@ -85,6 +87,7 @@ export class ChannelActions {
     @action({
         auth: "private",
         rateLimit: {windowMs: 60000, max: 60},
+        permission: ANSWER_WEBSITE_CHATS,
         schema: validateSingleForm,
     })
     async release(params: ChannelActionParams): Promise<ActionMessage> {
@@ -111,6 +114,7 @@ export class ChannelActions {
     @action({
         auth: "private",
         rateLimit: {windowMs: 60000, max: 60},
+        permission: ANSWER_WEBSITE_CHATS,
         schema: validateSingleForm,
     })
     async close(params: ChannelActionParams): Promise<ActionMessage> {

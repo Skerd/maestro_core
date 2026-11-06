@@ -1,5 +1,5 @@
 import {randomUUID} from "crypto";
-import CronLock from "@coreModule/database/schemas/cronLock/cronLock";
+import {cronLockService} from "@coreModule/database/schemas/cronLock/cronLock.service";
 import {isRedisConnected, redisReleaseLock, redisTryAcquireOrRenewLock} from "@coreModule/connections/connectToRedis";
 import {CRON} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
@@ -36,23 +36,8 @@ export async function acquireCronLock(name: string, ttlMs: number): Promise<Cron
         return acquired ? handle : null;
     }
 
-    const now = new Date();
-    await CronLock.deleteMany({key: handle.key, expiresAt: {$lte: now}});
-    try {
-        await CronLock.create({
-            key: handle.key,
-            owner: CRON.SERVER_ID,
-            token: handle.token,
-            expiresAt: new Date(now.getTime() + ttlMs),
-            heartbeatAt: now,
-        });
-        return handle;
-    } catch (e: unknown) {
-        if ((e as {code?: number}).code === 11000) {
-            return null;
-        }
-        throw e;
-    }
+    const acquired = await cronLockService.tryAcquire({key: handle.key, owner: CRON.SERVER_ID, token: handle.token, ttlMs}, new Date());
+    return acquired ? handle : null;
 }
 
 /** Extends the lock. False means it is lost: it expired and someone else took it, or the store is down. */
@@ -60,12 +45,7 @@ export async function renewCronLock(handle: CronLockHandle): Promise<boolean> {
     if (handle.store === "redis") {
         return redisTryAcquireOrRenewLock(handle.key, handle.token, toTtlSeconds(handle.ttlMs));
     }
-    const now = new Date();
-    const result = await CronLock.updateOne(
-        {key: handle.key, token: handle.token},
-        {$set: {heartbeatAt: now, expiresAt: new Date(now.getTime() + handle.ttlMs)}},
-    );
-    return result.matchedCount === 1;
+    return cronLockService.renew(handle.key, handle.token, handle.ttlMs, new Date());
 }
 
 export async function releaseCronLock(handle: CronLockHandle): Promise<void> {
@@ -73,7 +53,7 @@ export async function releaseCronLock(handle: CronLockHandle): Promise<void> {
         await redisReleaseLock(handle.key, handle.token);
         return;
     }
-    await CronLock.deleteOne({key: handle.key, token: handle.token});
+    await cronLockService.release(handle.key, handle.token);
 }
 
 /** Renews `handle` every third of its TTL until the returned function is called. */

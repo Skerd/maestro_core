@@ -10,7 +10,7 @@
  * - Action counting for request/operation tracking
  * - Multiple log levels: info, warn, err, debug, default
  * - Daily log rotation with compression
- * - Console and file output
+ * - Terminal output (written here) and file output (Winston daily rotation)
  * - Service code filtering (dontPrintCodes)
  * 
  * Log Format:
@@ -31,7 +31,7 @@
  * @module loggers/serverLog
  */
 
-const {createLogger, transports, format} = require('winston');
+const {createLogger, format} = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
 
 /** Global action counter for request/operation tracking */
@@ -52,8 +52,8 @@ const WinstonLogger = createLogger({
         format.timestamp(),
         format.simple()
     ),
+    // File only: the terminal copy is written by `log` below, without the timestamp (one line per entry, not two).
     transports: [
-        new transports.Console(),
         new DailyRotateFile({
             filename: 'logs/application/%DATE%.log',
             datePattern: 'YYYY-MM-DD',
@@ -108,24 +108,21 @@ function log(args: logType): string {
     let message = `[${timeNow}][${messageType}][${actionNumber}][${args.actionInitializer}]: ${args.preSpace}${args.message} ${updatedRows}`;
     let consoleMessage = `[${messageType}][${actionNumber}][${args.actionInitializer}]: ${args.preSpace}${args.message} ${updatedRows}`;
 
+    // This module is the logger: its terminal copy goes straight to the process streams (BE-11 forbids console.* elsewhere).
     if (args.type == "err") {
-        console.error(consoleMessage);
+        process.stderr.write(consoleMessage + "\n");
         WinstonLogger.error(message);
     }
     else if (args.type == "warn") {
-        console.warn(consoleMessage);
+        process.stderr.write(consoleMessage + "\n");
         WinstonLogger.warn(message);
     }
-    else if (args.type == "info") {
-        console.info(consoleMessage);
-        WinstonLogger.info(message);
-    }
-    else if (args.type == "debug") {
-        console.info(consoleMessage);
+    else if (args.type == "info" || args.type == "debug") {
+        process.stdout.write(consoleMessage + "\n");
         WinstonLogger.info(message);
     }
     else {
-        console.log(consoleMessage);
+        process.stdout.write(consoleMessage + "\n");
         WinstonLogger.log(message);
     }
     return message;

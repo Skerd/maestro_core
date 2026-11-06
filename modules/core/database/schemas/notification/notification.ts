@@ -1,4 +1,5 @@
 import mongoose, {Document, SchemaTypes} from "mongoose";
+import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {applyNotificationIndexes} from "./notification.indexes";
 import {IUser} from "@coreModule/database/schemas/user/user";
 import {ICompany} from "@coreModule/database/schemas/company/company";
@@ -291,6 +292,7 @@ ownershipPlugin(NotificationSchema);
 auditPlugin(NotificationSchema);
 softDeletePlugin(NotificationSchema);
 applyNotificationIndexes(NotificationSchema);
+lifeCyclePlugin(NotificationSchema);
 const Notification = mongoose.model<INotification>("Notification", NotificationSchema);
 normalizeSchemaPermissions(Notification);
 export default Notification;

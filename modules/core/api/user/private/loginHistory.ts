@@ -1,5 +1,5 @@
 import {ObjectId} from "mongodb";
-import {z} from "zod";
+import {loginHistoryWriteFormSchema} from "armonia/src/modules/core/api/user/private/loginHistory/loginHistoryWrite.form.validator";
 import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {loginHistoryService} from "@coreModule/database/schemas/loginHistory/loginHistory.service";
@@ -28,8 +28,8 @@ export const {router} = createCrudRouter({
     model: LoginHistory,
     service: loginHistoryService,
     entityName: "Login history",
-    createSchema: () => z.looseObject({}),
-    editSchema: () => z.looseObject({}),
+    createSchema: loginHistoryWriteFormSchema,
+    editSchema: loginHistoryWriteFormSchema,
     listSchema: loginHistoryFormSchema,
     selectSchema: loginHistoriesSelectFormSchema,
     toDTO: loginHistoryToDTO,

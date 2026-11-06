@@ -10,7 +10,7 @@ import {publicMediaUrl, publicMediaUrls} from "@coreModule/utilities/media/publi
 import {isPortalApexOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
-import Company from "@coreModule/database/schemas/company/company";
+import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {blogPostService} from "@coreModule/database/schemas/blogPost/blogPost.service";
 import {blogCategoryService} from "@coreModule/database/schemas/blogCategory/blogCategory.service";
 import {BlogCategorySimpleSnippet} from "@coreModule/database/schemas/blogCategory/blogCategory.snippets";
@@ -137,7 +137,7 @@ router.post(
  */
 async function publicBlogCompanyFilter(origin: string, languageCode: string): Promise<Record<string, unknown>> {
     if (blogSpansCompanies(origin)) {
-        const ids = (await Company.find({isActive: true}, {_id: 1}).noDeleted().lean()).map((row) => row._id);
+        const ids = await companyService.findIds({isActive: true});
         return {company: {$in: ids}};
     }
     const company = await resolveCompanyByOrigin(origin, languageCode);

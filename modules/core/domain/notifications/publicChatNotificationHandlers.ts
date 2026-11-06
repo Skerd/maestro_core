@@ -12,6 +12,7 @@ import {createAndPushNotification} from "@coreModule/domain/notifications/notifi
 import {NotificationCategory} from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
 import {NotificationImportance} from "@coreModule/database/schemas/notification/notification";
 import {CONSTANTS} from "@coreModule/environment";
+import {getLogger} from "@coreModule/loggers/serverLog";
 
 export function registerPublicChatNotificationHandlers(): void {
     notificationEventBus.on(
@@ -45,7 +46,7 @@ export function registerPublicChatNotificationHandlers(): void {
                     );
                 }
                 catch (e) {
-                    console.error(`Failed to create PUBLIC_CHAT_HANDOFF_REQUESTED notification for ${receiverId}:`, e);
+                    getLogger("public_chat_notifications").err(`Failed to create PUBLIC_CHAT_HANDOFF_REQUESTED notification for ${receiverId}: ${e instanceof Error ? e.message : String(e)}`);
                 }
             }
         },
