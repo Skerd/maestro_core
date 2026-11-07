@@ -46,9 +46,9 @@ beforeAll(async () => {
     // Raw rows: only the fields the lookup reads.
     await RolePermission.collection.insertOne({_id: answerPermission, tag: answerTag, group: "Channels"});
     await Role.collection.insertMany([
-        {_id: adminRole, company: companyId, isAdmin: true, permissions: [], deletedAt: null},
-        {_id: chatAgentRole, company: companyId, isAdmin: false, permissions: [answerPermission], deletedAt: null},
-        {_id: otherRole, company: companyId, isAdmin: false, permissions: [], deletedAt: null},
+        {_id: adminRole, company: companyId, slug: "admin", isAdmin: true, permissions: [], deletedAt: null},
+        {_id: chatAgentRole, company: companyId, slug: "chat-agent", isAdmin: false, permissions: [answerPermission], deletedAt: null},
+        {_id: otherRole, company: companyId, slug: "other", isAdmin: false, permissions: [], deletedAt: null},
     ]);
     await User.collection.insertMany([
         member(agent, adminRole),

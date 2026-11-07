@@ -14,6 +14,9 @@ import {inject} from "vitest";
 
 export async function connectTestDatabase(): Promise<void> {
     await mongoose.connect(inject("mongoUri"), {dbName: `test_${randomBytes(8).toString("hex")}`});
+    // Wait until every registered model's collection and indexes exist: a transaction gets only 5 ms to take a
+    // collection lock, so an implicit collection create or a background index build fails it (LockTimeout).
+    await Promise.all(mongoose.modelNames().map((name) => mongoose.model(name).init()));
 }
 
 /** Drops the file's database (the replica set outlives the file) and disconnects. */
