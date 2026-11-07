@@ -42,6 +42,7 @@ import {
 import {resolveSiteSlug} from "armonia/src/modules/core/api/company/private/company/siteSlug";
 import {PORTAL_ROOT_DOMAIN} from "@coreModule/environment";
 import {buildSiteHostAssignment} from "@coreModule/utilities/company/siteHost";
+import {isValidTimeZone} from "@coreModule/utilities/time/timeWindows";
 import type {FilterQuery} from "mongoose";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
 
@@ -67,6 +68,14 @@ const SITE_SLUG_ERRORS = {
     invalid: "company_site_slug_invalid",
     reserved: "company_site_slug_reserved",
 } as const;
+
+/** The company's IANA zone as stored (D91): trimmed, `undefined` when empty; an unknown zone is refused. */
+function companyTimeZoneInput(timezone: string | undefined, languageCode: string): string | undefined {
+    const zone = timezone?.trim();
+    if (!zone) return undefined;
+    if (!isValidTimeZone(zone)) throw apiValidationException("company_invalid_timezone", "", null, languageCode, [zone]);
+    return zone;
+}
 
 function trimDomains(domains: string[] | undefined): string[] {
     return (domains ?? []).map((domain) => domain.trim()).filter((domain) => domain !== "");
@@ -274,7 +283,7 @@ type CreateNewCompanyType = TransactionRequiredParams & CreateCompanyFormType & 
  * @remarks Validates VAT uniqueness; creates addresses if provided; adds to userInfo.companies/roles/finance
  */
 async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, allowedDomains, publicAiChat, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
+    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone, allowedDomains, publicAiChat, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
 
     logger.start(`Trying to create new company...`);
 
@@ -293,6 +302,7 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
         throw apiValidationException(SITE_SLUG_ERRORS[resolvedSlug.error], "siteSlug", [siteSlug ?? ""], languageCode);
     }
     await assertSiteSlugAvailable(resolvedSlug.slug, languageCode, {session, logger});
+    const zone = companyTimeZoneInput(timezone, languageCode);
 
     const siteHostAssignment = buildSiteHostAssignment({siteSlug: resolvedSlug.slug, rootDomain: PORTAL_ROOT_DOMAIN});
     const domains = trimDomains(allowedDomains);
@@ -315,6 +325,7 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
             siteSlug: siteHostAssignment.siteSlug,
             siteHost: siteHostAssignment.siteHost,
             siteProvision: siteHostAssignment.siteProvision,
+            ...(zone ? {timezone: zone} : {}),
             allowedDomains: domains.length > 0 ? domains : ["none.none.com"],
             addresses: await validateAndMapAddresses(addresses, newCompanyId, {languageCode, session, logger}),
             parentCompany: company._id,
@@ -371,7 +382,7 @@ type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & Media
  * @returns Success message
  */
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, allowedDomains, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, timezone, allowedDomains, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -426,6 +437,10 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
         existingCompany.siteHost = siteHostAssignment.siteHost;
         existingCompany.siteProvision = siteHostAssignment.siteProvision;
         existingCompany.markModified("siteProvision");
+    }
+    // Sent empty: the company falls back to the instance's zone.
+    if (timezone !== undefined && sanitizedWriteFields.timezone) {
+        existingCompany.set("timezone", companyTimeZoneInput(timezone, languageCode));
     }
     if (allowedDomains && sanitizedWriteFields.allowedDomains) {
         const nextDomains = trimDomains(allowedDomains);

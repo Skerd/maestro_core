@@ -51,6 +51,7 @@ export const defaultCompaniesValues: any = {
             "instagram": "https://www.instagram.com/arpeggio",
             "facebook": "https://www.facebook.com/arpeggio",
             "vat": "Z000000000Z",
+            "timezone": "Europe/Tirane",
             "isActive": true,
             "isPlatformOwner": true,
             "isDefaultForSignUp": true,
@@ -75,6 +76,7 @@ export const defaultCompaniesValues: any = {
             "instagram": "https://www.instagram.com/arpeggiomarket",
             "facebook": "https://www.facebook.com/arpeggiomarket",
             "vat": "Z123456789Z",
+            "timezone": "Europe/Tirane",
             "isActive": true,
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
@@ -101,6 +103,7 @@ export const defaultCompaniesValues: any = {
             "instagram": "https://www.instagram.com/bllokudental",
             "facebook": "https://www.facebook.com/bllokudental",
             "vat": "Z223456789Z",
+            "timezone": "Europe/Tirane",
             "isActive": true,
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
@@ -126,6 +129,7 @@ export const defaultCompaniesValues: any = {
             "instagram": "https://www.instagram.com/adriaticdrive",
             "facebook": "https://www.facebook.com/adriaticdrive",
             "vat": "Z323456789Z",
+            "timezone": "Europe/Tirane",
             "isActive": true,
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
@@ -151,6 +155,7 @@ export const defaultCompaniesValues: any = {
             "instagram": "https://www.instagram.com/ariaestates",
             "facebook": "https://www.facebook.com/ariaestates",
             "vat": "Z423456789Z",
+            "timezone": "Europe/Tirane",
             "isActive": true,
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
@@ -174,6 +179,7 @@ export const defaultCompaniesValues: any = {
             "phoneNumber": "+41 44 500 21 30",
             "linkedin": "https://www.linkedin.com/company/alpinereach",
             "vat": "CHE-523.456.789",
+            "timezone": "Europe/Zurich",
             "isActive": true,
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
@@ -194,7 +200,7 @@ export const defaultCompaniesValues: any = {
 const PROFILE_KEYS = [
     "name", "email", "description", "website", "phoneNumber",
     "linkedin", "instagram", "facebook", "isActive", "allowedDomains",
-    "siteSlug", "shopListedOnPortal", "isDefaultForSignUp", "isPlatformOwner",
+    "siteSlug", "timezone", "shopListedOnPortal", "isDefaultForSignUp", "isPlatformOwner",
 ] as const;
 
 function actorId(createdBy: any): ObjectId | undefined {

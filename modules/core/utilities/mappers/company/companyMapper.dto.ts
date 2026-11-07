@@ -45,6 +45,7 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
         facebook: company.facebook,
         vat: company.vat,
         siteSlug: company.siteSlug,
+        timezone: company.timezone,
         siteHost: company.siteHost,
         siteProvision: company.siteProvision
             ? {

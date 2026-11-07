@@ -44,7 +44,7 @@ import {seedCronJobsForCompany} from "@coreModule/cronjobs/bootstrap/seedCompany
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
 import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
-import {CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
+import {COMPANY_TIMEZONE_MAX, CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import {
     SITE_PROVISION_STATUSES,
     SITE_SLUG_MAX,
@@ -92,6 +92,8 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     facebook?: string;
     vat: string;
     siteSlug?: string;
+    /** IANA zone the company's business days are evaluated in (D91); resolve it with `companyTimeZone`. */
+    timezone?: string;
     siteHost?: string;
     siteProvision?: {
         status: SiteProvisionStatus;
@@ -253,6 +255,11 @@ const CompanySchema: Schema = new Schema(
             trim: true,
             lowercase: true,
             maxlength: SITE_SLUG_MAX,
+        },
+        timezone: {
+            type: SchemaTypes.String,
+            trim: true,
+            maxlength: COMPANY_TIMEZONE_MAX,
         },
         siteHost: {
             type: SchemaTypes.String,

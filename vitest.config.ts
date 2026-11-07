@@ -22,9 +22,11 @@ export default defineConfig({
     test: {
         // One in-memory MongoDB replica set for the whole run; each DB-backed file connects to it with
         // `connectTestDatabase` in a database of its own (TD-T14: one replica set per file died mid-file under
-        // load). Files still run one at a time: run in parallel they contended for the machine (TD-B19).
+        // load). Four files run at once: with one shared replica set and `Model.init()` before each file's first
+        // transaction, they no longer contend (TD-B19); more workers mostly queue on the single mongod.
         globalSetup: ["./modules/core/_tests/mongoGlobalSetup.ts"],
-        fileParallelism: false,
+        maxWorkers: 4,
+        minWorkers: 1,
         hookTimeout: 60_000,
         // The modules' API error messages, which the servers register at start-up.
         setupFiles: ["./modules/core/_tests/vitestSetup.ts"],

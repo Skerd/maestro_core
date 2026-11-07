@@ -8,5 +8,6 @@ export const CurrencySimpleSnippet = defineSnippet<ICurrency, CurrencySimple>()(
         name: {},
         symbol: {},
         abbreviation: {},
+        decimalPlaces: {},
     },
 });

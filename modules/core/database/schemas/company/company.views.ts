@@ -1,5 +1,6 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
 import {lifecycleSheetGroup} from "@coreModule/database/schemas/shared/lifecycleSheetGroup";
+import {COMPANY_TIMEZONE_MAX} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 
 export const companySheetView: ViewConfig = {
     model: "companies",
@@ -59,6 +60,11 @@ export const companySheetView: ViewConfig = {
                             render: "#DisplayCard",
                             permissions: {read: "siteSlug"},
                             field: {name: "siteSlug", widget: "#DisplayCard", label: "siteSlug", widgetProps: {icon: "#Hash"}},
+                        },
+                        {
+                            render: "#DisplayCard",
+                            permissions: {read: "timezone"},
+                            field: {name: "timezone", widget: "#DisplayCard", label: "timezone", widgetProps: {icon: "#IconClock"}},
                         },
                         {
                             render: "#DisplayCard",
@@ -298,6 +304,7 @@ const companyFormCreateFields: ViewConfig["nodes"] = [
         children: [
             {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}},
             {render: "#Field", field: {name: "siteSlug", widget: "#Input", label: "form.siteSlugLabel", placeholder: "form.siteSlugPlaceholder"}},
+            {render: "#Field", field: {name: "timezone", widget: "#Input", label: "form.timezoneLabel", placeholder: "form.timezonePlaceholder", widgetProps: {maxLength: COMPANY_TIMEZONE_MAX}}},
             {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder", required: true}},
             {
                 render: "#Field",
@@ -316,7 +323,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
     {
         render: "#TitleWithCollapse",
         props: {title: "generalInfo"},
-        permissions: {writeAny: ["name", "siteSlug", "shopListedOnPortal", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
+        permissions: {writeAny: ["name", "siteSlug", "timezone", "shopListedOnPortal", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
         children: [
             {
                 render: "#FormGrid",
@@ -324,6 +331,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                 children: [
                     {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}, permissions: {read: "name", write: "name"}},
                     {render: "#Field", field: {name: "siteSlug", widget: "#Input", label: "form.siteSlugLabel", placeholder: "form.siteSlugPlaceholder"}, permissions: {read: "siteSlug", write: "siteSlug"}},
+                    {render: "#Field", field: {name: "timezone", widget: "#Input", label: "form.timezoneLabel", placeholder: "form.timezonePlaceholder", widgetProps: {maxLength: COMPANY_TIMEZONE_MAX}}, permissions: {read: "timezone", write: "timezone"}},
                     {render: "#Field", field: {name: "shopListedOnPortal", widget: "#Switch", label: "form.shopListedOnPortalLabel"}, permissions: {read: "shopListedOnPortal", write: "shopListedOnPortal"}},
                     {render: "#Field", field: {name: "email", widget: "#Input", label: "form.emailLabel", placeholder: "form.emailPlaceholder", required: true}, permissions: {read: "email", write: "email"}},
                     {
