@@ -422,7 +422,10 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     if (instagram !== undefined && sanitizedWriteFields.instagram) existingCompany.instagram = instagram;
     if (facebook !== undefined && sanitizedWriteFields.facebook) existingCompany.facebook = facebook;
     if (vat && sanitizedWriteFields.vat) existingCompany.vat = vat;
-    if (sanitizedWriteFields.siteSlug) {
+    // An unsent slug is built from the name only when none is stored: a stored slug never follows the name on an
+    // unrelated edit (a name like "Shop" slugifies to a reserved word and would block every later save).
+    const slugSent = (siteSlug ?? "").trim().length > 0;
+    if (sanitizedWriteFields.siteSlug && (slugSent || !existingCompany.siteSlug)) {
         const nameForSlug = sanitizedWriteFields.name && name ? name : existingCompany.name;
         const resolvedSlug = resolveSiteSlug(nameForSlug, siteSlug);
         if (!resolvedSlug.ok) {
