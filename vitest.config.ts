@@ -28,6 +28,8 @@ export default defineConfig({
         maxWorkers: 4,
         minWorkers: 1,
         hookTimeout: 60_000,
+        // Four files share one mongod, so a test running several transactions can pass 5 s under load.
+        testTimeout: 30_000,
         // The modules' API error messages, which the servers register at start-up.
         setupFiles: ["./modules/core/_tests/vitestSetup.ts"],
     },
