@@ -39,7 +39,7 @@ import {
     CreateCompanyFormType,
     EditCompanyFormType
 } from "armonia/src/modules/core/api/company/private/company/company.schema-def";
-import {resolveSiteSlug} from "armonia/src/modules/core/api/company/private/company/siteSlug";
+import {resolveSiteSlug, type SiteSlugError} from "armonia/src/modules/core/api/company/private/company/siteSlug";
 import {PORTAL_ROOT_DOMAIN} from "@coreModule/environment";
 import {buildSiteHostAssignment} from "@coreModule/utilities/company/siteHost";
 import {isValidTimeZone} from "@coreModule/utilities/time/timeWindows";
@@ -67,7 +67,7 @@ const SITE_SLUG_ERRORS = {
     empty: "company_site_slug_empty",
     invalid: "company_site_slug_invalid",
     reserved: "company_site_slug_reserved",
-} as const;
+} as const satisfies Record<SiteSlugError, string>;
 
 /** The company's IANA zone as stored (D91): trimmed, `undefined` when empty; an unknown zone is refused. */
 function companyTimeZoneInput(timezone: string | undefined, languageCode: string): string | undefined {
@@ -297,8 +297,7 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
     }
 
     const resolvedSlug = resolveSiteSlug(name, siteSlug);
-    if (!resolvedSlug.ok) {
-        //@ts-expect-error
+    if (resolvedSlug.ok === false) {
         throw apiValidationException(SITE_SLUG_ERRORS[resolvedSlug.error], "siteSlug", [siteSlug ?? ""], languageCode);
     }
     await assertSiteSlugAvailable(resolvedSlug.slug, languageCode, {session, logger});
@@ -428,8 +427,7 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     if (sanitizedWriteFields.siteSlug && (slugSent || !existingCompany.siteSlug)) {
         const nameForSlug = sanitizedWriteFields.name && name ? name : existingCompany.name;
         const resolvedSlug = resolveSiteSlug(nameForSlug, siteSlug);
-        if (!resolvedSlug.ok) {
-            //@ts-expect-error
+        if (resolvedSlug.ok === false) {
             throw apiValidationException(SITE_SLUG_ERRORS[resolvedSlug.error], "siteSlug", [siteSlug ?? ""], languageCode);
         }
         if (resolvedSlug.slug !== existingCompany.siteSlug) {

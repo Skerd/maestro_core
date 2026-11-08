@@ -1,15 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
-
-/** Locale tags used for email copy files under `static/locales/<template>/{tag}.json`. */
-export type EmailLocaleTag = "en-US" | "sq-AL" | "de-CH" | "fr-FR" | "it-IT";
+import type {SupportedLocale} from "armonia/src/modules/core/constants";
 
 const LOCALES_ROOT = path.join(__dirname, "static", "locales");
 
-const FALLBACK_LOCALE_TAG: EmailLocaleTag = "en-US";
+const FALLBACK_LOCALE_TAG: SupportedLocale = "en-US";
 
 /** Language prefix (ISO 639-1) to email locale file tag. */
-const LANGUAGE_PREFIX_TO_TAG: Record<string, EmailLocaleTag> = {
+const LANGUAGE_PREFIX_TO_TAG: Record<string, SupportedLocale> = {
     sq: "sq-AL",
     de: "de-CH",
     fr: "fr-FR",
@@ -21,7 +19,7 @@ const LANGUAGE_PREFIX_TO_TAG: Record<string, EmailLocaleTag> = {
  * Maps API/request language codes (e.g. `sq-AL`, `de-CH`) to an email locale file tag.
  * Codes for languages the emails are not translated into use `en-US`.
  */
-export function resolveEmailLocaleTag(languageCode: string): EmailLocaleTag {
+export function resolveEmailLocaleTag(languageCode: string): SupportedLocale {
     const lc = (languageCode || "").trim().toLowerCase().replace(/_/g, "-");
     const prefix = lc.split("-")[0];
     return LANGUAGE_PREFIX_TO_TAG[prefix] ?? FALLBACK_LOCALE_TAG;
