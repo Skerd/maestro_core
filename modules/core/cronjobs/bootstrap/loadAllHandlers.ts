@@ -9,6 +9,7 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {isModuleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 import {listCronHandlerRegistrations, setCronHandlerModule} from "@coreModule/cronjobs/registry/handlerRegistry";
 
 const REGISTER_FN_PATTERN = /^register.*CronHandlers?$/i;
@@ -17,7 +18,7 @@ const CRON_HANDLER_DIR = "utilities/cron";
 type CronHandlerRegistrar = () => void;
 
 function isHandlerSourceFile(filename: string): boolean {
-    return filename.endsWith(".ts") && !filename.endsWith(".d.ts");
+    return isModuleCodeFile(filename);
 }
 
 function findRegisterFunctions(moduleExports: Record<string, unknown>): Array<{name: string; fn: CronHandlerRegistrar}> {
@@ -70,7 +71,7 @@ export async function loadAllCronHandlers(parentLogger?: serverLogger): Promise<
             }
 
             const filePath = path.join(cronDir, file.name);
-            const importPath = filePath.replace(/\.ts$/, "");
+            const importPath = withoutModuleExtension(filePath);
 
             try {
                 const handlerModule = await import(importPath);

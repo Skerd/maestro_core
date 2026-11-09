@@ -9,14 +9,15 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {isModuleCodeFile, moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 
 const START_FN_PATTERN = /^start.*KafkaConsumers?$/i;
-const BOOTSTRAP_FILENAME = "startAllKafkaConsumers.ts";
+const BOOTSTRAP_FILENAME = moduleCodeFile("startAllKafkaConsumers");
 
 type KafkaConsumerStarter = (parentLogger?: serverLogger) => void | Promise<void>;
 
 function isConsumerSourceFile(filename: string): boolean {
-    return filename.endsWith(".ts") && !filename.endsWith(".d.ts") && filename !== BOOTSTRAP_FILENAME;
+    return isModuleCodeFile(filename) && filename !== BOOTSTRAP_FILENAME;
 }
 
 function findStartFunctions(moduleExports: Record<string, unknown>): Array<{name: string; fn: KafkaConsumerStarter}> {
@@ -81,7 +82,7 @@ export async function startAllKafkaConsumers(parentLogger?: serverLogger): Promi
             }
 
             const filePath = path.join(kafkaDir, file.name);
-            const importPath = filePath.replace(/\.ts$/, "");
+            const importPath = withoutModuleExtension(filePath);
 
             try {
                 const consumerModule = await import(importPath);

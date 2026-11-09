@@ -16,10 +16,11 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {isModuleCodeFile, moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 import {getAssistantToolCount, listAssistantToolNames, setAssistantToolModule} from "@coreModule/domain/ai/tools/toolRegistry";
 
 const REGISTER_FN_PATTERN = /^register.*AssistantTools?$/i;
-const BOOTSTRAP_FILENAME = "registerAllAssistantTools.ts";
+const BOOTSTRAP_FILENAME = moduleCodeFile("registerAllAssistantTools");
 
 /**
  * Exports that match {@link REGISTER_FN_PATTERN} by accident and must never be
@@ -35,7 +36,7 @@ const BOOTSTRAP_FILENAME = "registerAllAssistantTools.ts";
 const NON_ENTRYPOINT_EXPORTS = new Set(["registerAllAssistantTools", "registerAssistantTool"]);
 
 function isToolSourceFile(filename: string): boolean {
-    return filename.endsWith(".ts") && !filename.endsWith(".d.ts") && filename !== BOOTSTRAP_FILENAME;
+    return isModuleCodeFile(filename) && filename !== BOOTSTRAP_FILENAME;
 }
 
 function findRegisterFunctions(moduleExports: Record<string, unknown>): Array<{name: string; fn: () => void}> {
@@ -98,7 +99,7 @@ export async function registerAllAssistantTools(parentLogger?: serverLogger): Pr
             }
 
             const filePath = path.join(toolsDir, file.name);
-            const importPath = filePath.replace(/\.ts$/, "");
+            const importPath = withoutModuleExtension(filePath);
 
             try {
                 const toolModule = await import(importPath);

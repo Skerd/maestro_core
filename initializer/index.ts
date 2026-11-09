@@ -5,6 +5,7 @@ import Currency from "@coreModule/database/schemas/currency/currency";
 import Role from "@coreModule/database/schemas/role/role";
 import User from "@coreModule/database/schemas/user/user";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
+import {moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 import Channel from "@coreModule/database/schemas/channel/channel";
 import LastChannelReadMessage from "@coreModule/database/schemas/lastChannelReadMessage/lastChannelReadMessage";
 import Message from "@coreModule/database/schemas/message/message";
@@ -90,12 +91,12 @@ export async function loadOptionalModuleBootstraps(parentLogger?: serverLogger):
         if (!isModuleEnabled(moduleEntry.name)) {
             continue;
         }
-        const bootstrapFile = path.join(modulesPath, moduleEntry.name, "database", "moduleBootstrap.ts");
+        const bootstrapFile = path.join(modulesPath, moduleEntry.name, "database", moduleCodeFile("moduleBootstrap"));
         if (!fs.existsSync(bootstrapFile)) {
             continue;
         }
         try {
-            const importPath = bootstrapFile.replace(/\.ts$/, "");
+            const importPath = withoutModuleExtension(bootstrapFile);
             const mod = await import(importPath);
             const bootstrap = mod.moduleBootstrap as ModuleBootstrap | undefined;
             if (!bootstrap || (typeof bootstrap !== "object")) {

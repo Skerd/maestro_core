@@ -12,6 +12,7 @@ import {requestContext} from '@coreModule/utilities/endpoints/requestContext';
 import path from 'path';
 import fs from 'fs';
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
+import {isModuleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 
 /**
  * Route Metadata Interface
@@ -122,12 +123,7 @@ export class RouteRegistry {
      * Check if the file is a route file
      */
     private _isRouteFile(filename: string): boolean {
-        if (filename.endsWith(".test.ts") || filename.endsWith(".spec.ts")) {
-            return false;
-        }
-        return filename === 'index.ts' || 
-               filename.endsWith('.route.ts') ||
-               (filename.endsWith('.ts') && !filename.endsWith('.d.ts'));
+        return isModuleCodeFile(filename);
     }
 
     /**
@@ -139,7 +135,7 @@ export class RouteRegistry {
         relativePath: string
     ): Promise<void> {
         try {
-            const importPath = filePath.replace(/\.ts$/, '');
+            const importPath = withoutModuleExtension(filePath);
             const routeModule = await import(importPath);
             
             if (routeModule.router) {
@@ -172,7 +168,7 @@ export class RouteRegistry {
         } catch (error: any) {
             const errorMessage = error?.message || String(error);
             const errorStack = error?.stack || '';
-            const importPath = filePath.replace(/\.ts$/, '');
+            const importPath = withoutModuleExtension(filePath);
             
             this.logger?.err(
                 `Failed to load route file: ${filePath}\n` +
@@ -192,7 +188,7 @@ export class RouteRegistry {
         basePath: string,
         module: any
     ): string {
-        let routePath = relativePath.replace(/\.ts$/, '');
+        let routePath = withoutModuleExtension(relativePath);
         routePath = routePath.replace(/\/index$/, '').replace(/^index$/, '');
         routePath = routePath.replace(/\/private\/?/g, '/').replace(/\/public\/?/g, '/');
         routePath = routePath.replace(/\/+/g, '/');

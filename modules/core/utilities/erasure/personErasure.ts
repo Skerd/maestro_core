@@ -3,6 +3,7 @@ import path from "path";
 import {ClientSession, Types} from "mongoose";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {isModuleCodeFile} from "@coreModule/utilities/modules/moduleCodeFiles";
 import {runAfterCommit} from "@coreModule/utilities/middlewares/transactionUtils";
 import {mediaService} from "@coreModule/database/schemas/media/media.service";
 import {auditLogService} from "@coreModule/database/schemas/auditLog/auditLog.service";
@@ -85,7 +86,7 @@ export async function loadPersonErasers(logger: serverLogger = getLogger("person
         if (!entry.isDirectory() || entry.name.startsWith(".") || !isModuleEnabled(entry.name)) continue;
         const dir = path.join(modulesPath, entry.name, "utilities", "erasure");
         if (!fs.existsSync(dir)) continue;
-        for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".ts") && !name.endsWith(".d.ts"))) {
+        for (const file of fs.readdirSync(dir).filter((name) => isModuleCodeFile(name))) {
             const exports: Record<string, unknown> = await import(path.join(dir, file));
             for (const [name, value] of Object.entries(exports)) {
                 if (typeof value === "function" && REGISTER_FN_PATTERN.test(name)) (value as () => void)();

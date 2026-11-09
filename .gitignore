@@ -28,3 +28,4 @@ secrets/*
 /scripts/seed-dental-clinic-demo.ts
 /scripts/seed-ecommerce-demo.ts
 /scripts/syncAriaEstatesDemo.ts
+/dist/

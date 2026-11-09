@@ -55,7 +55,7 @@ export const basePath = "/api/company/users";
 export const {router} = createCrudRouter({ /* … */ });
 ```
 
-Nested folders under `api/` mirror URL structure. Files named `index.ts`, `*.route.ts`, or any `*.ts` (except `.d.ts`) are loaded.
+Nested folders under `api/` mirror URL structure. Every code file is loaded except declarations and `*.test`/`*.spec` files; the loaders match the running extension (`.ts` in development, `.js` in production) through `modules/core/utilities/modules/moduleCodeFiles.ts`.
 
 ## CRUD router pattern
 
@@ -113,6 +113,8 @@ Mirrors sinfonia's `VITE_ENABLED_MODULES` for client-side filtering.
 | `npm run cron:development` | `xServers/cronServer.ts` | Scheduled jobs |
 | `npm run assistant:development` | `xServers/assistantServer.ts` | AI assistant (chat channel bot) |
 | `npm run telegram:development` | `xServers/telegramServer.ts` | Telegram bot |
+
+**Production runtime (D106):** `npm run build` emits maestro and armonia JavaScript into `dist/` (`tsconfig.build.json`, `noEmitOnError`) and copies the non-TypeScript assets beside it (`scripts/build/copyRuntimeAssets.mjs`). The plain scripts (`npm run api`, `kafka`, `websocket`, `cron`, `assistant`, `telegram`) run that output with `node --enable-source-maps -r tsconfig-paths/register` from `dist/maestro`, which is `/maestro` in the image; they do not work from the source folder. Operator scripts run there as `node -r tsconfig-paths/register scripts/<name>.js`.
 
 The root `npm run dev -- up <profile>` starts a whole vertical with its own database, Redis DB, Kafka prefix and ports ([`../scripts/dev/README.md`](../scripts/dev/README.md)).
 

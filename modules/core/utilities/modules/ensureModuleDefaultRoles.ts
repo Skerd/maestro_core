@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModules";
+import {moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 import {
     registerDefaultRoles,
     type DefaultRoleDefinition,
@@ -34,12 +35,12 @@ export async function ensureModuleDefaultRolesRegistered(parentLogger?: serverLo
             continue;
         }
 
-        const bootstrapFile = path.join(modulesRoot, moduleName, "database", "moduleBootstrap.ts");
+        const bootstrapFile = path.join(modulesRoot, moduleName, "database", moduleCodeFile("moduleBootstrap"));
         if (!fs.existsSync(bootstrapFile)) {
             continue;
         }
 
-        const importPath = bootstrapFile.replace(/\.ts$/, "");
+        const importPath = withoutModuleExtension(bootstrapFile);
         try {
             const mod = (await import(importPath)) as ModuleBootstrapExport;
             const pack = mod.moduleBootstrap?.defaultRoles;

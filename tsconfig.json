@@ -41,7 +41,7 @@
       "@swissOutreachModule/*": ["./modules/swissOutreach/*"],
       "@carRentalModule/*": ["./modules/carRental/*"],
       "@dentalClinicModule/*": ["./modules/dentalClinic/*"],
-      "@initializer": ["./initializer/index.ts"],
+      "@initializer": ["./initializer"],
       "armonia/*": ["../armonia/*"],
     },
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

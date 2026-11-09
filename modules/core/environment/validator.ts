@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 
 export interface ValidationError {
     key: string;
@@ -475,7 +476,7 @@ export interface ModuleEnvironmentContext {
 export type ModuleEnvironmentValidator = (ctx: ModuleEnvironmentContext) => ValidationError[];
 
 /** File each module may add to validate its own environment variables at boot. */
-export const MODULE_ENVIRONMENT_VALIDATOR_FILE = "environment.validator.ts";
+export const MODULE_ENVIRONMENT_VALIDATOR_FILE = moduleCodeFile("environment.validator");
 
 /**
  * Environment-validator seam (D67, CORE-01): runs `validateEnvironment(ctx)` from every enabled module's
@@ -496,8 +497,8 @@ export function collectModuleEnvironmentErrors(
 ): ValidationError[] {
     const modulesRoot = options.modulesRoot ?? path.resolve(__dirname, "../..");
     const isEnabled = options.isEnabled ?? isModuleEnabled;
-    // ts-node resolves the TypeScript file at boot.
-    const load = options.load ?? ((file: string) => require(file.replace(/\.ts$/, "")));
+    // Loaded without its extension, so the same call finds the TypeScript source or the compiled build (D106).
+    const load = options.load ?? ((file: string) => require(withoutModuleExtension(file)));
     const errors: ValidationError[] = [];
     for (const entry of fs.readdirSync(modulesRoot, {withFileTypes: true})) {
         if (!entry.isDirectory() || entry.name.startsWith(".") || !isEnabled(entry.name)) continue;

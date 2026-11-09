@@ -14,16 +14,16 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {isModuleCodeFile, moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 import {getRegisteredRoomCount} from "@coreModule/websocket/roomRegistry";
 
 const REGISTER_FN_PATTERN = /^register.*RoomContributions?$/i;
-const BOOTSTRAP_FILENAME = "registerAllRoomContributions.ts";
+const BOOTSTRAP_FILENAME = moduleCodeFile("registerAllRoomContributions");
 
 /** Only contribution entry files — not webSocket, roomRegistry, etc. */
 function isRoomSourceFile(filename: string): boolean {
     return /roomContribution/i.test(filename)
-        && filename.endsWith(".ts")
-        && !filename.endsWith(".d.ts")
+        && isModuleCodeFile(filename)
         && filename !== BOOTSTRAP_FILENAME;
 }
 
@@ -88,7 +88,7 @@ export async function registerAllRoomContributions(parentLogger?: serverLogger):
             }
 
             const filePath = path.join(websocketDir, file.name);
-            const importPath = filePath.replace(/\.ts$/, "");
+            const importPath = withoutModuleExtension(filePath);
 
             try {
                 const roomModule = await import(importPath);

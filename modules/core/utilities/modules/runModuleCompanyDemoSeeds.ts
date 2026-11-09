@@ -10,8 +10,9 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {effectiveCompanyModules} from "@coreModule/utilities/modules/companyModules";
+import {moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 
-const SEED_FILENAME = "companyDemoSeed.ts";
+const SEED_FILENAME = moduleCodeFile("companyDemoSeed");
 
 type CompanyDemoSeedModule = {
     seedCompanyDemoData?: (logger: serverLogger | undefined, company: any) => Promise<void>;
@@ -36,7 +37,7 @@ export async function runModuleCompanyDemoSeeds(
             continue;
         }
 
-        const importPath = seedPath.replace(/\.ts$/, "");
+        const importPath = withoutModuleExtension(seedPath);
         try {
             const mod = (await import(importPath)) as CompanyDemoSeedModule;
             if (typeof mod.seedCompanyDemoData !== "function") {

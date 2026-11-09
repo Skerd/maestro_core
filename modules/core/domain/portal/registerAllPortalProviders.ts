@@ -15,16 +15,17 @@ import path from "path";
 import fs from "fs";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
+import {isModuleCodeFile, moduleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 import {listPortalProviders} from "@coreModule/domain/portal/portalProviderRegistry";
 
 const REGISTER_FN_PATTERN = /^register.*PortalProviders?$/i;
-const BOOTSTRAP_FILENAME = "registerAllPortalProviders.ts";
+const BOOTSTRAP_FILENAME = moduleCodeFile("registerAllPortalProviders");
 
 /** Exports matching {@link REGISTER_FN_PATTERN} that are not entry points. */
 const NON_ENTRYPOINT_EXPORTS = new Set(["registerAllPortalProviders", "registerPortalProvider"]);
 
 function isProviderSourceFile(filename: string): boolean {
-    return filename.endsWith(".ts") && !filename.endsWith(".d.ts") && filename !== BOOTSTRAP_FILENAME;
+    return isModuleCodeFile(filename) && filename !== BOOTSTRAP_FILENAME;
 }
 
 function findRegisterFunctions(moduleExports: Record<string, unknown>): Array<{name: string; fn: () => void}> {
@@ -75,7 +76,7 @@ export async function registerAllPortalProviders(parentLogger?: serverLogger): P
             }
             const filePath = path.join(portalDir, file.name);
             try {
-                const providerModule = await import(filePath.replace(/\.ts$/, ""));
+                const providerModule = await import(withoutModuleExtension(filePath));
                 for (const {name, fn} of findRegisterFunctions(providerModule)) {
                     fn();
                     logger.debug(`Registered portal section via ${name} from ${filePath}`);
