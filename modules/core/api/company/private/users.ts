@@ -41,6 +41,7 @@ import {
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
+import {addExistingUserToCompany, buildCompanyRoleData} from "@coreModule/database/schemas/user/user.helper";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
@@ -114,56 +115,6 @@ async function validateCompanyRole(company: { _id?: ObjectId; getAllRoles(): Pro
         },
         opts
     );
-}
-
-/**
- * Builds the embedded company-role subdocument added to a user when they join a company.
- *
- * @param userRole - Role ID (string) to assign.
- * @param companyId - Company ID for the role.
- * @returns Plain object suitable for `roles` array (active, unsuccessfulLogins, roles, company, etc.).
- */
-function buildCompanyRoleData(userRole: string, companyId: ObjectId) {
-    return {
-        active: "active",
-        unsuccessfulLogins: 0,
-        lockedOutUntil: null,
-        lastLogin: null,
-        rolesCount: 1,
-        roles: [new ObjectId(userRole)],
-        company: companyId
-    };
-}
-
-/**
- * Adds an existing user to the company by appending the company and role to their document.
- *
- * @param existingUser - User document to update.
- * @param companyId - Company to add.
- * @param companyRoleData - Role data from buildCompanyRoleData.
- * @param opts - CRUD options for the update.
- */
-async function addExistingUserToCompany(existingUser: IUser, companyId: ObjectId, companyRoleData: ReturnType<typeof buildCompanyRoleData>, opts: CrudOptions): Promise<void> {
-    await userService.updateByIdOrThrow(
-        existingUser._id,
-        {
-            $addToSet: {
-                companies: companyId
-            },
-            $push: { roles: companyRoleData }
-        },
-        opts
-    );
-
-    // Ensure this user has their single AI-assistant channel with the company bot.
-    await ensureAiChannel({
-        userId: existingUser._id,
-        companyId,
-        session: opts.session ?? null,
-        logger: opts.logger,
-        languageCode: opts.languageCode,
-        auditUserId: opts.auditUserId,
-    });
 }
 
 /**

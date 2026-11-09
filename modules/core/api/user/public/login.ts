@@ -15,6 +15,7 @@
  */
 
 import {Response, Router} from "express";
+import bcrypt from "bcrypt";
 import {setMediaAuthCookie} from "@coreModule/utilities/media/mediaAuthCookie";
 import {LoginFormType} from "armonia/src/modules/core/api/user/public/login/login.form.type";
 import authMW, {NotAuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
@@ -56,6 +57,9 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {addExistingUserToCompany, buildCompanyRoleData} from "@coreModule/database/schemas/user/user.helper";
+import type {IUser} from "@coreModule/database/schemas/user/user";
+import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
 
 /** Default timezone for new third-party users (aligned with signup). */
 const DEFAULT_NEW_USER_TIMEZONE = "Europe/Tirane";
@@ -141,6 +145,32 @@ async function findLoginCompany(
 }
 
 /**
+ * D101: one account works on the portal. An account signing in from the portal zone with no membership in the
+ * platform company joins it with the company's sign-up default role (Web Client), the way a portal sign-up gets it,
+ * and is returned re-read. Only an account that proved itself joins: a password sign-in with the right password (a
+ * wrong one fails as before, with no membership to count it on), or a third-party sign-in. An existing membership (a
+ * locked or inactive one included) is left for the sign-in's own checks; any other origin is unchanged.
+ */
+async function joinPlatformOnPortalSignIn(
+    user: IUser,
+    origin: string,
+    password: string | undefined,
+    opts: { session: ClientSession; logger: serverLogger; languageCode: string },
+): Promise<IUser> {
+    if (!isPortalZoneOrigin(origin)) return user;
+    if (password !== undefined && !(await bcrypt.compare(password, user.password))) return user;
+    const {session, logger, languageCode} = opts;
+    const platform = await resolveSignupCompany(origin, languageCode, {session, logger});
+    if (user.roles.some((role) => nestedEntityToRef(role.company)?.equals(platform._id))) return user;
+    const defaultRole = await roleService.findOne({company: platform._id, isSignupDefault: true}, opts);
+    if (!defaultRole) {
+        throw apiValidationException("default_sign_up_company_role_not_found", null, null, languageCode);
+    }
+    await addExistingUserToCompany(user, platform._id, buildCompanyRoleData(defaultRole._id.toString(), platform._id), {...opts, auditUserId: user._id});
+    return userService.findOneOrThrow({_id: user._id}, opts);
+}
+
+/**
  * Resolves company by origin, verifies password and MFA, updates lastLogin and resets attempts, returns JWT (or MFA status). Uses user's ID for audit.
  *
  * @param params - Transaction, form (username, password, mfaCode?), origin, logger, session, languageCode, deviceId, userAgent, requestIp, requestSource.
@@ -160,7 +190,12 @@ async function Login(
 
     logger.start(`Trying to authenticate user [${username}]...`);
 
-    const user = await userService.findOneOrThrow({ username }, { session, logger, languageCode });
+    const user = await joinPlatformOnPortalSignIn(
+        await userService.findOneOrThrow({ username }, { session, logger, languageCode }),
+        origin,
+        password,
+        { session, logger, languageCode },
+    );
     let company: ICompany;
 
     try{
@@ -364,7 +399,9 @@ async function LoginThirdParty(
     // Find or create user
     let user = await userService.findOne({ username: userInfo.email }, { session, logger, languageCode });
 
-    if (!user) {
+    if (user) {
+        user = await joinPlatformOnPortalSignIn(user, origin, undefined, { session, logger, languageCode });
+    } else {
         // Create a new user account
         user = await createThirdPartyUser(
             {
