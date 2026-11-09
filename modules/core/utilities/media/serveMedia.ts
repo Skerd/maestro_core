@@ -10,6 +10,7 @@ import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {apiValidationException} from 'armonia/src/modules/core/helpers/exceptions';
 import {getGridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
 import {IMedia} from '@coreModule/database/schemas/media/media';
+import {openMediaFile} from '@coreModule/utilities/security/healthDataCrypto';
 
 /**
  * Media binaries are never framed by us (PDF.js / in-app viewers fetch as bytes).
@@ -233,6 +234,11 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
 
     const gridfs = getGridFSStorage(languageCode, 'media', logger);
     const fileId = new ObjectId(String(media.fileId));
+    if (media.encrypted) {
+        await sendHealthFile(media, gridfs.getFileBuffer(fileId), res);
+        logger.finish(`Served health media file: ${mediaIdParam}`);
+        return;
+    }
     // The stored GridFS length, not the Media size fields: those can describe the upload before re-encoding.
     const size: number = (await gridfs.getFileMetadata(fileId)).length;
     const range = parseByteRange(req.headers.range, size);
@@ -281,6 +287,29 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
             resolve();
         });
     });
+}
+
+/**
+ * A health file (D102): opened whole, so a tampered file is refused before any byte is sent. Sent without byte
+ * ranges, and never cached by the browser, so no plaintext copy of an X-ray stays on the reader's disk.
+ */
+async function sendHealthFile(media: IMedia, stored: Promise<Buffer>, res: Response): Promise<void> {
+    const bytes = await openMediaFile(await stored, media.company, media._id);
+    const mimeType = media.mimeType || media.metadata?.mime || 'application/octet-stream';
+    setSecurityHeaders(res, mimeType, media.originalName || media.fileName || 'file', 'private');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Accept-Ranges', 'none');
+    res.setHeader('Content-Length', String(bytes.length));
+    res.end(bytes);
+}
+
+/** A media file's bytes as uploaded; health files (D102) are opened here. For server-side copies and attachments. */
+export async function readMediaBytes(media: IMedia, languageCode: string): Promise<Buffer> {
+    if (!media.fileId) {
+        throw apiValidationException("file_not_found", null, null, languageCode);
+    }
+    const stored = await getGridFSStorage(languageCode, 'media').getFileBuffer(String(media.fileId));
+    return media.encrypted ? openMediaFile(stored, media.company, media._id) : stored;
 }
 
 export type MediaInfoDto = {

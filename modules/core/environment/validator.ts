@@ -84,6 +84,32 @@ function validateArray(key: string, value: string | undefined, required: boolean
 }
 
 /**
+ * Validate that a key variable is `bytes` random bytes in standard base64 (what `openssl rand -base64 <bytes>` prints)
+ */
+function validateBase64Key(key: string, value: string | undefined, required: boolean = true, bytes: number = 32): ValidationError | null {
+    const missing = validateString(key, value, required);
+    if (missing || !value || value.trim() === '') {
+        return missing;
+    }
+    const trimmed = value.trim();
+    if (Buffer.from(trimmed, 'base64').length !== bytes || Buffer.from(trimmed, 'base64').toString('base64') !== trimmed) {
+        return {key, message: `Environment variable ${key} must be ${bytes} random bytes in base64 (openssl rand -base64 ${bytes})`};
+    }
+    return null;
+}
+
+/**
+ * The health-data master keys (D102), checked whenever they are set. A module that stores health data requires
+ * `HEALTH_DATA_MASTER_KEY` in its own environment validator (D67), since core names no module.
+ */
+export function validateHealthDataKeys(env: NodeJS.ProcessEnv): ValidationError[] {
+    return [
+        validateBase64Key('HEALTH_DATA_MASTER_KEY', env.HEALTH_DATA_MASTER_KEY, false),
+        validateBase64Key('HEALTH_DATA_MASTER_KEY_PREVIOUS', env.HEALTH_DATA_MASTER_KEY_PREVIOUS, false),
+    ].filter((e): e is ValidationError => e !== null);
+}
+
+/**
  * Validate all environment variables
  * 
  * @throws Error if validation fails
@@ -321,6 +347,9 @@ export function validateConfiguration(): void {
     errors.push(...[
         validateString('ENCRYPTION_KEY', process.env.ENCRYPTION_KEY, true),
     ].filter((e): e is ValidationError => e !== null));
+
+    // HEALTH DATA ENCRYPTION (D102)
+    errors.push(...validateHealthDataKeys(process.env));
 
     // REDIS
     errors.push(...[

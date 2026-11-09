@@ -27,7 +27,8 @@ const reads = () => asCrossTenant("test reads every audit entry", () => AuditLog
 
 beforeAll(async () => {
     await connectTestDatabase();
-    const [chart, empty] = await Chart.insertMany([
+    // `create`, not `insertMany`: only `save` encrypts health fields (D102).
+    const [chart, empty] = await Chart.create([
         {company, title: "A", history: {notes: "allergic to penicillin"}},
         {company, title: "B"},
     ]);

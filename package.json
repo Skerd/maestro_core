@@ -21,6 +21,7 @@
     "preview:emails": "ts-node --transpile-only -r tsconfig-paths/register scripts/emails/renderEmailPreviews.ts",
     "sync:demo-companies": "ts-node --transpile-only -r tsconfig-paths/register scripts/syncDemoCompanies.ts",
     "kafka:replay-dlq": "ts-node --transpile-only -r tsconfig-paths/register scripts/replayKafkaDeadLetters.ts",
+    "health:rewrap-keys": "ts-node --transpile-only -r tsconfig-paths/register scripts/rewrapHealthDataKeys.ts",
     "api:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/apiServer.ts",
     "kafka:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/kafkaServer.ts",
     "websocket:development": "export NODE_ENV=development && ts-node-dev --transpile-only -r tsconfig-paths/register --respawn --watch ../armonia/src xServers/webSocketServer.ts",

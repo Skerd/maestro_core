@@ -16,6 +16,7 @@ import {
     FILE_SIGNATURES
 } from "armonia/src/modules/core/constants";
 import {FILE_UPLOAD} from "@coreModule/environment";
+import {sealMediaFile} from "@coreModule/utilities/security/healthDataCrypto";
 
 export type MediaUploaded = {
     fileIds: string[];
@@ -59,6 +60,11 @@ export interface UnifiedMediaUploadOptions {
      * ahead of the form that will use them; `core.orphanUploadCleanup` removes any never referenced.
      */
     markPendingReference?: boolean;
+    /**
+     * The files are health data (SEC-06), e.g. a patient's X-rays and photos: their bytes are stored encrypted with
+     * the owning company's key and opened only when an allowed reader downloads them (D102). Default: false.
+     */
+    healthData?: boolean;
 }
 
 /**
@@ -485,7 +491,8 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         blockDangerousOfficeContent = true,
         extractImageResolution = true,
         extractMediaDuration = true,
-        markPendingReference = false
+        markPendingReference = false,
+        healthData = false
     } = options;
 
     // Configure multer with memory storage (we'll stream to GridFS)
@@ -836,8 +843,13 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         }
                     }
 
+                    // Health files are sealed for this Media record before anything is stored (D102).
+                    const newMediaId = new MongooseTypes.ObjectId();
+                    const ownerCompany = req.body?.user?.company?._id;
+                    const storedBuffer = healthData ? await sealMediaFile(processedBuffer, ownerCompany, newMediaId) : processedBuffer;
+
                     // Upload processed file to GridFS
-                    const fileStream = Readable.from(processedBuffer);
+                    const fileStream = Readable.from(storedBuffer);
                     const gridfsFileId = await gridfs.uploadFile(
                         fileStream,
                         file.originalname,
@@ -870,6 +882,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
 
                     // Create Media document
                     const mediaData: Partial<IMedia> = {
+                        _id: newMediaId,
                         type: fileType,
                         originalName: file.originalname,
                         fileName: file.originalname, // Keep original name for display
@@ -877,6 +890,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         createdBy: userId as any, // Type assertion for Mongoose ObjectId (ownershipPlugin)
                         ...(req.body?.user?.company && { company: req.body?.user?.company?._id as any }),
                         ...(markPendingReference && { pendingReference: true }),
+                        ...(healthData && { encrypted: true }),
                         metadata,
                         // Legacy fields for backward compatibility
                         mimeType: file.mimetype,

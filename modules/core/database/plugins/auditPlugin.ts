@@ -5,6 +5,7 @@ import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {sensitivePaths, type Sensitivity} from "@coreModule/utilities/security/sensitiveFields";
+import {decryptHealthFieldsOnLoad, encryptHealthDiff, encryptHealthFieldsOnSave} from "@coreModule/database/plugins/healthEncryption";
 
 const auditLogger = getLogger("audit_plugin");
 
@@ -77,6 +78,7 @@ export async function auditOperatorUpdate(
         auditLogger.warn(`Skipping audit log for ${model.collection.name} ${current._id}: no company on document`);
         return;
     }
+    const sealedDiff = await encryptHealthDiff(model.schema, diff, {company: companyId, collection: model.collection.name, documentId: current._id});
     // An entry belongs to the audited record's company, which is not the request's when the record is
     // shared, e.g. a company edited by its parent (D16).
     await withTenant(companyId, () => AuditLog.create([{
@@ -85,7 +87,7 @@ export async function auditOperatorUpdate(
         organizationId: current.organizationId,
         actorId,
         action: "UPDATE" as AuditAction,
-        diff,
+        diff: sealedDiff,
         company: companyId,
     }], {session: session ?? undefined}));
 }
@@ -171,10 +173,13 @@ async function recordSensitiveReads(query: Query<unknown, unknown>, result: unkn
  * entry when a request selects sensitive fields (D56). It also turns on Mongoose `timestamps`, which stamp what
  * lifeCyclePlugin's hooks do not: `insertMany`, `bulkWrite`, replacements and an upsert's `createdAt`. Audit-exempt
  * schemas keep their own `timestamps` option.
+ * Health fields are encrypted at rest here (D102): opened on load before the read audit looks at them, sealed on save
+ * after the diff is taken, and sealed in the stored diff too.
  */
 export const auditPlugin = (schema: Schema): void => {
     auditedSchemas.add(schema);
     schema.set("timestamps", true);
+    decryptHealthFieldsOnLoad(schema);
 
     schema.post(["find", "findOne"], async function (this: Query<unknown, unknown>, result: unknown) {
         await recordSensitiveReads(this, result);
@@ -218,13 +223,14 @@ export const auditPlugin = (schema: Schema): void => {
                 );
                 return;
             }
+            const diff = await encryptHealthDiff(schema, auditDiff, {company: companyId, collection: doc.collection.name, documentId: doc._id});
             await withTenant(companyId, () => AuditLog.create({
                 documentId: doc._id as Types.ObjectId,
                 collectionName: doc.collection.name,
                 organizationId: doc.organizationId,
                 actorId: doc.$locals?.auditUserId,
                 action: auditAction,
-                diff: auditDiff,
+                diff,
                 company: companyId,
             }));
         } catch (err) {
@@ -233,6 +239,8 @@ export const auditPlugin = (schema: Schema): void => {
             );
         }
     });
+
+    encryptHealthFieldsOnSave(schema);
 };
 
 export default auditPlugin;

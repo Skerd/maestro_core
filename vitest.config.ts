@@ -12,6 +12,7 @@ const TEST_DEFAULTS: Record<string, string> = {
     CLIENT_HOST: "http://localhost:5173", // links in customer messages
     MAX_FILES_UPLOADED: "100", // upload middleware limits
     MAX_FILE_SIZE: "524288000",
+    HEALTH_DATA_MASTER_KEY: Buffer.from("vitest-only-health-data-key-0001").toString("base64"), // health data at rest (D102)
 };
 for (const [name, value] of Object.entries(TEST_DEFAULTS)) if (!process.env[name]) process.env[name] = value;
 loadEnv({path: path.join(__dirname, ".env.test")});

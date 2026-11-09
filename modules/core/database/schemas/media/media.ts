@@ -42,6 +42,8 @@ export interface IMedia extends Document, IOwnershipPluginFields, ISoftDeletePlu
     isPublic: boolean;
     /** Uploaded ahead of the record that will use it and not yet found referenced (see `orphanUploadCleanup`). */
     pendingReference?: boolean;
+    /** Health data (X-ray, photo): the stored bytes are sealed with the owning company's key (D102), opened only when served. */
+    encrypted?: boolean;
     /** Other tenants that may read this file through the private media route */
     sharedWithCompanies: Types.ObjectId[];
     createdAt: Date;
@@ -299,6 +301,18 @@ const MediaSchema = new Schema<IMedia>(
             }
         },
         pendingReference: {
+            type: Boolean,
+            required: false,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
+        },
+        encrypted: {
             type: Boolean,
             required: false,
             permissions: {

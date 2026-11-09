@@ -9,6 +9,7 @@ import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
 import {isModelInModules} from "@coreModule/utilities/modules/modelModules";
+import {decryptHealthDiff} from "@coreModule/database/plugins/healthEncryption";
 import {SanitizedFields} from "armonia/src/modules/core/types";
 import {
     DocumentAuditActorDto,
@@ -238,23 +239,29 @@ async function getDocumentAuditLogs(reqBody: DocAuditParams, _routeParams: unkno
     const slice = hasMore ? rawEntries.slice(0, limit) : rawEntries;
 
     const valuesByField = new Map<string, unknown[]>();
-    const entries: DocumentAuditEntryDto[] = slice.map((doc) => {
-        const diffFiltered = filterAuditDiff(doc.diff as Record<string, AuditDiffEntry>, sanitizedRead);
+    const entries: DocumentAuditEntryDto[] = [];
+    for (const doc of slice) {
+        // Health values are stored sealed (D102); this reader may read the fields that are left.
+        const diffFiltered = await decryptHealthDiff(
+            collected.model.schema,
+            filterAuditDiff(doc.diff as Record<string, AuditDiffEntry>, sanitizedRead),
+            {collection: collected.model.collection.name, documentId: oid},
+        );
         for (const [field, entry] of Object.entries(diffFiltered)) {
             const values = valuesByField.get(field) ?? [];
             values.push(entry.from, entry.to);
             valuesByField.set(field, values);
         }
         const actor = actorDto(doc.actorId);
-        return {
+        entries.push({
             id: String(doc._id),
             createdAt:
                 doc.createdAt instanceof Date ? doc.createdAt.toISOString() : new Date(doc.createdAt as string).toISOString(),
             action: doc.action,
             actor,
             changes: toChanges(diffFiltered),
-        };
-    });
+        });
+    }
 
     let nextCursorOut: string | null = null;
     if (hasMore && slice.length > 0) {

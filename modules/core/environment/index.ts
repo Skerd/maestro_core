@@ -243,6 +243,15 @@ export function clientHostFor(appId: string = "core"): string {
 
 export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
+/**
+ * Health data at rest (D102): the master key (base64, 32 bytes) that wraps each company's data keys, and during a
+ * rotation the one before it, used only to read keys not yet rewrapped.
+ */
+export const HEALTH_DATA = {
+    MASTER_KEY: process.env.HEALTH_DATA_MASTER_KEY,
+    MASTER_KEY_PREVIOUS: process.env.HEALTH_DATA_MASTER_KEY_PREVIOUS,
+};
+
 export const REDIS = {
     ROOT_NODES: process.env.REDIS_ROOT_NODES.split(","),
     USERNAME: process.env.REDIS_USERNAME,
