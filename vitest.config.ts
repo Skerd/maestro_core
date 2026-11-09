@@ -13,6 +13,10 @@ const TEST_DEFAULTS: Record<string, string> = {
     MAX_FILES_UPLOADED: "100", // upload middleware limits
     MAX_FILE_SIZE: "524288000",
     HEALTH_DATA_MASTER_KEY: Buffer.from("vitest-only-health-data-key-0001").toString("base64"), // health data at rest (D102)
+    JWT_EXPIRES_IN: "24h", // sign-in issues tokens and a session (portalSignIn)
+    REFRESH_TOKEN_EXPIRES_IN: "7d",
+    SESSION_EXPIRES_IN: "86400000",
+    PORTAL_ROOT_DOMAIN: "portal.localhost", // the portal apex the portal tests sign in and buy on
 };
 for (const [name, value] of Object.entries(TEST_DEFAULTS)) if (!process.env[name]) process.env[name] = value;
 loadEnv({path: path.join(__dirname, ".env.test")});
