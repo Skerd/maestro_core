@@ -40,6 +40,7 @@ export const SERVER = {
     ALLOWED_ORIGINS: process.env.SERVER_ALLOWED_ORIGINS,
     TIMEZONE: process.env.SERVER_TIMEZONE,
     NODE_SIGNATURE: process.env.SERVER_NODE_SIGNATURE,
+    SKIP_KAFKA_WEBSOCKET: process.env.SERVER_SKIP_KAFKA_WEBSOCKET === "true",
 };
 
 export const WEBSOCKET = {
