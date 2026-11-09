@@ -1,4 +1,4 @@
-import {Document, Model, MongooseQueryMiddleware, Query, Schema, SchemaType} from "mongoose";
+import {ClientSession, Document, Model, MongooseQueryMiddleware, Query, Schema, SchemaType} from "mongoose";
 import type {AuditDiffEntry} from "@coreModule/database/schemas/auditLog/auditLog";
 import {
     decryptHealthValue,
@@ -6,7 +6,9 @@ import {
     healthDataUnreadable,
     idString,
     isHealthCiphertext,
+    sealOrRefuse,
 } from "@coreModule/utilities/security/healthDataCrypto";
+import {preBulkWrite} from "@coreModule/database/plugins/bulkWriteHooks";
 
 /*
  * Health fields at rest (D102, SEC-06 step 5). Every top-level field marked `sensitivity: "health"` whose value is
@@ -20,6 +22,12 @@ import {
 const LOADING_QUERIES: MongooseQueryMiddleware[] = ["find", "findOne", "findOneAndUpdate", "findOneAndReplace", "findOneAndDelete", "findOneAndRemove"];
 /** Writes that could set a value without `save`, which is the only path that seals it. */
 const WRITING_QUERIES: MongooseQueryMiddleware[] = ["updateOne", "updateMany", "update", "findOneAndUpdate", "replaceOne", "findOneAndReplace"];
+/** Operator updates of other fields: a health value still stored in plaintext (before D102) is sealed with them. */
+const UPDATING_QUERIES: MongooseQueryMiddleware[] = ["updateOne", "updateMany", "update", "findOneAndUpdate"];
+/** Stored ciphertext, as a query condition (`isHealthCiphertext` in the database). */
+const CIPHERTEXT_PATTERN = /^hfe1\./;
+/** Pipeline stages that may rewrite any field. */
+const WHOLE_DOCUMENT_STAGES = new Set(["$project", "$replaceRoot", "$replaceWith"]);
 
 const pathsBySchema = new WeakMap<Schema, string[]>();
 /** Ciphertext a hydrated document was loaded with, opened once the query is done. */
@@ -143,7 +151,15 @@ export function decryptHealthFieldsOnLoad(schema: Schema): void {
     });
 }
 
-function touchedPaths(update: unknown): string[] {
+/** Fields an update or update pipeline may set. A stage that can rewrite the whole document touches every health field. */
+function touchedPaths(update: unknown, paths: string[]): string[] {
+    if (Array.isArray(update)) {
+        return update.flatMap((stage: unknown) => isRecord(stage) ? Object.entries(stage).flatMap(([key, value]) => {
+            if (WHOLE_DOCUMENT_STAGES.has(key)) return paths;
+            if (key === "$set" || key === "$addFields") return isRecord(value) ? Object.keys(value) : [];
+            return [];
+        }) : []);
+    }
     if (!isRecord(update)) return [];
     return Object.entries(update).flatMap(([key, value]) => {
         // Removing a value (erasure) needs no key.
@@ -151,6 +167,44 @@ function touchedPaths(update: unknown): string[] {
         if (!key.startsWith("$")) return [key];
         return isRecord(value) ? Object.keys(value) : [];
     });
+}
+
+/** Fields of documents a write would insert or replace with a value. */
+const filledKeys = (docs: unknown[]) => docs.flatMap((doc) => (isRecord(doc) ? Object.keys(doc).filter((key) => doc[key] != null) : []));
+
+/** What each `bulkWrite` operation would set. */
+function bulkTouchedPaths(ops: unknown, paths: string[]): string[] {
+    return (Array.isArray(ops) ? ops : []).flatMap((op: unknown) => {
+        if (!isRecord(op)) return [];
+        return Object.values(op).flatMap((spec) => isRecord(spec)
+            ? [...filledKeys([spec.document, spec.replacement]), ...touchedPaths(spec.update, paths)]
+            : []);
+    });
+}
+
+/**
+ * Seals the plaintext health values (stored before D102) of the documents an operator update matches, in its session,
+ * before it runs. Only a value that is still the one read is replaced, so a concurrent change is never overwritten.
+ */
+async function sealPlaintextMatchedBy(query: Query<unknown, unknown>, paths: string[]): Promise<void> {
+    const model = query.model as Model<unknown>;
+    const session: ClientSession | undefined = query.getOptions().session ?? undefined;
+    // A copy, cast as the update will be: the raw collection compares ids and dates by type.
+    const filter: unknown = query.cast(model, {...query.getFilter()});
+    const plaintext = {$or: paths.map((path) => ({[path]: {$exists: true, $ne: null, $not: CIPHERTEXT_PATTERN}}))};
+    const projection = Object.fromEntries([["company", 1], ...paths.map((path) => [path, 1])]);
+    const legacy = await model.collection.find(isRecord(filter) ? {$and: [filter, plaintext]} : plaintext, {projection, session}).toArray();
+    for (const stored of legacy) {
+        for (const path of paths) {
+            const value: unknown = stored[path];
+            if (value === undefined || value === null || isHealthCiphertext(value)) continue;
+            const ciphertext = await sealOrRefuse(
+                () => encryptHealthValue(value, {company: stored.company, collection: model.collection.name, documentId: stored._id, path}),
+                `${model.collection.name} ${idString(stored._id)} (${path})`,
+            );
+            await model.collection.updateOne({_id: stored._id, [path]: value}, {$set: {[path]: ciphertext}}, {session});
+        }
+    }
 }
 
 function refuseUnsealedWrite(fields: string[], paths: string[], how: string): void {
@@ -176,7 +230,10 @@ export function encryptHealthFieldsOnSave(schema: Schema): void {
         const swapped = new Map<string, unknown>();
         sealedForSave.set(this, swapped);
         for (const path of due) {
-            const ciphertext = await encryptHealthValue(values[path], {company: this.get("company"), collection: this.collection.name, documentId: this._id, path});
+            const ciphertext = await sealOrRefuse(
+                () => encryptHealthValue(values[path], {company: this.get("company"), collection: this.collection.name, documentId: this._id, path}),
+                `${this.collection.name} ${idString(this._id)} (${path})`,
+            );
             swapped.set(path, state[path]);
             state[path] = ciphertext;
             // The whole field is one value in storage, even when only part of it changed.
@@ -202,16 +259,25 @@ export function encryptHealthFieldsOnSave(schema: Schema): void {
     });
 
     schema.pre(WRITING_QUERIES, function (this: Query<unknown, unknown>) {
-        refuseUnsealedWrite(touchedPaths(this.getUpdate()), paths, "an update query");
+        refuseUnsealedWrite(touchedPaths(this.getUpdate(), paths), paths, "an update query");
+    });
+    schema.pre(UPDATING_QUERIES, async function (this: Query<unknown, unknown>) {
+        await sealPlaintextMatchedBy(this, paths);
     });
     schema.pre("insertMany", function (next, docs: unknown) {
-        const list: unknown[] = Array.isArray(docs) ? docs : [docs];
-        refuseUnsealedWrite(list.flatMap((doc) => (isRecord(doc) ? Object.keys(doc).filter((key) => doc[key] != null) : [])), paths, "insertMany");
+        refuseUnsealedWrite(filledKeys(Array.isArray(docs) ? docs : [docs]), paths, "insertMany");
         next();
+    });
+    // Mongoose 6 has no bulkWrite middleware: the model's own bulkWrite checks first.
+    preBulkWrite(schema, (_model, ops) => {
+        refuseUnsealedWrite(bulkTouchedPaths(ops, paths), paths, "bulkWrite");
     });
 }
 
-/** Audit diffs keep a health field's values sealed, bound to the audited record and field (SEC-06 step 3). */
+/**
+ * Audit diffs keep a health field's values sealed, bound to the audited record and field (SEC-06 step 3). When they
+ * cannot be sealed this throws `health_data_unsealable`, so the change is refused rather than its history lost (D103).
+ */
 export async function encryptHealthDiff(
     schema: Schema,
     diff: Record<string, AuditDiffEntry>,
@@ -222,7 +288,10 @@ export async function encryptHealthDiff(
     const sealed = {...diff};
     const seal = (value: unknown, path: string) => value === null || value === undefined || isHealthCiphertext(value)
         ? Promise.resolve(value)
-        : encryptHealthValue(value, {company: idString(record.company) ?? "", collection: record.collection, documentId: idString(record.documentId) ?? "", path});
+        : sealOrRefuse(
+            () => encryptHealthValue(value, {company: idString(record.company) ?? "", collection: record.collection, documentId: idString(record.documentId) ?? "", path}),
+            `the change history of ${record.collection} ${idString(record.documentId)} (${path})`,
+        );
     for (const path of paths) {
         const entry = diff[path];
         if (entry) sealed[path] = {from: await seal(entry.from, path), to: await seal(entry.to, path)};

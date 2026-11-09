@@ -52,6 +52,7 @@ import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets
 import {getRolesAccess} from "@coreModule/utilities/security/roleAccessCache";
 import {getCompanyModules} from "@coreModule/utilities/modules/companyModules";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {checkTenantReferences} from "@coreModule/database/plugins/tenantReferences";
 
 let userService: any;
 let roleService: any;
@@ -1761,10 +1762,12 @@ UserSchema.methods.isAdmin = async function (companyId: ObjectId): Promise<boole
 
 // Plugin exceptions (do not apply the Country stack):
 // - ownershipPlugin: a user belongs to many companies (`companies` / `roles`), not one `company`.
-// lifeCyclePlugin applies (D68) and keeps the timestamp fields declared below; its `{company: 1, _id: 1}` index
-// stays empty here, and `registerDate` remains the join timestamp.
+// lifeCyclePlugin applies (D68) and keeps the timestamp fields declared below; it adds no `{company: 1, _id: 1}`
+// index here (no `company` path), and `registerDate` remains the join timestamp.
 // - softDeletePlugin: users are not soft-deleted (model delete/restore are no-permission).
 auditPlugin(UserSchema);
+// A membership holds only roles of its own company (D104).
+checkTenantReferences(UserSchema, "roles.company");
 for (const path of ["createdAt", "updatedAt"] as const) {
     const schemaType = UserSchema.path(path);
     if (!schemaType) continue;

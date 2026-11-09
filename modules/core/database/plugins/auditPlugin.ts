@@ -174,7 +174,7 @@ async function recordSensitiveReads(query: Query<unknown, unknown>, result: unkn
  * lifeCyclePlugin's hooks do not: `insertMany`, `bulkWrite`, replacements and an upsert's `createdAt`. Audit-exempt
  * schemas keep their own `timestamps` option.
  * Health fields are encrypted at rest here (D102): opened on load before the read audit looks at them, sealed on save
- * after the diff is taken, and sealed in the stored diff too.
+ * after the diff is taken, and sealed in the stored diff too; a change whose diff cannot be sealed is refused (D103).
  */
 export const auditPlugin = (schema: Schema): void => {
     auditedSchemas.add(schema);
@@ -191,15 +191,15 @@ export const auditPlugin = (schema: Schema): void => {
             const model = doc.constructor as Model<any>;
             const current = doc.toObject({depopulate: true});
 
-            if (doc.isNew) {
-                doc.$locals.auditAction = "CREATE" as AuditAction;
-                doc.$locals.auditDiff = buildDiff(null, current);
-                return next();
-            }
-
-            const previous = await model.findById(doc._id).lean();
-            doc.$locals.auditAction = "UPDATE" as AuditAction;
-            doc.$locals.auditDiff = buildDiff(previous, current);
+            const previous = doc.isNew ? null : await model.findById(doc._id).lean();
+            doc.$locals.auditAction = (doc.isNew ? "CREATE" : "UPDATE") as AuditAction;
+            // Health values are sealed now, before the write: a change whose history cannot be sealed is refused (D103).
+            const orgId = requestContext.getStore()?.actionUserCtx?.orgId;
+            const companyId = companyIdOf(doc.company) ?? (orgId ? new ObjectId(orgId) : null);
+            const diff = buildDiff(previous, current);
+            doc.$locals.auditDiff = companyId
+                ? await encryptHealthDiff(schema, diff, {company: companyId, collection: doc.collection.name, documentId: doc._id})
+                : diff;
             return next();
         } catch (error) {
             return next(error as any);
@@ -223,14 +223,13 @@ export const auditPlugin = (schema: Schema): void => {
                 );
                 return;
             }
-            const diff = await encryptHealthDiff(schema, auditDiff, {company: companyId, collection: doc.collection.name, documentId: doc._id});
             await withTenant(companyId, () => AuditLog.create({
                 documentId: doc._id as Types.ObjectId,
                 collectionName: doc.collection.name,
                 organizationId: doc.organizationId,
                 actorId: doc.$locals?.auditUserId,
                 action: auditAction,
-                diff,
+                diff: auditDiff,
                 company: companyId,
             }));
         } catch (err) {

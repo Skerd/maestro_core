@@ -67,22 +67,19 @@ export class GridFSStorage {
                 });
 
                 let totalBytes = 0;
+                let oversize = false;
 
                 // Track file size for streams
                 if (!Buffer.isBuffer(fileStream)) {
                     fileStream.on('data', (chunk: Buffer) => {
                         totalBytes += chunk.length;
-                        if (totalBytes > this.maxFileSize) {
+                        if (totalBytes > this.maxFileSize && !oversize) {
+                            oversize = true;
+                            // Abort, not destroy: abort deletes the chunks already written, so no partial file is left.
+                            fileStream.unpipe(uploadStream);
                             fileStream.destroy();
-                            uploadStream.destroy();
-                            const maxSizeMB = (this.maxFileSize / (1024 * 1024)).toFixed(2);
-                            reject(apiValidationException(
-                                "file_size_exceeds_limit",
-                                null,
-                                null,
-                                // { maxSize: this.maxFileSize, fileSize: totalBytes },
-                                this.languageCode
-                            ));
+                            const sizeError = apiValidationException("file_size_exceeds_limit", null, null, this.languageCode);
+                            uploadStream.abort().catch(() => undefined).finally(() => reject(sizeError));
                         }
                     });
                 }
@@ -94,6 +91,13 @@ export class GridFSStorage {
                     bufferStream.push(null);
                     bufferStream.pipe(uploadStream);
                 } else {
+                    // `pipe` does not forward a source's error: without this a source that fails (a health file that
+                    // does not open mid-copy) would leave the upload hanging and its chunks behind.
+                    fileStream.on('error', (error) => {
+                        fileStream.unpipe(uploadStream);
+                        this.logger.err(`Upload source failed for ${filename}: ${error.message}`);
+                        uploadStream.abort().catch(() => undefined).finally(() => reject(error));
+                    });
                     fileStream.pipe(uploadStream);
                 }
 

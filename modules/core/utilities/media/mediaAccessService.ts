@@ -1,4 +1,5 @@
 import {ObjectId} from "mongodb";
+import type {ClientSession} from "mongoose";
 import type {SchemaDef} from "armonia/src/modules/core/helpers/schemaDefBuilder";
 import {collectPublicMediaIds} from "armonia/src/modules/core/helpers/collectPublicMediaIds";
 import {mediaService} from "@coreModule/database/schemas/media/media.service";
@@ -10,6 +11,7 @@ import {mediaService} from "@coreModule/database/schemas/media/media.service";
 export async function markPublic(
     ids: Array<string | ObjectId>,
     companyId?: string | ObjectId | null,
+    session?: ClientSession | null,
 ): Promise<number> {
     const unique = [...new Set(ids.map((id) => String(id)).filter(Boolean))];
     if (unique.length === 0) {
@@ -21,7 +23,8 @@ export async function markPublic(
     if (companyId) {
         filter.company = new ObjectId(String(companyId));
     }
-    const result = await mediaService.updateMany(filter, {$set: {isPublic: true}});
+    // In the write's session: the media may have changed hands in the same transaction (a new company's logo).
+    const result = await mediaService.updateMany(filter, {$set: {isPublic: true}}, {session: session ?? undefined});
     return result.modifiedCount ?? 0;
 }
 
@@ -29,8 +32,9 @@ export async function markPublicFromSchemaWrite(
     schemaDef: SchemaDef,
     data: unknown,
     companyId?: string | ObjectId | null,
+    session?: ClientSession | null,
 ): Promise<number> {
-    return markPublic(collectPublicMediaIds(schemaDef, data), companyId);
+    return markPublic(collectPublicMediaIds(schemaDef, data), companyId, session);
 }
 
 function companyIdFromDoc(doc: Record<string, unknown>): ObjectId | string | null {
@@ -50,6 +54,7 @@ function companyIdFromDoc(doc: Record<string, unknown>): ObjectId | string | nul
 export async function markPublicFromDocument(
     schemaDef: SchemaDef,
     doc: unknown,
+    session?: ClientSession | null,
 ): Promise<number> {
     if (!doc || typeof doc !== "object") {
         return 0;
@@ -57,5 +62,5 @@ export async function markPublicFromDocument(
     const record = typeof (doc as {toObject?: () => unknown}).toObject === "function"
         ? (doc as {toObject: () => Record<string, unknown>}).toObject()
         : doc as Record<string, unknown>;
-    return markPublicFromSchemaWrite(schemaDef, record, companyIdFromDoc(record));
+    return markPublicFromSchemaWrite(schemaDef, record, companyIdFromDoc(record), session);
 }

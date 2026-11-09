@@ -38,20 +38,21 @@ export function publicMediaPlugin(schema: Schema, options: PublicMediaPluginOpti
         if (doc) {
             if (options.companyFromDocumentId) {
                 const record = typeof doc.toObject === "function" ? doc.toObject() : doc;
-                await markPublicFromSchemaWrite(schemaDef, record, doc._id as ObjectId);
+                await markPublicFromSchemaWrite(schemaDef, record, doc._id as ObjectId, doc.$session());
             } else {
-                await markPublicFromDocument(schemaDef, doc);
+                await markPublicFromDocument(schemaDef, doc, doc.$session());
             }
         }
     });
 
     schema.post("findOneAndUpdate", async function (doc) {
         if (doc) {
+            const session = this.getOptions().session;
             if (options.companyFromDocumentId) {
                 const record = typeof doc.toObject === "function" ? doc.toObject() : doc;
-                await markPublicFromSchemaWrite(schemaDef, record, doc._id);
+                await markPublicFromSchemaWrite(schemaDef, record, doc._id, session);
             } else {
-                await markPublicFromDocument(schemaDef, doc);
+                await markPublicFromDocument(schemaDef, doc, session);
             }
         }
     });
@@ -64,7 +65,7 @@ export function publicMediaPlugin(schema: Schema, options: PublicMediaPluginOpti
             return;
         }
         const company = query.company;
-        await markPublic(ids, company != null ? String((company as {_id?: unknown})._id ?? company) : null);
+        await markPublic(ids, company != null ? String((company as {_id?: unknown})._id ?? company) : null, this.getOptions().session);
     });
 }
 

@@ -1,5 +1,6 @@
 import type {Types} from "mongoose";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import type {ForeignReferenceAllowance} from "@coreModule/database/plugins/tenantReferences";
 
 /**
  * Tenant scoping (D16, DB-02). Every query on a model with `ownershipPlugin` is limited to the current
@@ -42,4 +43,14 @@ export function withTenant<T>(companyId: CompanyId, fn: () => PromiseLike<T> | T
  */
 export function asCrossTenant<T>(reason: string, fn: () => PromiseLike<T> | T): Promise<T> {
     return requestContext.run({...requestContext.getStore(), crossTenantReason: reason}, async () => await fn());
+}
+
+/**
+ * Runs `fn` letting the named reference fields store another company's rows (D104). Every write of a tenant record
+ * otherwise refuses a reference to a tenant-owned row outside the record's company (`reference_outside_tenant`). Only
+ * for flows that legitimately span companies, with the reason and the exact `<Model>.<path>` fields; scoping (D16) is
+ * unchanged, so combine it with `asCrossTenant` where the block also reads across companies.
+ */
+export function allowForeignReferences<T>(allowance: ForeignReferenceAllowance, fn: () => PromiseLike<T> | T): Promise<T> {
+    return requestContext.run({...requestContext.getStore(), foreignReferences: allowance}, async () => await fn());
 }

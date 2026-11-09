@@ -88,7 +88,8 @@ export function mapMedia(media: any) {
     return {
         _id: id,
         name: media?.fileName,
-        size: media?.metadata?.size || 0,
+        // A populate that selects no `metadata` still has the stored size (TD-B112).
+        size: media?.metadata?.size || media?.sizeInBytes || 0,
         extension: media?.metadata?.extension || media?.extension,
         mime: media?.metadata?.mime || media?.mimeType,
         safeCheckedFlag: media?.metadata?.safeCheckedFlag || false,

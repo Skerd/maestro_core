@@ -36,8 +36,10 @@ function declaredBySchema(schema: Schema, path: "createdAt" | "updatedAt"): bool
  * Mongoose `timestamps` (auditPlugin sets them) these hooks run after Mongoose's and decide the stored values: a create
  * always gets `now` as `createdAt`, and every save bumps `updatedAt`, even with nothing modified.
  *
- * It also adds the `{company: 1, _id: 1}` index for tenant-scoped queries. It lives here rather than in
- * ownershipPlugin because every schema applies this plugin, so schemas without ownership keep the index they have.
+ * It also adds the `{company: 1, _id: 1}` index for tenant-scoped queries, only on a schema with a `company` path. It lives
+ * here rather than in ownershipPlugin because every schema applies this plugin, so a schema that declares `company`
+ * itself gets it too. The path is looked up when the model is compiled (Mongoose emits the schema's `init` then, before
+ * any index is built), so the result is the same whether ownershipPlugin, which adds `company`, runs before or after.
  */
 export const lifeCyclePlugin = (schema: Schema): void => {
     const fields: SchemaDefinition = {};
@@ -58,7 +60,9 @@ export const lifeCyclePlugin = (schema: Schema): void => {
         next();
     });
 
-    schema.index({company: 1, _id: 1});
+    schema.once("init", () => {
+        if (schema.path("company")) schema.index({company: 1, _id: 1});
+    });
 };
 
 export default lifeCyclePlugin;

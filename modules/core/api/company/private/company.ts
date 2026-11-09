@@ -45,6 +45,8 @@ import {buildSiteHostAssignment} from "@coreModule/utilities/company/siteHost";
 import {isValidTimeZone} from "@coreModule/utilities/time/timeWindows";
 import type {FilterQuery} from "mongoose";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
+import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
 
 /**
  * Company Management Endpoints (Private)
@@ -240,6 +242,57 @@ async function getCompanyBasicInfo(params: GetCompanyBasicInfoType): Promise<Bas
     };
 }
 
+type MappedAddress = Awaited<ReturnType<typeof validateAndMapAddresses>>[number];
+
+/**
+ * A new company's addresses name its own places (D104), but it has none yet: the dialog offers the creator's. Each
+ * place is copied into the new company once (country by row, then its state and city under the copies), so the
+ * address keeps what the creator chose and every reference is the new company's own row.
+ */
+async function copyPlacesToNewCompany(
+    addresses: MappedAddress[],
+    newCompanyId: ObjectId,
+    ctx: CrudOptions & {languageCode: string},
+): Promise<MappedAddress[]> {
+    if (addresses.length === 0) return addresses;
+    // The creator's rows, read in the creator's scope before switching to the new company's.
+    const ids = (key: "country" | "state" | "city") => [...new Set(addresses.flatMap((address) => (address[key] ? [String(address[key])] : [])))];
+    const [countries, states, cities] = await Promise.all([
+        countryService.find({_id: {$in: ids("country")}}, ctx, undefined, "name code phoneCode"),
+        stateService.find({_id: {$in: ids("state")}}, ctx, undefined, "name code"),
+        cityService.find({_id: {$in: ids("city")}}, ctx, undefined, "name"),
+    ]);
+    const row = <T extends {_id?: unknown}>(rows: T[], id: unknown) => rows.find((candidate) => String(candidate._id) === String(id));
+
+    return withTenant(newCompanyId, async () => {
+        const copies = new Map<string, ObjectId>();
+        const copyOnce = async (key: string, create: () => Promise<{_id?: unknown}>) => {
+            const known = copies.get(key);
+            if (known) return known;
+            const created = new ObjectId(String((await create())._id));
+            copies.set(key, created);
+            return created;
+        };
+        const mapped: MappedAddress[] = [];
+        for (const address of addresses) {
+            const country = row(countries, address.country);
+            const state = address.state ? row(states, address.state) : undefined;
+            const city = row(cities, address.city);
+            if (!country || !city || (address.state && !state)) throw apiValidationException("city_not_found", null, null, ctx.languageCode);
+            const countryId = await copyOnce(`country:${country._id}`, () =>
+                countryService.create({name: country.name, code: country.code, phoneCode: country.phoneCode, company: newCompanyId}, ctx));
+            const stateId = state
+                ? await copyOnce(`state:${state._id}`, () =>
+                    stateService.create({name: state.name, code: state.code, country: countryId, company: newCompanyId}, ctx))
+                : undefined;
+            const cityId = await copyOnce(`city:${city._id}`, () =>
+                cityService.create({name: city.name, country: countryId, ...(stateId ? {state: stateId} : {}), company: newCompanyId}, ctx));
+            mapped.push({...address, country: countryId, state: stateId, city: cityId});
+        }
+        return mapped;
+    });
+}
+
 /**
  * PUT /api/company
  *
@@ -306,14 +359,28 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
     const domains = trimDomains(allowedDomains);
 
     const newCompanyId = new ObjectId();
-    await companyService.create(
+    const crudOptions = {session, logger, languageCode, auditUserId: actionUserCtx.userId};
+    // The dialog offers the creator's places; the new company gets its own copies (D104).
+    const ownAddresses = await copyPlacesToNewCompany(
+        await validateAndMapAddresses(addresses, company._id, {languageCode, session, logger}),
+        newCompanyId,
+        crudOptions,
+    );
+    // The logo was uploaded in the creator's company; a company's logo is its own Media row (publicMediaPlugin).
+    const logo = fileIds?.[0] ?? null;
+    if (logo) {
+        await asCrossTenant("a new company takes over the logo its creator uploaded for it", () =>
+            mediaService.updateOne({_id: new ObjectId(logo), company: company._id}, {$set: {company: newCompanyId}}, {session, logger}));
+    }
+    // Its row, roles and public logo are the new company's own data (D16).
+    await withTenant(newCompanyId, () => companyService.create(
         {
             _id: newCompanyId,
             name,
             email,
             phoneNumber,
             description,
-            logo: !!fileIds && !!fileIds[0] ? fileIds[0] : null,
+            logo,
             website,
             linkedin,
             instagram,
@@ -325,14 +392,14 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
             siteProvision: siteHostAssignment.siteProvision,
             ...(zone ? {timezone: zone} : {}),
             allowedDomains: domains.length > 0 ? domains : ["none.none.com"],
-            addresses: await validateAndMapAddresses(addresses, newCompanyId, {languageCode, session, logger}),
+            addresses: ownAddresses,
             parentCompany: company._id,
             // The platform owner grants further modules (PUT /api/platform/companies/modules/:id).
             modules: ["core"],
             ...(publicAiChat ? {publicAiChat} : {}),
         } as any,
-        { session, logger, languageCode, auditUserId: actionUserCtx.userId }
-    );
+        crudOptions,
+    ));
 
     logger.finish(`Finished creating new company!`);
 

@@ -16,7 +16,7 @@ import {
     FILE_SIGNATURES
 } from "armonia/src/modules/core/constants";
 import {FILE_UPLOAD} from "@coreModule/environment";
-import {sealMediaFile} from "@coreModule/utilities/security/healthDataCrypto";
+import {sealMediaFileStream} from "@coreModule/utilities/security/healthDataCrypto";
 
 export type MediaUploaded = {
     fileIds: string[];
@@ -845,11 +845,12 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
 
                     // Health files are sealed for this Media record before anything is stored (D102).
                     const newMediaId = new MongooseTypes.ObjectId();
-                    const ownerCompany = req.body?.user?.company?._id;
-                    const storedBuffer = healthData ? await sealMediaFile(processedBuffer, ownerCompany, newMediaId) : processedBuffer;
+                    // The Media record's company (below), whose key seals it.
+                    const ownerCompany = req.body?.user?.company?._id ?? req.body?.company?._id;
+                    // Uploads are buffered (memoryStorage), so a health file is sealed chunk by chunk as GridFS pulls it (TD-B101).
+                    const fileStream = healthData ? await sealMediaFileStream(processedBuffer, ownerCompany, newMediaId) : Readable.from(processedBuffer);
 
                     // Upload processed file to GridFS
-                    const fileStream = Readable.from(storedBuffer);
                     const gridfsFileId = await gridfs.uploadFile(
                         fileStream,
                         file.originalname,
@@ -889,6 +890,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         fileId: mongooseFileId as any, // Type assertion needed due to MongoDB vs Mongoose ObjectId types
                         createdBy: userId as any, // Type assertion for Mongoose ObjectId (ownershipPlugin)
                         ...(req.body?.user?.company && { company: req.body?.user?.company?._id as any }),
+                        ...(healthData && { company: ownerCompany }),
                         ...(markPendingReference && { pendingReference: true }),
                         ...(healthData && { encrypted: true }),
                         metadata,

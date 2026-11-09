@@ -1,5 +1,6 @@
 import {AsyncLocalStorage} from 'async_hooks';
 import type {ClientSession} from 'mongoose';
+import type {ForeignReferenceAllowance} from '@coreModule/database/plugins/tenantReferences';
 
 /**
  * Request-scoped context propagated through AsyncLocalStorage.
@@ -30,6 +31,8 @@ export interface RequestContextStore {
     tenantCompanyId?: string;
     /** Why the current block may reach any company's data (`asCrossTenant`). Set, scoping is off. */
     crossTenantReason?: string;
+    /** Reference fields the current block may point at another company's rows (`allowForeignReferences`, D104). */
+    foreignReferences?: ForeignReferenceAllowance;
     /** The caller's language, for errors raised below the request handler (e.g. by plugins). */
     languageCode?: string;
     /** Public requests from the portal: the company the page is about (`x-site-company`, slug or id). */

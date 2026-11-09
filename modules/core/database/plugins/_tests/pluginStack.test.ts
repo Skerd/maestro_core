@@ -80,12 +80,11 @@ describe.each(COMBINATIONS)("plugin stack $name ($example)", {timeout: 60000}, (
         expect(model().schema.get("timestamps")).toBe(has("audit") ? true : undefined);
     });
 
-    it("declares the {company, _id} index once, plus each plugin's own indexes", () => {
+    it("declares the {company, _id} index once where ownership adds company, plus each plugin's own indexes", () => {
         const indexes = model().schema.indexes().map((index) => JSON.stringify(index));
-        expect(indexes.filter((index) => index === TENANT_INDEX)).toHaveLength(1);
+        expect(indexes.filter((index) => index === TENANT_INDEX)).toHaveLength(has("ownership") ? 1 : 0);
         const expected = [
-            TENANT_INDEX,
-            ...(has("ownership") ? [JSON.stringify([{createdBy: 1}, {background: true}])] : []),
+            ...(has("ownership") ? [TENANT_INDEX, JSON.stringify([{createdBy: 1}, {background: true}])] : []),
             ...(has("softDelete") ? [JSON.stringify([{deletedAt: 1}, {background: true}])] : []),
         ];
         expect([...indexes].sort()).toEqual([...expected].sort());
@@ -136,5 +135,32 @@ describe.each(COMBINATIONS)("plugin stack $name ($example)", {timeout: 60000}, (
             last = now;
         }
         expect((await inTenant(() => model().findById(doc._id).lean()))!.createdAt!.getTime()).toBe(doc.createdAt!.getTime());
+    });
+});
+
+describe("the {company, _id} index", () => {
+    const tenantIndexes = (name: string, build: (schema: Schema) => void): number => {
+        const schema = new Schema({title: String});
+        build(schema);
+        return mongoose.model(`PluginStackIndex${name}`, schema).schema.indexes()
+            .filter((index) => JSON.stringify(index) === TENANT_INDEX).length;
+    };
+
+    it("is added once when lifeCycle runs before ownership adds company", () => {
+        expect(tenantIndexes("LifeCycleFirst", (schema) => {
+            lifeCyclePlugin(schema);
+            ownershipPlugin(schema);
+        })).toBe(1);
+    });
+
+    it("is added for a company the schema declares itself, without ownership", () => {
+        expect(tenantIndexes("OwnCompany", (schema) => {
+            schema.add({company: {type: Schema.Types.ObjectId, ref: "Company"}});
+            lifeCyclePlugin(schema);
+        })).toBe(1);
+    });
+
+    it("is not added to a schema without company", () => {
+        expect(tenantIndexes("NoCompany", (schema) => lifeCyclePlugin(schema))).toBe(0);
     });
 });

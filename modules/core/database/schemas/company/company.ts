@@ -53,6 +53,7 @@ import {
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {closeCompanyModules, effectiveCompanyModules, invalidateCompanyModules} from "@coreModule/utilities/modules/companyModules";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {checkTenantReferences} from "@coreModule/database/plugins/tenantReferences";
 
 function documentObjectId(ref: unknown): ObjectId | null {
     if (ref == null) return null;
@@ -725,6 +726,8 @@ CompanySchema.methods.getAllRoles = async function (fetchAdminRoles: boolean = f
 
 // `company` here is the parent company that created this one, not a tenant partition (D16).
 ownershipPlugin(CompanySchema, {tenantScoped: false});
+// Its addresses' places and its logo are its own rows (D104): `company` names the parent, so they are judged by `_id`.
+checkTenantReferences(CompanySchema, "_id");
 publicMediaPlugin(CompanySchema, {schemaDef: CompanySchemaDef, companyFromDocumentId: true});
 auditPlugin(CompanySchema);
 softDeletePlugin(CompanySchema);

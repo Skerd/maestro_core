@@ -11,6 +11,21 @@ vi.mock("@coreModule/utilities/middlewares/authMW", async () =>
 vi.mock("@coreModule/utilities/middlewares/rateLimiter", () => ({
     rateLimiter: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
+// A key-store outage, on demand: the next N seals fail (D103).
+const {sealing} = vi.hoisted(() => ({sealing: {failures: 0}}));
+vi.mock("@coreModule/utilities/security/healthDataCrypto", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@coreModule/utilities/security/healthDataCrypto")>();
+    return {
+        ...actual,
+        encryptHealthValue: async (...args: Parameters<typeof actual.encryptHealthValue>) => {
+            if (sealing.failures > 0) {
+                sealing.failures -= 1;
+                throw new Error("key store unavailable");
+            }
+            return actual.encryptHealthValue(...args);
+        },
+    };
+});
 
 import {appFor, callerHeader, type TestCaller} from "@coreModule/_tests/httpHarness";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
@@ -184,6 +199,61 @@ describe("health fields at rest (D102)", () => {
 
         await Chart.updateOne({_id: chart._id}, {$unset: {history: ""}});
         expect((await raw(chart._id))?.history).toBeUndefined();
+    }));
+
+    it("seals a value stored before encryption when an operator update changes another field (TD-B102)", () => asA(async () => {
+        const [one, two] = [new ObjectId(), new ObjectId()];
+        await Chart.collection.insertMany([
+            {_id: one, company: companyA, title: "old", history: {notes: SECRET}},
+            {_id: two, company: companyA, title: "old", history: {notes: SECRET}},
+        ]);
+        await Chart.updateOne({_id: one.toString()}, {$set: {title: "renamed"}});
+        expect(isHealthCiphertext((await raw(one))?.history)).toBe(true);
+        expect((await raw(one))?.title).toBe("renamed");
+        expect((await Chart.findById(one))?.history?.notes).toBe(SECRET);
+
+        await Chart.updateMany({title: "old"}, {$set: {title: "bulk"}});
+        expect(isHealthCiphertext((await raw(two))?.history)).toBe(true);
+        expect(JSON.stringify(await Chart.collection.find({}).toArray())).not.toContain("penicillin");
+    }));
+
+    it("refuses health values written through an update pipeline or bulkWrite (TD-B103)", () => asA(async () => {
+        const chart = await Chart.create({company: companyA, title: "A", history: history()});
+        await expect(Chart.updateOne({_id: chart._id}, [{$set: {history: {notes: "plain"}}}])).rejects.toThrow(/health data/);
+        // A whole-document stage could also rewrite the `scans` references, so D104 refuses it first.
+        await expect(Chart.updateOne({_id: chart._id}, [{$replaceWith: {title: "B"}}])).rejects.toThrow(/health data|D104/);
+        await expect(Chart.bulkWrite([{updateOne: {filter: {_id: chart._id}, update: {$set: {history: {notes: "plain"}}}}}])).rejects.toThrow(/health data/);
+        await expect(Chart.bulkWrite([{insertOne: {document: {company: companyA, history: {notes: "plain"}}}}])).rejects.toThrow(/health data/);
+        expect(JSON.stringify(await Chart.collection.find({}).toArray())).not.toContain("plain");
+
+        // Other fields still go through both.
+        await Chart.updateOne({_id: chart._id}, [{$set: {title: "B"}}]);
+        await Chart.bulkWrite([{updateOne: {filter: {_id: chart._id}, update: {$set: {title: "C"}}}}]);
+        expect((await raw(chart._id))?.title).toBe("C");
+    }));
+
+    it("runs both bulkWrite checks: health values (D102) and references outside the tenant (D104)", () => asA(async () => {
+        const chart = await Chart.create({company: companyA, title: "A", history: history()});
+        const {insertedId: foreignScan} = await Media.collection.insertOne({company: companyB});
+        const {insertedId: ownScan} = await Media.collection.insertOne({company: companyA});
+        await expect(Chart.bulkWrite([{updateOne: {filter: {_id: chart._id}, update: {$set: {scans: [foreignScan]}}}}]))
+            .rejects.toMatchObject({error_code: "reference_outside_tenant"});
+        await expect(Chart.bulkWrite([{updateOne: {filter: {_id: chart._id}, update: {$set: {scans: [ownScan], history: {notes: "plain"}}}}}]))
+            .rejects.toThrow(/health data/);
+        await Chart.bulkWrite([{updateOne: {filter: {_id: chart._id}, update: {$set: {scans: [ownScan]}}}}]);
+        expect((await raw(chart._id))?.scans).toEqual([ownScan]);
+    }));
+
+    it("refuses a change whose history cannot be sealed, instead of losing the history (TD-B105)", () => asA(async () => {
+        const chart = await Chart.create({company: companyA, title: "A", history: history()});
+        const before = (await raw(chart._id))?.history;
+        const loaded = await Chart.findById(chart._id);
+        loaded!.set("history.notes", "no allergies");
+        sealing.failures = 1;
+        await expect(loaded!.save()).rejects.toMatchObject({error_code: "health_data_unsealable", status: 503});
+        sealing.failures = 0;
+        expect((await raw(chart._id))?.history).toBe(before);
+        expect(await AuditLog.countDocuments({documentId: chart._id, action: "UPDATE"})).toBe(0);
     }));
 
     it("rewraps the data keys under a new master key; the data still opens", () => asA(async () => {

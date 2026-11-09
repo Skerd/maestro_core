@@ -5,12 +5,22 @@
 
 import {Request, Response} from 'express';
 import {ObjectId} from 'mongodb';
+import {Readable} from 'stream';
+import {pipeline} from 'stream/promises';
 import {mediaService} from '@coreModule/database/schemas/media/media.service';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {apiValidationException} from 'armonia/src/modules/core/helpers/exceptions';
-import {getGridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
+import {getGridFSStorage, GridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
 import {IMedia} from '@coreModule/database/schemas/media/media';
-import {openMediaFile} from '@coreModule/utilities/security/healthDataCrypto';
+import {
+    HEALTH_FILE_HEADER_BYTES,
+    type MediaPlaintext,
+    openMediaFile,
+    openMediaFileChunks,
+    readSealedFileHeader,
+    type SealedFile,
+    sealedSpanOf,
+} from '@coreModule/utilities/security/healthDataCrypto';
 
 /**
  * Media binaries are never framed by us (PDF.js / in-app viewers fetch as bytes).
@@ -235,7 +245,7 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
     const gridfs = getGridFSStorage(languageCode, 'media', logger);
     const fileId = new ObjectId(String(media.fileId));
     if (media.encrypted) {
-        await sendHealthFile(media, gridfs.getFileBuffer(fileId), res);
+        await sendHealthFile({media, gridfs, fileId, req, res, logger});
         logger.finish(`Served health media file: ${mediaIdParam}`);
         return;
     }
@@ -289,18 +299,77 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
     });
 }
 
+async function readAll(stream: Readable): Promise<Buffer> {
+    const parts: Buffer[] = [];
+    for await (const part of stream) parts.push(part);
+    return Buffer.concat(parts);
+}
+
+/** A stored health file's format, read from its first bytes only. */
+async function storedHealthFile(media: IMedia, gridfs: GridFSStorage, fileId: ObjectId): Promise<SealedFile> {
+    const storedLength: number = (await gridfs.getFileMetadata(fileId)).length;
+    const prefix = storedLength > 0
+        ? await readAll(gridfs.downloadFile(fileId, {start: 0, end: Math.min(HEALTH_FILE_HEADER_BYTES, storedLength) - 1}))
+        : Buffer.alloc(0);
+    return readSealedFileHeader(prefix, storedLength, media.company, media._id);
+}
+
 /**
- * A health file (D102): opened whole, so a tampered file is refused before any byte is sent. Sent without byte
- * ranges, and never cached by the browser, so no plaintext copy of an X-ray stays on the reader's disk.
+ * A health file (D102), never cached by the browser, so no plaintext copy of an X-ray stays on the reader's disk.
+ * Chunked files (HFE2, TD-B101) stream: only the chunks the request covers are read, byte ranges work, and each chunk
+ * is sent only after its tag verifies. The first chunk is verified before the status and headers go out, so a file
+ * that is truncated, not this record's or tampered where the request starts is refused with `health_data_unreadable`
+ * (409) and nothing else. A later chunk that fails cannot change the status any more: the connection is closed short
+ * of the Content-Length, which the client sees as a failed, incomplete download, never as unverified bytes. Files
+ * sealed whole before (HFE1) are opened whole and sent without ranges, as before.
  */
-async function sendHealthFile(media: IMedia, stored: Promise<Buffer>, res: Response): Promise<void> {
-    const bytes = await openMediaFile(await stored, media.company, media._id);
-    const mimeType = media.mimeType || media.metadata?.mime || 'application/octet-stream';
-    setSecurityHeaders(res, mimeType, media.originalName || media.fileName || 'file', 'private');
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Accept-Ranges', 'none');
-    res.setHeader('Content-Length', String(bytes.length));
-    res.end(bytes);
+async function sendHealthFile(options: {media: IMedia; gridfs: GridFSStorage; fileId: ObjectId; req: Request; res: Response; logger: serverLogger}): Promise<void> {
+    const {media, gridfs, fileId, req, res, logger} = options;
+    const file = await storedHealthFile(media, gridfs, fileId);
+    const setHeaders = () => {
+        setSecurityHeaders(res, media.mimeType || media.metadata?.mime || 'application/octet-stream', media.originalName || media.fileName || 'file', 'private');
+        res.setHeader('Cache-Control', 'no-store');
+    };
+
+    if (file.format === 1) {
+        const bytes = await openMediaFile(await gridfs.getFileBuffer(fileId), media.company, media._id);
+        setHeaders();
+        res.setHeader('Accept-Ranges', 'none');
+        res.setHeader('Content-Length', String(bytes.length));
+        res.end(bytes);
+        return;
+    }
+
+    const range = parseByteRange(req.headers.range, file.size);
+    if (range === "unsatisfiable") {
+        setHeaders();
+        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Content-Range', `bytes */${file.size}`);
+        res.status(416).end();
+        return;
+    }
+    const span = sealedSpanOf(file, range);
+    const chunks = openMediaFileChunks(gridfs.downloadFile(fileId, span.stored), file, media._id, span);
+    const first = await chunks.next();
+
+    setHeaders();
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (range) {
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${file.size}`);
+    }
+    res.setHeader('Content-Length', String(span.length));
+    async function* verified(): AsyncGenerator<Buffer> {
+        if (!first.done) yield first.value;
+        yield* chunks;
+    }
+    try {
+        await pipeline(Readable.from(verified(), {objectMode: false}), res);
+    } catch (error) {
+        // The headers are out: the only signal left is ending the response short (pipeline has closed it).
+        res.destroy();
+        logger.warn(`Health media file ${String(media._id)} ended early: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 /** A media file's bytes as uploaded; health files (D102) are opened here. For server-side copies and attachments. */
@@ -310,6 +379,29 @@ export async function readMediaBytes(media: IMedia, languageCode: string): Promi
     }
     const stored = await getGridFSStorage(languageCode, 'media').getFileBuffer(String(media.fileId));
     return media.encrypted ? openMediaFile(stored, media.company, media._id) : stored;
+}
+
+/**
+ * `readMediaBytes` as a stream, for server-side copies of files too large to hold (TD-B111): read from GridFS as it is
+ * pulled; a chunked health file (HFE2) is opened a chunk at a time, each only after it verifies (a chunk that does not
+ * throws `health_data_unreadable` mid-stream). A health file sealed whole before (HFE1) can only be opened whole.
+ */
+export async function readMediaStream(media: IMedia, languageCode: string): Promise<MediaPlaintext> {
+    if (!media.fileId) {
+        throw apiValidationException("file_not_found", null, null, languageCode);
+    }
+    const gridfs = getGridFSStorage(languageCode, 'media');
+    const fileId = new ObjectId(String(media.fileId));
+    if (!media.encrypted) {
+        return {size: (await gridfs.getFileMetadata(fileId)).length, chunks: gridfs.downloadFile(fileId)};
+    }
+    const file = await storedHealthFile(media, gridfs, fileId);
+    if (file.format === 1) {
+        const bytes = await openMediaFile(await gridfs.getFileBuffer(fileId), media.company, media._id);
+        return {size: bytes.length, chunks: [bytes]};
+    }
+    const span = sealedSpanOf(file);
+    return {size: file.size, chunks: openMediaFileChunks(gridfs.downloadFile(fileId, span.stored), file, media._id, span)};
 }
 
 export type MediaInfoDto = {

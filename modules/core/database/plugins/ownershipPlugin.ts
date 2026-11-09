@@ -2,6 +2,7 @@ import {Aggregate, Document, MongooseQueryMiddleware, PipelineStage, Query, Sche
 import {apiValidationException, DEFAULT_EXCEPTION_LANGUAGE} from "armonia/src/modules/core/helpers/exceptions";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {checkTenantReferences, markTenantOwned} from "@coreModule/database/plugins/tenantReferences";
 
 export interface OwnershipPluginOptions {
     /**
@@ -18,7 +19,8 @@ export interface OwnershipPluginOptions {
 
 /**
  * Tenant ownership (DB-01, DB-02): adds `createdBy` and a required `company`, and, unless `tenantScoped: false`, scopes
- * every query, aggregation and write to the request's tenant (D16). Its `{company: 1, _id: 1}` index is added by
+ * every query, aggregation and write to the request's tenant (D16) and refuses a create or update that stores a reference
+ * to another company's row (D104, `tenantReferences.ts`). Its `{company: 1, _id: 1}` index is added by
  * lifeCyclePlugin, which every schema applies.
  */
 export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions = {}): void => {
@@ -68,6 +70,8 @@ export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions 
 
     if (options.tenantScoped !== false) {
         applyTenantScope(schema, options.sharedWith);
+        markTenantOwned(schema, options.sharedWith);
+        checkTenantReferences(schema);
     }
 };
 

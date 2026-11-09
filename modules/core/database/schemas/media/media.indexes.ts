@@ -1,9 +1,7 @@
 import {Schema} from "mongoose";
 
 export function applyMediaIndexes(MediaSchema: Schema): void {
-    // Primary reference indexes
-    MediaSchema.index({ createdBy: 1 });                // For finding media by creator (ownershipPlugin)
-    MediaSchema.index({ fileId: 1 });                   // For GridFS file lookups (already indexed inline)
+    // createdBy (ownershipPlugin) and fileId (media.ts) are indexed on their fields.
 
     // Type and file identification indexes
     MediaSchema.index({ type: 1 });                      // For filtering by media type (image, video, etc.)

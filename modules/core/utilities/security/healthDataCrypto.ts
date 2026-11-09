@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import {Readable} from "stream";
 import {Decimal128, ObjectId} from "mongodb";
 import {Types} from "mongoose";
 import {HEALTH_DATA} from "@coreModule/environment";
@@ -6,6 +7,7 @@ import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {apiValidationException, DEFAULT_EXCEPTION_LANGUAGE} from "armonia/src/modules/core/helpers/exceptions";
+import {ServerError} from "armonia/src/modules/core/types";
 
 /*
  * Health data at rest (D102, SEC-06). Every company has its own AES-256 data key, created on its first encryption and
@@ -23,9 +25,22 @@ const TAG_BYTES = 16;
 const KEY_BYTES = 32;
 /** A sealed field value: `hfe1.<company>.<key version>.<iv>.<tag>.<ciphertext>`, base64url parts. */
 const VALUE_PREFIX = "hfe1.";
-/** A sealed file: magic, key version (uint32 BE), iv, tag, ciphertext. */
+/** A file sealed whole before TD-B101: magic, key version (uint32 BE), iv, tag, ciphertext. Still read, no longer written. */
 const FILE_MAGIC = Buffer.from("HFE1");
 const FILE_HEADER_BYTES = FILE_MAGIC.length + 4 + IV_BYTES + TAG_BYTES;
+/**
+ * A file sealed in chunks (TD-B101), so it can be opened and sent a chunk at a time and by byte range. Header: magic,
+ * key version (uint32 BE), company (12-byte id), chunk size (uint32 BE), plaintext size (uint64 BE), base nonce. Then
+ * each chunk of `chunk size` plaintext bytes (the last one shorter; an empty file has one empty chunk) as ciphertext
+ * followed by its tag. Chunk i is sealed under the base nonce with i XORed into its last 4 bytes, and its AAD binds the
+ * record (company, media id), the whole header, i, and whether it is the last chunk: a chunk that is altered, moved,
+ * dropped or taken from another file does not open.
+ */
+const FILE_MAGIC_V2 = Buffer.from("HFE2");
+const FILE_V2_HEADER_BYTES = FILE_MAGIC_V2.length + 4 + 12 + 4 + 8 + IV_BYTES;
+const FILE_CHUNK_BYTES = 64 * 1024;
+/** Enough of a stored health file's first bytes to tell its format and read its header (`readSealedFileHeader`). */
+export const HEALTH_FILE_HEADER_BYTES = Math.max(FILE_HEADER_BYTES, FILE_V2_HEADER_BYTES);
 
 type Id = ObjectId | Types.ObjectId | string;
 
@@ -39,6 +54,25 @@ type Sealed = {iv: Buffer; tag: Buffer; data: Buffer};
 /** Tampered, moved, or sealed under a key this server does not have: never a 500, never an empty value. */
 export function healthDataUnreadable(): ReturnType<typeof apiValidationException> {
     return apiValidationException("health_data_unreadable", "", null, requestContext.getStore()?.languageCode ?? DEFAULT_EXCEPTION_LANGUAGE);
+}
+
+/**
+ * Health data could not be sealed (key store or master key unavailable): the write is refused, so neither the value
+ * nor its change history is ever stored in plaintext or lost (D103).
+ */
+export function healthDataUnsealable(): ReturnType<typeof apiValidationException> {
+    return apiValidationException("health_data_unsealable", "", null, requestContext.getStore()?.languageCode ?? DEFAULT_EXCEPTION_LANGUAGE);
+}
+
+/** Seals with `seal`, turning any failure that is not already a keyed API error into `health_data_unsealable`. */
+export async function sealOrRefuse<T>(seal: () => Promise<T>, what: string): Promise<T> {
+    try {
+        return await seal();
+    } catch (error) {
+        if (error instanceof ServerError) throw error;
+        logger.err(`Could not seal ${what}: ${error instanceof Error ? error.message : String(error)}`);
+        throw healthDataUnsealable();
+    }
 }
 
 /** The hex id of a company or record, whether held as an id, a string or a populated document. */
@@ -66,20 +100,21 @@ function configuredMasterKeys(): MasterKeys {
 const b64 = (bytes: Buffer) => bytes.toString("base64url");
 const fromB64 = (text: string) => Buffer.from(text, "base64url");
 
-function seal(key: Buffer, plaintext: Buffer, aad: string): Sealed {
-    const iv = crypto.randomBytes(IV_BYTES);
+const aadBytes = (aad: string | Buffer) => (typeof aad === "string" ? Buffer.from(aad, "utf8") : aad);
+
+function seal(key: Buffer, plaintext: Buffer, aad: string | Buffer, iv: Buffer = crypto.randomBytes(IV_BYTES)): Sealed {
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv, {authTagLength: TAG_BYTES});
-    cipher.setAAD(Buffer.from(aad, "utf8"));
+    cipher.setAAD(aadBytes(aad));
     const data = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     return {iv, tag: cipher.getAuthTag(), data};
 }
 
 /** Null when the tag does not verify: the bytes, the binding or the key differ from the sealing. */
-function open(key: Buffer, sealed: Sealed, aad: string): Buffer | null {
+function open(key: Buffer, sealed: Sealed, aad: string | Buffer): Buffer | null {
     if (sealed.iv.length !== IV_BYTES || sealed.tag.length !== TAG_BYTES) return null;
     try {
         const decipher = crypto.createDecipheriv(ALGORITHM, key, sealed.iv, {authTagLength: TAG_BYTES});
-        decipher.setAAD(Buffer.from(aad, "utf8"));
+        decipher.setAAD(aadBytes(aad));
         decipher.setAuthTag(sealed.tag);
         return Buffer.concat([decipher.update(sealed.data), decipher.final()]);
     } catch {
@@ -222,33 +257,196 @@ export async function decryptHealthValue(ciphertext: string, binding: Omit<Healt
 
 const mediaBinding = (mediaId: Id) => ({collection: "media", documentId: mediaId, path: "file"});
 
-/** The bytes to store for a health file (X-ray, photo) of `company`'s media record `mediaId`. */
-export async function sealMediaFile(bytes: Buffer, company: unknown, mediaId: Id): Promise<Buffer> {
-    const companyId = companyOf({company});
-    const {version, key} = await currentDataKey(companyId);
-    const {iv, tag, data} = seal(key, bytes, aadOf(companyId, mediaBinding(mediaId)));
-    const versionBytes = Buffer.alloc(4);
-    versionBytes.writeUInt32BE(version);
-    return Buffer.concat([FILE_MAGIC, versionBytes, iv, tag, data]);
+/** A stored health file's format, from `readSealedFileHeader`. */
+export type SealedFile = {format: 1} | SealedFileV2;
+export type SealedFileV2 = {format: 2; header: Buffer; company: string; version: number; chunkSize: number; size: number; baseNonce: Buffer};
+/** The stored bytes (inclusive) holding plaintext bytes `skip`… of chunk `firstChunk` through chunk `lastChunk`, `length` bytes in all. */
+export type SealedSpan = {stored: {start: number; end: number}; firstChunk: number; lastChunk: number; skip: number; length: number};
+
+const chunkCount = (file: SealedFileV2) => Math.max(1, Math.ceil(file.size / file.chunkSize));
+const chunkPlainBytes = (file: SealedFileV2, index: number) => Math.max(0, Math.min(file.chunkSize, file.size - index * file.chunkSize));
+const storedLengthOf = (file: SealedFileV2) => file.header.length + file.size + chunkCount(file) * TAG_BYTES;
+
+function chunkNonce(baseNonce: Buffer, index: number): Buffer {
+    const nonce = Buffer.from(baseNonce);
+    nonce.writeUInt32BE((nonce.readUInt32BE(IV_BYTES - 4) ^ index) >>> 0, IV_BYTES - 4);
+    return nonce;
 }
 
-/** The original bytes of a file sealed by `sealMediaFile`; throws `health_data_unreadable` when they do not open. */
-export async function openMediaFile(stored: Buffer, company: unknown, mediaId: Id): Promise<Buffer> {
+function chunkAad(binding: string, header: Buffer, index: number, last: boolean): Buffer {
+    const position = Buffer.alloc(5);
+    position.writeUInt32BE(index);
+    position[4] = last ? 1 : 0;
+    return Buffer.concat([Buffer.from(binding, "utf8"), header, position]);
+}
+
+/** A file's plaintext as it is read, in pieces of any size, with its length known up front (the HFE2 header carries it). */
+export type MediaPlaintext = {size: number; chunks: AsyncIterable<Buffer> | Iterable<Buffer>};
+
+/**
+ * Format 2: the header, then each chunk sealed as it is pulled from `plaintext`, so the stored form never exists whole
+ * in memory, and a streamed plaintext never does either (one chunk plus one incoming piece at most). A source that
+ * yields more or fewer bytes than `plaintext.size` throws `health_data_unsealable`: the header would not describe it.
+ */
+async function sealedMediaFileParts(plaintext: MediaPlaintext, company: unknown, mediaId: Id): Promise<AsyncGenerator<Buffer>> {
     const companyId = companyOf({company});
-    if (stored.length < FILE_HEADER_BYTES || !stored.subarray(0, FILE_MAGIC.length).equals(FILE_MAGIC)) throw healthDataUnreadable();
-    const version = stored.readUInt32BE(FILE_MAGIC.length);
+    const {version, key} = await currentDataKey(companyId);
+    const header = Buffer.alloc(FILE_V2_HEADER_BYTES);
+    FILE_MAGIC_V2.copy(header, 0);
+    header.writeUInt32BE(version, 4);
+    Buffer.from(companyId, "hex").copy(header, 8);
+    header.writeUInt32BE(FILE_CHUNK_BYTES, 20);
+    header.writeBigUInt64BE(BigInt(plaintext.size), 24);
+    crypto.randomBytes(IV_BYTES).copy(header, 32);
+    const file: SealedFileV2 = {format: 2, header, company: companyId, version, chunkSize: FILE_CHUNK_BYTES, size: plaintext.size, baseNonce: header.subarray(32)};
+    const binding = aadOf(companyId, mediaBinding(mediaId));
+    const total = chunkCount(file);
+    const sealChunk = (index: number, bytes: Buffer): Buffer => {
+        const {tag, data} = seal(key, bytes, chunkAad(binding, header, index, index === total - 1), chunkNonce(file.baseNonce, index));
+        return Buffer.concat([data, tag]);
+    };
+    const refuseLength = (received: number): never => {
+        logger.err(`Health file of media ${idString(mediaId)} to seal ${received < file.size ? "ended at" : "ran past"} ${received} of ${file.size} bytes`);
+        throw healthDataUnsealable();
+    };
+    return (async function* () {
+        yield header;
+        let index = 0;
+        let received = 0;
+        let pending: Buffer = Buffer.alloc(0);
+        for await (const piece of plaintext.chunks) {
+            received += piece.length;
+            if (received > file.size) refuseLength(received);
+            pending = pending.length ? Buffer.concat([pending, piece]) : piece;
+            // The last chunk waits for the end of the source: only then is it known to be complete.
+            for (; index < total - 1 && pending.length >= file.chunkSize; index++) {
+                yield sealChunk(index, pending.subarray(0, file.chunkSize));
+                pending = pending.subarray(file.chunkSize);
+            }
+        }
+        if (received !== file.size) refuseLength(received);
+        yield sealChunk(total - 1, pending);
+    })();
+}
+
+const wholePlaintext = (bytes: Buffer): MediaPlaintext => ({size: bytes.length, chunks: [bytes]});
+
+/** The bytes to store for a health file (X-ray, photo) of `company`'s media record `mediaId`. */
+export async function sealMediaFile(bytes: Buffer, company: unknown, mediaId: Id): Promise<Buffer> {
+    const parts: Buffer[] = [];
+    for await (const part of await sealedMediaFileParts(wholePlaintext(bytes), company, mediaId)) parts.push(part);
+    return Buffer.concat(parts);
+}
+
+/**
+ * `sealMediaFile` as a stream to hand to GridFS: each chunk is sealed as the upload pulls it (TD-B101). Given a
+ * streamed plaintext (a server-side copy, `readMediaStream`), the plaintext is pulled as the upload goes too (TD-B111).
+ */
+export async function sealMediaFileStream(plaintext: Buffer | MediaPlaintext, company: unknown, mediaId: Id): Promise<Readable> {
+    const source = Buffer.isBuffer(plaintext) ? wholePlaintext(plaintext) : plaintext;
+    return Readable.from(await sealedMediaFileParts(source, company, mediaId), {objectMode: false});
+}
+
+function refuseFile(mediaId: Id, reason: string): never {
+    logger.err(`Health file of media ${idString(mediaId)} ${reason}`);
+    throw healthDataUnreadable();
+}
+
+/**
+ * A stored health file's format, from its first `HEALTH_FILE_HEADER_BYTES` (or all of it, when shorter) and its stored
+ * length. A format-2 header must name the media's company and account for exactly `storedLength` bytes, so a truncated
+ * or extended file is refused before anything is opened; the header's fields are authenticated by every chunk.
+ * Throws `health_data_unreadable` for anything else.
+ */
+export function readSealedFileHeader(prefix: Buffer, storedLength: number, company: unknown, mediaId: Id): SealedFile {
+    const companyId = companyOf({company});
+    if (prefix.length >= FILE_HEADER_BYTES && prefix.subarray(0, FILE_MAGIC.length).equals(FILE_MAGIC)) return {format: 1};
+    if (prefix.length < FILE_V2_HEADER_BYTES || !prefix.subarray(0, FILE_MAGIC_V2.length).equals(FILE_MAGIC_V2)) refuseFile(mediaId, "is not a sealed file");
+    const header = Buffer.from(prefix.subarray(0, FILE_V2_HEADER_BYTES));
+    const size = header.readBigUInt64BE(24);
+    const file: SealedFileV2 = {
+        format: 2,
+        header,
+        company: header.subarray(8, 20).toString("hex"),
+        version: header.readUInt32BE(4),
+        chunkSize: header.readUInt32BE(20),
+        size: Number(size),
+        baseNonce: header.subarray(32, FILE_V2_HEADER_BYTES),
+    };
+    if (file.company !== companyId || file.version < 1 || file.chunkSize < 1 || size > BigInt(Number.MAX_SAFE_INTEGER)) refuseFile(mediaId, "has an invalid header");
+    if (storedLengthOf(file) !== storedLength) refuseFile(mediaId, `is ${storedLength} bytes, its header accounts for ${storedLengthOf(file)}`);
+    return file;
+}
+
+/** Where plaintext bytes `range` (inclusive; the whole file without one) of `file` are stored. */
+export function sealedSpanOf(file: SealedFileV2, range?: {start: number; end: number}): SealedSpan {
+    const start = range?.start ?? 0;
+    const end = range?.end ?? file.size - 1;
+    const firstChunk = Math.floor(start / file.chunkSize);
+    const lastChunk = file.size === 0 ? 0 : Math.floor(end / file.chunkSize);
+    const sealedChunk = file.chunkSize + TAG_BYTES;
+    return {
+        stored: {
+            start: file.header.length + firstChunk * sealedChunk,
+            end: file.header.length + lastChunk * sealedChunk + chunkPlainBytes(file, lastChunk) + TAG_BYTES - 1,
+        },
+        firstChunk,
+        lastChunk,
+        skip: start - firstChunk * file.chunkSize,
+        length: file.size === 0 ? 0 : end - start + 1,
+    };
+}
+
+/**
+ * Opens the chunks of `span` from `stored` (the stored bytes `span.stored`, in pieces of any size), yielding each
+ * chunk's plaintext, cut to the span, only after its tag verifies. Holds one chunk plus one incoming piece at most. A
+ * chunk that does not open, or a source that ends early, throws `health_data_unreadable`: nothing after the last
+ * verified chunk is ever yielded.
+ */
+export async function* openMediaFileChunks(stored: AsyncIterable<Buffer> | Iterable<Buffer>, file: SealedFileV2, mediaId: Id, span: SealedSpan): AsyncGenerator<Buffer> {
+    const key = await dataKey(file.company, file.version);
+    const binding = aadOf(file.company, mediaBinding(mediaId));
+    const total = chunkCount(file);
+    let index = span.firstChunk;
+    let sent = 0;
+    let pending: Buffer = Buffer.alloc(0);
+    for await (const piece of stored) {
+        pending = pending.length ? Buffer.concat([pending, piece]) : piece;
+        for (let need = chunkPlainBytes(file, index) + TAG_BYTES; index <= span.lastChunk && pending.length >= need; need = chunkPlainBytes(file, index) + TAG_BYTES) {
+            const dataBytes = need - TAG_BYTES;
+            const sealed = {iv: chunkNonce(file.baseNonce, index), tag: pending.subarray(dataBytes, need), data: pending.subarray(0, dataBytes)};
+            const plaintext = open(key, sealed, chunkAad(binding, file.header, index, index === total - 1));
+            if (!plaintext) refuseFile(mediaId, `failed authentication at chunk ${index}`);
+            const from = index === span.firstChunk ? span.skip : 0;
+            const part = plaintext.subarray(from, from + span.length - sent);
+            pending = pending.subarray(need);
+            sent += part.length;
+            index += 1;
+            if (part.length) yield part;
+        }
+        if (index > span.lastChunk) return;
+    }
+    if (index <= span.lastChunk) refuseFile(mediaId, `ended before chunk ${index}`);
+}
+
+function openMediaFileV1(stored: Buffer, key: Buffer, companyId: string, mediaId: Id): Buffer {
     const ivStart = FILE_MAGIC.length + 4;
     const sealed = {
         iv: stored.subarray(ivStart, ivStart + IV_BYTES),
         tag: stored.subarray(ivStart + IV_BYTES, FILE_HEADER_BYTES),
         data: stored.subarray(FILE_HEADER_BYTES),
     };
-    const plaintext = open(await dataKey(companyId, version), sealed, aadOf(companyId, mediaBinding(mediaId)));
-    if (!plaintext) {
-        logger.err(`Health file of media ${idString(mediaId)} failed authentication`);
-        throw healthDataUnreadable();
-    }
-    return plaintext;
+    return open(key, sealed, aadOf(companyId, mediaBinding(mediaId))) ?? refuseFile(mediaId, "failed authentication");
+}
+
+/** The original bytes of a file sealed by `sealMediaFile` (either format); throws `health_data_unreadable` when they do not open. */
+export async function openMediaFile(stored: Buffer, company: unknown, mediaId: Id): Promise<Buffer> {
+    const companyId = companyOf({company});
+    const file = readSealedFileHeader(stored.subarray(0, HEALTH_FILE_HEADER_BYTES), stored.length, companyId, mediaId);
+    if (file.format === 1) return openMediaFileV1(stored, await dataKey(companyId, stored.readUInt32BE(FILE_MAGIC.length)), companyId, mediaId);
+    const parts: Buffer[] = [];
+    for await (const part of openMediaFileChunks([stored.subarray(file.header.length)], file, mediaId, sealedSpanOf(file))) parts.push(part);
+    return Buffer.concat(parts);
 }
 
 /**
