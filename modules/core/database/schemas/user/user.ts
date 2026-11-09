@@ -1155,7 +1155,7 @@ UserSchema.methods.verifyMfa = async function (companyId: ObjectId, mfaCode: str
         window: 1,              // Validate against previous and next OTPs to account for clock drift
     });
     if (!isValid) {
-        await this.updateUnsuccessfulLogins(companyId);
+        countFailedSignIn(this, companyId);
         throw apiValidationException("mfa_code_invalid", null, null, languageCode);
     }
 }
@@ -1567,9 +1567,20 @@ UserSchema.methods.sendInvitationEmail = async function (welcomeMessage: string,
 
 }
 
+/**
+ * Counts a failed sign-in attempt outside the caller's transaction, which rolls back because the attempt failed (the
+ * count must stay). Not awaited (TD-B97): when that transaction already wrote this user it holds the user's lock, and
+ * a write outside it waits for the lock while the transaction waits for the request, which hung the request until
+ * the server's transaction lifetime limit (60 s). The count lands once the request has rolled back.
+ */
+function countFailedSignIn(user: IUser, companyId: ObjectId): void {
+    user.updateUnsuccessfulLogins(companyId).catch((error: unknown) =>
+        getLogger("login_attempts").warn(`Failed to count a failed sign-in attempt: ${error instanceof Error ? error.message : String(error)}`));
+}
+
 UserSchema.methods.checkPassword =  async function (companyId: ObjectId, candidatePassword: string, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE): Promise<void>{
     if( !(await bcrypt.compare(candidatePassword, this.password)) ){
-        await this.updateUnsuccessfulLogins(companyId);
+        countFailedSignIn(this, companyId);
         throw apiValidationException("invalid_credentials", null, null, languageCode);
     }
 }
