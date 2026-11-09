@@ -18,6 +18,13 @@ export type DefaultRoleDefinition = {
      * `permissionGroups` / `readPermissionGroups` grant. Every other group's sensitive tags are left out.
      */
     sensitivePermissionGroups?: string[];
+    /**
+     * Exact permission tags (e.g. `"posorders[action:resendFiscal]"`) this role is not given by default, although a group
+     * it names holds them. A whole group is too coarse when one action in it belongs to a more senior role (D99). This
+     * only shapes default granting, at company creation and in the default-role sync: an administrator can still grant
+     * the tag to a company's role, and the sync never removes it. Admin roles ignore it.
+     */
+    excludedPermissions?: string[];
 };
 
 export const coreDefaultRoles: DefaultRoleDefinition[] = [
@@ -90,6 +97,40 @@ export function unknownDefaultRoleGroups(knownGroups: ReadonlySet<string>): stri
     return [...unknown];
 }
 
+/** The permission group a tag belongs to, as `createRolePermissions` names it: `"posorders[...]"` → `"Posorders"`. */
+function tagGroup(tag: string): string {
+    const key = tag.includes("[") ? tag.slice(0, tag.indexOf("[")) : tag;
+    return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+/**
+ * Excluded tags (`excludedPermissions`) that registered default roles name but no permission has (`slug: tag`). A
+ * misspelt tag excludes nothing and says nothing, so the permission sync warns about each one at start-up (D99).
+ * Action tags exist only once their module's routers are mounted, so a tag whose group belongs to a module outside
+ * `completeModules` cannot be judged and is skipped; a tag whose group no permission has is always reported.
+ */
+export function unknownExcludedPermissions(
+    permissions: readonly {tag: string; group: string; module: string}[],
+    completeModules: ReadonlySet<string>,
+): string[] {
+    const knownTags = new Set(permissions.map((permission) => permission.tag));
+    const modulesByGroup = new Map<string, Set<string>>();
+    for (const permission of permissions) {
+        modulesByGroup.set(permission.group, (modulesByGroup.get(permission.group) ?? new Set()).add(permission.module));
+    }
+    const unknown = new Set<string>();
+    for (const role of getDefaultRoles()) {
+        for (const tag of role.excludedPermissions ?? []) {
+            if (knownTags.has(tag)) continue;
+            const groupModules = modulesByGroup.get(tagGroup(tag));
+            if (!groupModules || [...groupModules].some((moduleName) => completeModules.has(moduleName))) {
+                unknown.add(`${role.slug}: ${tag}`);
+            }
+        }
+    }
+    return [...unknown];
+}
+
 /** Core roles plus the packs of the given modules (untagged packs are always included). */
 export function getDefaultRolesForModules(modules: string[]): DefaultRoleDefinition[] {
     const allowed = new Set(modules);
@@ -142,6 +183,12 @@ function uniqueObjectIds(ids: ObjectId[]): ObjectId[] {
     return unique;
 }
 
+/**
+ * The permissions a default role definition grants: every permission for an admin role; otherwise its
+ * `permissionGroups`, the read tags of its `readPermissionGroups`, sensitive tags only for its
+ * `sensitivePermissionGroups` (SEC-06), and never a tag in its `excludedPermissions` (D99). Used for a new company's
+ * roles and by the default-role sync, which adds what an existing role is missing and removes nothing.
+ */
 export async function resolveDefaultRolePermissionIds(
     role: DefaultRoleDefinition,
     session?: ClientSession | null,
@@ -159,21 +206,22 @@ export async function resolveDefaultRolePermissionIds(
     }
 
     const ids: ObjectId[] = [];
-    // Sensitive tags (SEC-06) only come with the groups the role names for them.
-    const notSensitiveUnlessListed = {
+    // Sensitive tags (SEC-06) only come with the groups the role names for them; excluded tags never do (D99).
+    const grantable = {
         $or: [
             {sensitivity: {$nin: ["health", "identity", "payment"]}},
             {group: {$in: role.sensitivePermissionGroups ?? []}},
         ],
+        tag: {$nin: role.excludedPermissions ?? []},
     };
 
     if (ownGroups.length > 0) {
-        const own = await RolePermission.find({group: {$in: ownGroups}, ...notSensitiveUnlessListed}).select("_id").session(dbSession);
+        const own = await RolePermission.find({group: {$in: ownGroups}, ...grantable}).select("_id").session(dbSession);
         ids.push(...own.map((permission) => permission._id));
     }
 
     if (readGroups.length > 0) {
-        const reads = await RolePermission.find({group: {$in: readGroups}, ...notSensitiveUnlessListed}).select("_id tag").session(dbSession);
+        const reads = await RolePermission.find({group: {$in: readGroups}, ...grantable}).select("_id tag").session(dbSession);
         for (const permission of reads) {
             if (typeof permission.tag === "string" && permission.tag.includes("[read:")) {
                 ids.push(permission._id);

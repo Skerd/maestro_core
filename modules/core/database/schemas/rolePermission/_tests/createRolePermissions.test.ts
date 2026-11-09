@@ -6,7 +6,7 @@ import Role from "@coreModule/database/schemas/role/role";
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
 import {createRolePermissions} from "@coreModule/database/schemas/rolePermission/rolePermission.default";
 import {registerModelAction} from "@coreModule/utilities/security/actionPermissions";
-import {registerDefaultRoles, resolveDefaultRolePermissionIds, unknownDefaultRoleGroups} from "@coreModule/database/schemas/role/role.defaults";
+import {registerDefaultRoles, resolveDefaultRolePermissionIds, unknownDefaultRoleGroups, unknownExcludedPermissions} from "@coreModule/database/schemas/role/role.defaults";
 
 const Booking = mongoose.model("PermissionSyncBooking", new Schema({title: String}));
 const Chart = mongoose.model("PermissionSyncChart", new Schema({
@@ -97,5 +97,57 @@ describe("createRolePermissions", () => {
         registerDefaultRoles([{name: "Desk", slug: "fixture_desk", isAdmin: false, isSignupDefault: false, canEdit: true, canDelete: false, permissionGroups: ["Permissionsynccharts", "Permissionsyncchartz"]}]);
         expect(unknownDefaultRoleGroups(new Set(["Permissionsynccharts"]))).toContain("fixture_desk: Permissionsyncchartz");
         expect(unknownDefaultRoleGroups(new Set(["Permissionsynccharts"]))).not.toContain("fixture_desk: Permissionsynccharts");
+    });
+
+    it("leaves a role's excluded tags out of its group, on the first grant and when the sync adds new tags (D99)", async () => {
+        registerModelAction(Booking, "confirm");
+        await createRolePermissions();
+        const role = {
+            name: "Clerk", slug: "clerk", isAdmin: false, isSignupDefault: false, canEdit: true, canDelete: false,
+            permissionGroups: ["Permissionsyncbookings"],
+            excludedPermissions: ["permissionsyncbookings[action:self:confirm]", "permissionsyncbookings[action:self:void]"],
+        };
+        const idOf = async (tag: string) => String((await RolePermission.findOne({tag}).lean())!._id);
+
+        const first = (await resolveDefaultRolePermissionIds(role)).map(String);
+        expect(first).not.toContain(await idOf("permissionsyncbookings[action:self:confirm]"));
+        expect(first).toContain(await idOf("permissionsyncbookings[action:others:confirm]"));
+        expect(first).toContain(await idOf("permissionsyncbookings[read:self:title]"));
+
+        // A later action brings new tags to the group: the default-role sync adds what this resolves, so the
+        // excluded one stays out and the rest arrive.
+        registerModelAction(Booking, "void");
+        await createRolePermissions();
+        const synced = (await resolveDefaultRolePermissionIds(role)).map(String);
+        expect(synced).not.toContain(await idOf("permissionsyncbookings[action:self:void]"));
+        expect(synced).not.toContain(await idOf("permissionsyncbookings[action:self:confirm]"));
+        expect(synced).toContain(await idOf("permissionsyncbookings[action:others:void]"));
+
+        // Exclusion shapes default roles only: admin roles still get the tag.
+        const admin = await Role.collection.findOne({_id: adminRole});
+        expect(admin!.permissions.map(String)).toContain(await idOf("permissionsyncbookings[action:self:void]"));
+    });
+
+    it("names excluded tags that no permission has, so a misspelt tag is not silent (D99)", () => {
+        registerDefaultRoles([{
+            name: "Clerk", slug: "fixture_clerk", isAdmin: false, isSignupDefault: false, canEdit: true, canDelete: false,
+            permissionGroups: ["Permissionsyncbookings"],
+            excludedPermissions: [
+                "permissionsyncbookings[action:self:confirm]",
+                "permissionsyncbookings[action:self:confrim]",
+                "permissionsyncbookingz[action:self:confirm]",
+            ],
+        }]);
+        const catalog = [{tag: "permissionsyncbookings[action:self:confirm]", group: "Permissionsyncbookings", module: "core"}];
+
+        const unknown = unknownExcludedPermissions(catalog, new Set(["core"]));
+        expect(unknown).toContain("fixture_clerk: permissionsyncbookings[action:self:confrim]");
+        expect(unknown).toContain("fixture_clerk: permissionsyncbookingz[action:self:confirm]");
+        expect(unknown).not.toContain("fixture_clerk: permissionsyncbookings[action:self:confirm]");
+
+        // Without the module's routers its action tags are incomplete: only a group no permission has is reported.
+        const withoutRouters = unknownExcludedPermissions(catalog, new Set());
+        expect(withoutRouters).not.toContain("fixture_clerk: permissionsyncbookings[action:self:confrim]");
+        expect(withoutRouters).toContain("fixture_clerk: permissionsyncbookingz[action:self:confirm]");
     });
 });

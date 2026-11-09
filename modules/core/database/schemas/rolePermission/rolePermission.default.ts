@@ -6,7 +6,7 @@ import Role from "@coreModule/database/schemas/role/role";
 import {getModelModule} from "@coreModule/utilities/modules/modelModules";
 import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
-import {unknownDefaultRoleGroups} from "@coreModule/database/schemas/role/role.defaults";
+import {unknownDefaultRoleGroups, unknownExcludedPermissions} from "@coreModule/database/schemas/role/role.defaults";
 import {
     findSensitiveSnippetFields,
     sensitivePaths,
@@ -145,6 +145,12 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
     for (const unknown of unknownDefaultRoleGroups(new Set(potentialPermissions.map((permission) => permission.group)))) {
         logger.warn(`Default role names a permission group that does not exist: ${unknown}`);
     }
+    // Only modules with mounted routers have all their tags: their route imports register their actions.
+    const completeModules = [...new Set(actionPermissionEntries().map((entry) => entry.module))];
+    // Likewise a misspelt excluded tag excludes nothing (D99).
+    for (const unknown of unknownExcludedPermissions(potentialPermissions, new Set(completeModules))) {
+        logger.warn(`Default role excludes a permission that does not exist: ${unknown}`);
+    }
 
     let alreadyFoundPermissions = await RolePermission.find({ tag: { $in: allTags } }).select("tag");
     let alreadyFoundPermissionTags = alreadyFoundPermissions.map((permission) => permission.tag);
@@ -174,7 +180,6 @@ export async function createRolePermissions(parentLogger?: serverLogger) {
     // pruned: their route imports load the rest of their models and register their actions, so only their tags
     // are complete. A script that syncs without routers, or an instance with fewer modules on the same
     // database, prunes nothing it cannot see.
-    const completeModules = [...new Set(actionPermissionEntries().map((entry) => entry.module))];
     const stalePermissions = await RolePermission.find({module: {$in: completeModules}, tag: {$nin: allTags}}).select("tag");
     if( stalePermissions.length > 0 ){
         const staleIds = stalePermissions.map((permission) => permission._id);
