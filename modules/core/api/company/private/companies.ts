@@ -6,7 +6,7 @@ import {
     BasicCompanyInfoFormResponseType,
     Company as CompanyData
 } from "armonia/src/modules/core/api/company/private/company/company.dto";
-import {COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
+import {COMPANY_BASIC_INFO_SELECT, COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import Company from "@coreModule/database/schemas/company/company";
@@ -140,7 +140,7 @@ type GetCompaniesBasicInfoType = AuthenticatedMWType & TableForm & {name?: strin
  * @remarks Merges immediate (active/unlocked) and admin company ids; filters null results
  */
 async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise<TableResponse<BasicCompanyInfoFormResponseType>> {
-    const { logger, languageCode, actionUserCtx, actionUserInfo, offset, limit, name } = params;
+    const { logger, languageCode, actionUserInfo, offset, limit, name } = params;
 
     logger.start(`Trying to get companies basic info (offset ${offset}, limit ${limit})...`);
 
@@ -188,20 +188,14 @@ async function getCompaniesBasicInfo(params: GetCompaniesBasicInfoType): Promise
         companyService.count(filter, opts),
     ]);
 
+    // Every id above is one of the caller's own memberships: a member may always see which companies they can switch
+    // to, so their basic info is not gated by the Company field permissions (any other Company read still is).
     const data = (await Promise.all(page.map(async (company) => {
-        const companyId = company._id;
-        const permissions = companyId.toString() === actionUserCtx.orgId
-            ? actionUserCtx.permissions
-            : await actionUserInfo.getCompanyRolePermissions(companyId);
-        const ctx = { ...actionUserCtx, permissions };
-        const sanitizedFields = SchemaGuard.sanitizeFields(Company, {name: {}, description: {}, logo: {}}, "read", ctx, languageCode);
-        const populate = SchemaGuard.generatePopulate(sanitizedFields, Company.schema);
-
         const companyData = await companyService.findById(
-            companyId,
+            company._id,
             { logger, languageCode },
-            populate.populate,
-            populate.select
+            undefined,
+            COMPANY_BASIC_INFO_SELECT
         );
 
         if( !companyData ){

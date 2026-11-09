@@ -14,6 +14,8 @@ import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreMod
 
 /** Platform-managed fields `companyToDTO` maps; add them to any projected company read. */
 export const COMPANY_MODULE_FIELDS = "modules isPlatformOwner hiddenFromPortal";
+/** What a member always sees of the companies they belong to: the company switcher's name, description and logo. */
+export const COMPANY_BASIC_INFO_SELECT = "name description logo";
 
 export function companyToDTO(company: ICompany | null | undefined): Company | null {
     if (!company) {

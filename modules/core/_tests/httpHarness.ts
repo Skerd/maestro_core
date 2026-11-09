@@ -34,6 +34,8 @@ export const authMWStub = {
             ...(caller.modules ? {modules: caller.modules} : {}),
         };
         req.body.languageCode = "en-US";
+        // The request's site, as authMW reads it: the Origin header's host without its port
+        req.body.origin = (req.get("Origin") ?? "").replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
         req.body.logger = getLogger(req.originalUrl);
         req.body.company = {_id: new ObjectId(caller.companyId), name: "Test company"};
         req.body.actionUserCtx = actionUserCtx;

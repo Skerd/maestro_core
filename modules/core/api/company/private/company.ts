@@ -12,7 +12,7 @@ import {
     createCompanyFormSchema
 } from "armonia/src/modules/core/api/company/private/company/createCompany.form.validator";
 import {editCompanyFormSchema} from "armonia/src/modules/core/api/company/private/company/editCompany.form.validator";
-import {COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
+import {COMPANY_BASIC_INFO_SELECT, COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {mediaService} from "@coreModule/database/schemas/media/media.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
@@ -215,18 +215,17 @@ type GetCompanyBasicInfoType = AuthenticatedMWType;
  * @remarks Logo normalized to string id (handles ObjectId or ref)
  */
 async function getCompanyBasicInfo(params: GetCompanyBasicInfoType): Promise<BasicCompanyInfoFormResponseType> {
-    const { company, logger, languageCode, actionUserCtx } = params;
+    const { company, logger, languageCode } = params;
 
     logger.start(`Fetching company basic info...`);
 
-    const sanitizedFields = SchemaGuard.sanitizeFields(Company, {name: {}, description: {}, logo: {}}, "read", actionUserCtx, languageCode);
-    const populate = SchemaGuard.generatePopulate(sanitizedFields, Company.schema);
-
+    // The caller is signed into this company, so they may always see its name, description and logo (the company
+    // switcher's trigger); the Company field permissions keep gating every other read of it.
     const companyData = await companyService.findOneOrThrow(
         company._id,
         { logger, languageCode },
-        populate.populate,
-        populate.select ?? ""
+        undefined,
+        COMPANY_BASIC_INFO_SELECT
     );
 
     logger.finish(`Finished fetching company basic info!`);
