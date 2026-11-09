@@ -3,6 +3,7 @@ import {apiValidationException, DEFAULT_EXCEPTION_LANGUAGE} from "armonia/src/mo
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {checkTenantReferences, markTenantOwned} from "@coreModule/database/plugins/tenantReferences";
+import {preBulkWrite} from "@coreModule/database/plugins/bulkWriteHooks";
 
 export interface OwnershipPluginOptions {
     /**
@@ -220,6 +221,44 @@ function applyTenantScope(schema: Schema, sharedWith?: string): void {
         }
         next();
     });
+
+    // Mongoose 6 runs no middleware for bulkWrite (TD-B114): each op is judged like the matching query, and an
+    // inserted document without a company gets the tenant's (Mongoose validates it after this hook).
+    preBulkWrite(schema, (model, ops) => {
+        for (const op of ops) {
+            if (!isPlainRecord(op)) continue;
+            for (const [kind, spec] of Object.entries(op)) {
+                if (!isPlainRecord(spec)) continue;
+                const operation = `bulkWrite.${kind}`;
+                if (kind === "insertOne") {
+                    const document = spec.document;
+                    if (!isPlainRecord(document)) continue;
+                    const error = judge(document.company, model.modelName, operation, (tenant) => {
+                        document.company = new Types.ObjectId(tenant);
+                    });
+                    if (error) throw error;
+                    continue;
+                }
+                const filter = spec.filter;
+                if (!isPlainRecord(filter)) continue;
+                // Appending to `$and` keeps the filter's own keys (and its `$or`) where Mongoose looks for them.
+                const error = judge(filter.company, model.modelName, operation, (tenant) => {
+                    const and = filter.$and;
+                    const condition = tenantCondition(tenant, sharedWith);
+                    filter.$and = and === undefined ? [condition] : Array.isArray(and) ? [...and, condition] : [and, condition];
+                });
+                if (error) throw error;
+                const written = kind === "replaceOne" ? fieldOf(spec.replacement, "company") : updatedCompany(spec.update);
+                if (written === undefined) continue;
+                const writeError = judge(written, model.modelName, `${operation}:write`, () => undefined);
+                if (writeError) throw writeError;
+            }
+        }
+    });
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export default ownershipPlugin;

@@ -259,10 +259,13 @@ describe("bulkWrite (TD-B108)", () => {
         expect((await asA(() => Order.findById(order._id)))!.rate).toEqual(otherOwnRate);
     });
 
-    it("judges an update by the companies its filter matches, since bulkWrite is not tenant-scoped", async () => {
+    it("judges a cross-tenant update by the companies its filter matches; a tenant's batch stays in the tenant (TD-B114)", async () => {
         const order = await asCrossTenant("fixture", () => Order.create({company: companyB}));
-        // Company A's request, a filter that matches company B's record: A's own rate is foreign to it.
-        await expect(asA(() => Order.bulkWrite([{updateOne: {filter: {_id: order._id}, update: {$set: {rate: ownRate}}}}]))).rejects.toMatchObject(refused);
+        // Company A's request, a filter naming company B's record: the tenant scope narrows it to A, so it matches nothing.
+        await asA(() => Order.bulkWrite([{updateOne: {filter: {_id: order._id}, update: {$set: {rate: ownRate}}}}]));
+        expect((await asCrossTenant("check", () => Order.findById(order._id)))!.rate).toBeUndefined();
+        // A sweep is judged by the record it matches: A's rate is foreign to B's record, B's own rate is not.
+        await expect(asCrossTenant("a sweep", () => Order.bulkWrite([{updateOne: {filter: {_id: order._id}, update: {$set: {rate: ownRate}}}}]))).rejects.toMatchObject(refused);
         await asCrossTenant("a sweep", () => Order.bulkWrite([{updateOne: {filter: {_id: order._id}, update: {$set: {rate: foreignRate}}}}]));
     });
 

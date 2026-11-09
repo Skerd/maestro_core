@@ -8,6 +8,8 @@
  *
  * Usage (from maestro/):
  *   yarn sync:demo-companies
+ * In a deployed container (compiled build, no .ts sources):
+ *   docker exec maestroApi-<instance> node -r tsconfig-paths/register scripts/syncDemoCompanies.js
  */
 
 import {ObjectId} from "mongodb";

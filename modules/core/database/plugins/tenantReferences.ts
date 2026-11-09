@@ -414,7 +414,8 @@ export function checkTenantReferences(schema: Schema, ownerPath = "company"): vo
         assertReferencesInTenant(this, groups, session).then(() => next(), next);
     });
 
-    // bulkWrite is not tenant-scoped (no middleware), so an update's companies come from what its filter matches.
+    // ownershipPlugin's bulkWrite hook (registered first) has already limited a tenant-scoped model's filters (TD-B114);
+    // otherwise (cross-tenant, Company, User) an update's companies come from what its filter matches.
     preBulkWrite(schema, async (model, ops, {session}) => {
         const refs = checkedRefs(schema, model);
         if (refs.length === 0) return;
@@ -435,7 +436,7 @@ export function checkTenantReferences(schema: Schema, ownerPath = "company"): vo
                     const cast: unknown = model.find(filter).cast(model);
                     return model.collection.distinct(owner.field, isRecord(cast) ? cast : {}, {session: session ?? undefined});
                 };
-                groups.push(...referenceGroups(refs, owner, updateWrites(update), () => updatedCompanies(owner, filter, update, false, matched), model.modelName));
+                groups.push(...referenceGroups(refs, owner, updateWrites(update), () => updatedCompanies(owner, filter, update, scoped, matched), model.modelName));
             }
         }
         await assertReferencesInTenant(model, groups, session);

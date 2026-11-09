@@ -12,6 +12,8 @@
  * Usage (from maestro/, with the original topic name):
  *   yarn kafka:replay-dlq forgot-password-email             # dry run
  *   yarn kafka:replay-dlq forgot-password-email --execute   # replays
+ * In a deployed container (compiled build, no .ts sources):
+ *   docker exec maestroApi-<instance> node -r tsconfig-paths/register scripts/replayKafkaDeadLetters.js <topic> [--execute]
  */
 
 import {connectToRedis, isRedisConnected} from "@coreModule/connections/connectToRedis";
