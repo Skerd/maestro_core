@@ -16,6 +16,11 @@ export interface OwnershipPluginOptions {
     sharedWith?: string;
 }
 
+/**
+ * Tenant ownership (DB-01, DB-02): adds `createdBy` and a required `company`, and, unless `tenantScoped: false`, scopes
+ * every query, aggregation and write to the request's tenant (D16). Its `{company: 1, _id: 1}` index is added by
+ * lifeCyclePlugin, which every schema applies.
+ */
 export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions = {}): void => {
     schema.add({
         createdBy: {
@@ -60,9 +65,6 @@ export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions 
             }
         }
     });
-
-    // Compound index to keep tenant-scoped queries efficient
-    schema.index({company: 1, _id: 1});
 
     if (options.tenantScoped !== false) {
         applyTenantScope(schema, options.sharedWith);

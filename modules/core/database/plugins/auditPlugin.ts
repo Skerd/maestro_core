@@ -166,6 +166,12 @@ async function recordSensitiveReads(query: Query<unknown, unknown>, result: unkn
     }
 }
 
+/**
+ * Audit trail (DB-01): a CREATE / UPDATE entry per save (operator updates call `auditOperatorUpdate`) and a READ
+ * entry when a request selects sensitive fields (D56). It also turns on Mongoose `timestamps`, which stamp what
+ * lifeCyclePlugin's hooks do not: `insertMany`, `bulkWrite`, replacements and an upsert's `createdAt`. Audit-exempt
+ * schemas keep their own `timestamps` option.
+ */
 export const auditPlugin = (schema: Schema): void => {
     auditedSchemas.add(schema);
     schema.set("timestamps", true);

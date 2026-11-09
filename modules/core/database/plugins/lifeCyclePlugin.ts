@@ -30,6 +30,15 @@ function declaredBySchema(schema: Schema, path: "createdAt" | "updatedAt"): bool
     return (schema.path(path)?.options as {permissions?: unknown} | undefined)?.permissions !== undefined;
 }
 
+/**
+ * `createdAt` / `updatedAt` on every schema (DB-01; lifeCycle has no exemption): the field definitions (server-owned,
+ * table-filterable), stamped on save and on `findOneAndUpdate` / `updateOne` / `updateMany`. On a schema that also has
+ * Mongoose `timestamps` (auditPlugin sets them) these hooks run after Mongoose's and decide the stored values: a create
+ * always gets `now` as `createdAt`, and every save bumps `updatedAt`, even with nothing modified.
+ *
+ * It also adds the `{company: 1, _id: 1}` index for tenant-scoped queries. It lives here rather than in
+ * ownershipPlugin because every schema applies this plugin, so schemas without ownership keep the index they have.
+ */
 export const lifeCyclePlugin = (schema: Schema): void => {
     const fields: SchemaDefinition = {};
     for (const path of ["createdAt", "updatedAt"] as const) {
@@ -49,7 +58,6 @@ export const lifeCyclePlugin = (schema: Schema): void => {
         next();
     });
 
-    // Compound index to keep tenant-scoped queries efficient
     schema.index({company: 1, _id: 1});
 };
 
