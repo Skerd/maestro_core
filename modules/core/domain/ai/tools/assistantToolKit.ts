@@ -23,6 +23,8 @@
 import {ObjectId} from "mongodb";
 import {z} from "zod";
 import type {AssistantToolContext} from "@coreModule/domain/ai/tools/assistantTool.types";
+import {companyTimeZoneOf} from "@coreModule/utilities/time/companyTimeZone";
+import {localDateOf} from "@coreModule/utilities/time/timeWindows";
 
 /** Hard cap on rows returned to the model, to protect its context window. */
 export const MAX_RESULTS = 25;
@@ -196,6 +198,48 @@ export function dateRange(from?: Date, to?: Date): Record<string, Date> | undefi
     if (from) clause.$gte = from;
     if (to) clause.$lte = to;
     return clause;
+}
+
+/**
+ * A model-supplied date for a calendar-day field (due, expiry, sale days stored as local `YYYY-MM-DD`, GLB-09, D115),
+ * kept as its day: an ISO instant keeps its date part, so a missing or foreign offset cannot shift the day. Use
+ * {@link dateRange} with `z.coerce.date()` for instant fields instead.
+ */
+export const calendarDayArg = z
+    .string()
+    .trim()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])/)
+    .transform((value) => value.slice(0, 10));
+
+/**
+ * {@link dateRange} for a calendar-day field: an inclusive clause on `YYYY-MM-DD` days (they compare as text), or
+ * `undefined` when neither bound was supplied. Bounds come from {@link calendarDayArg}.
+ */
+export function calendarDayRange(from?: string, to?: string): Record<string, string> | undefined {
+    if (!from && !to) return undefined;
+    const clause: Record<string, string> = {};
+    if (from) clause.$gte = from;
+    if (to) clause.$lte = to;
+    return clause;
+}
+
+/**
+ * The company's calendar day (`YYYY-MM-DD`) at `now`, in its timezone (D91): the "today" calendar-day fields are
+ * judged against, the same day the module crons use.
+ */
+export async function companyToday(ctx: AssistantToolContext, now: Date = new Date()): Promise<string> {
+    return localDateOf(now, await companyTimeZoneOf(ctx.companyId));
+}
+
+/**
+ * {@link daysOverdue} for a calendar-day field: whole days `day` lies before `today` (both `YYYY-MM-DD`; positive =
+ * past, 0 = today, negative = still ahead), or `null` when there is no day.
+ */
+export function calendarDaysPast(day: unknown, today: string): number | null {
+    if (typeof day !== "string" || !day) return null;
+    const diff = Date.parse(today) - Date.parse(day);
+    // Both parse as UTC midnight, so the difference is whole days with no DST hour.
+    return Number.isFinite(diff) ? Math.round(diff / MS_PER_DAY) : null;
 }
 
 /**
