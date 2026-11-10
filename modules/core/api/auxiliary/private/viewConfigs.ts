@@ -2,17 +2,18 @@ import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/aut
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {Router} from "express";
-import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collections";
+import {COLLECTED_DATA} from "@coreModule/database/collections";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {isModelInModules, wantsInstalledModuleScope} from "@coreModule/utilities/modules/modelModules";
 import type {ViewConfig, ViewConfiguration, ViewNode} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
-import type {SanitizedFields} from "armonia/src/modules/core/types";
+import {ServerError, type SanitizedFields} from "armonia/src/modules/core/types";
 
 const router = Router();
 
 // ---------------------------------------------------------------------------
 // GET /api/auxiliary/viewConfigs
-// Bulk: returns every registered view config, permission-filtered.
+// Every registered view config, permission-filtered: the panel caches them all at once, so there is no
+// one-view route (the old `/:model/:viewKey` never worked and had no caller, TD-B155).
 // ---------------------------------------------------------------------------
 
 router.get(
@@ -65,45 +66,16 @@ async function getAllViewConfigs(
                 result[collectionName] = filteredViews;
             }
         } catch (err) {
+            // A model the caller may not read is the ordinary case for most accounts, not a fault (TD-B169)
+            if (err instanceof ServerError && err.error_code === "user_permissions_not_sufficient") {
+                logger.debug(`[viewConfigs] ${collectionName} not readable by the caller`);
+                continue;
+            }
             logger.err(`[viewConfigs] Error processing ${collectionName}: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 
     return result;
-}
-
-// ---------------------------------------------------------------------------
-// GET /api/auxiliary/viewConfigs/:model/:viewKey
-// Single: returns one view config for a specific model and view key.
-// ---------------------------------------------------------------------------
-
-router.get(
-    "/:model/:viewKey",
-    authMW("private"),
-    rateLimiter({ windowMs: 60000, max: 120 }),
-    asyncHandler(getSingleViewConfig)
-);
-
-type SingleViewConfigParams = AuthenticatedMWType & {
-    model: string;
-    viewKey: string;
-};
-
-async function getSingleViewConfig(params: SingleViewConfigParams): Promise<ViewConfig | null> {
-    const { actionUserCtx, languageCode, model, viewKey } = params;
-
-    const entry = getModelCollectedData(model);
-    if (!entry?.views?.[viewKey] || !entry.model || !entry.readFields) return null;
-    if (!isModelInModules(entry.model.modelName, actionUserCtx.modules ?? [])) return null;
-
-    const sanitizedRead = SchemaGuard.sanitizeFields(entry.model, entry.readFields, "read", actionUserCtx, languageCode);
-    if (Object.keys(sanitizedRead).length === 0) return null;
-
-    const sanitizedWrite = entry.writeFields
-        ? SchemaGuard.sanitizeFields(entry.model, entry.writeFields, "write", actionUserCtx, languageCode)
-        : {};
-
-    return filterViewConfig(entry.views[viewKey], sanitizedRead, sanitizedWrite);
 }
 
 // ---------------------------------------------------------------------------

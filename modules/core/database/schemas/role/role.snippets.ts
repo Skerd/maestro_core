@@ -6,5 +6,6 @@ export const RoleSimpleSnippet = defineSnippet<IRole, RoleSimple>()({
     keys: {
         _id: {},
         name: {},
+        slug: {},
     },
 });

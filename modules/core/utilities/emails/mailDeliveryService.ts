@@ -171,7 +171,7 @@ async function sendViaTransporter(
         from: resolveFrom(mailOptions, config),
         replyTo: rest.replyTo ?? config?.replyTo ?? EMAIL.REPLY_TO_EMAIL,
     });
-    return {messageId: (info as any)?.messageId};
+    return {messageId: info.messageId};
 }
 
 async function sendViaEnvFallback(mailOptions: MailDeliverySendOptions): Promise<{messageId?: string}> {
@@ -217,18 +217,20 @@ export async function resolveCompanyIdForEmail(
 
 /**
  * Sends mail using company SMTP servers in sequence order, then falls back to .env EMAIL_* settings.
+ *
+ * Resolves with the transport's message id, so a caller that must match later replies or bounces can store it.
+ * The id is absent when nothing was sent: email is turned off (`EMAIL_ENABLED=false`), or no server took the mail.
  */
 export async function sendMail(
     companyId: ObjectId | string | undefined | null,
     mailOptions: MailDeliverySendOptions,
-): Promise<void> {
+): Promise<{messageId?: string}> {
     if (!EMAIL.ENABLED) {
-        return;
+        return {};
     }
 
     if (!companyId) {
-        await sendViaEnvFallback(mailOptions);
-        return;
+        return sendViaEnvFallback(mailOptions);
     }
 
     const companyKey = companyId.toString();
@@ -239,9 +241,9 @@ export async function sendMail(
             const config = smtpServerToConnectionConfig(server);
             const transporter = buildTransporter(config);
             await transporter.verify();
-            await sendViaTransporter(transporter, mailOptions, config);
+            const sent = await sendViaTransporter(transporter, mailOptions, config);
             logger.debug(`Email sent via SMTP server ${server._id} (sequence=${server.sequence}) for company ${companyKey}`);
-            return;
+            return sent;
         } catch (err: any) {
             logger.warn(
                 `SMTP server ${server._id} (sequence=${server.sequence}) failed for company ${companyKey}: ${err?.message ?? err}`,
@@ -250,8 +252,9 @@ export async function sendMail(
     }
 
     try {
-        await sendViaEnvFallback(mailOptions);
+        const sent = await sendViaEnvFallback(mailOptions);
         logger.debug(`Email sent via environment SMTP fallback for company ${companyKey}`);
+        return sent;
     } catch (err: any) {
         logger.err(`All SMTP servers and env fallback failed for company ${companyKey}: ${err?.message ?? err}`);
         throw err;
@@ -280,9 +283,6 @@ export type PooledMailSession = {
  * the life of a campaign drain, using the identical failover ladder and env
  * fallback as `sendMail`. `sendMail`'s own behaviour is deliberately untouched:
  * dozens of transactional call sites depend on it.
- *
- * It also returns the provider's message id, which `sendMail` cannot — that is
- * what lets a recipient row record exactly what was sent.
  *
  * Callers **must** `close()` (in a `finally`), or the pooled sockets stay open.
  */

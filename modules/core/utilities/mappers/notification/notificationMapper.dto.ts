@@ -18,6 +18,7 @@ export function notificationToDTO(notification: INotification): NotificationType
         },
         code: notification.code,
         description: notification.description ?? "",
+        ...(notification.params ? {params: notification.params} : {}),
         content: notification.content,
         extraMessages: notification.extraMessages,
         date: notification.date.toString(),

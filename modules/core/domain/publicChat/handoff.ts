@@ -29,9 +29,7 @@ import {EncryptString} from "@coreModule/utilities/security/encryption";
 import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {actionPermissionTag} from "@coreModule/utilities/security/actionPermissions";
-import {rolePermissionService} from "@coreModule/database/schemas/rolePermission/rolePermission.service";
-import {roleService} from "@coreModule/database/schemas/role/role.service";
-import {userService} from "@coreModule/database/schemas/user/user.service";
+import {companyMemberIdsWithPermission} from "@coreModule/domain/roles/companyPermissionHolders";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 
 /** What the visitor is told when the conversation is escalated. */
@@ -103,37 +101,7 @@ export async function resolvePublicChatAgentIds(
     logger?: serverLogger,
 ): Promise<string[]> {
     try {
-        const tag = actionPermissionTag(Channel, ANSWER_WEBSITE_CHATS, "self");
-
-        const roleFilter: Record<string, unknown>[] = [{company: companyId, isAdmin: true}];
-        if (tag) {
-            const permission = await rolePermissionService.findOne({tag}, {}, undefined, "_id");
-            if (permission) {
-                roleFilter.push({company: companyId, permissions: permission._id});
-            }
-        }
-
-        const roles = await roleService.find({$or: roleFilter}, {}, undefined, "_id");
-        if (roles.length === 0) {
-            return [];
-        }
-        const roleIds = roles.map((role) => role._id);
-
-        // Users have no soft delete: a removed member has no active role in the company.
-        const agents = await userService.find({
-            companies: companyId,
-            isBot: {$ne: true},
-            isVisitor: {$ne: true},
-            roles: {
-                $elemMatch: {
-                    company: companyId,
-                    active: "active",
-                    roles: {$in: roleIds},
-                },
-            },
-        }, {}, undefined, "_id");
-
-        return agents.map((agent) => agent._id.toString());
+        return await companyMemberIdsWithPermission(companyId, actionPermissionTag(Channel, ANSWER_WEBSITE_CHATS, "self"));
     }
     catch (e: any) {
         logger?.warn(`Failed to resolve public-chat agents for company ${companyId.toString()}: ${e?.message ?? e}`);

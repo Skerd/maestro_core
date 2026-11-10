@@ -35,7 +35,10 @@ export interface INotification extends Document, IOwnershipPluginFields {
     receiver: IUser,
     company: ICompany,
     code: string,
+    /** English text: the fallback for a code the panel has no translation for (D117). */
     description?: string,
+    /** Values the panel puts into the code's translated message (D117); `variant` picks one of its message variants. */
+    params?: Record<string, string | number>,
     content?: any,
     extraMessages: any[],
 
@@ -107,6 +110,23 @@ export const NotificationSchema = new mongoose.Schema<INotification>(
             type: SchemaTypes.String,
             default: null,
             dynamicTableConfiguration: {},
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+                others: {
+                    write: "no-permission"
+                }
+            }
+        },
+        params: {
+            type: SchemaTypes.Mixed,
+            default: null,
+            dynamicTableConfiguration: {
+                filterable: false,
+                sortable: false,
+                hideColumn: true,
+            },
             permissions: {
                 self: {
                     write: "no-permission"

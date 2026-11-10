@@ -34,7 +34,13 @@ export interface CreateNotificationInput {
     sender?: ObjectId;
     company: ObjectId;
     code: string;
+    /** English text, kept as the fallback where the panel has no translation for `code` (D117). */
     description?: string;
+    /**
+     * Values for the code's translated message, which the panel looks up by `code` in the module's
+     * `notificationTypes.json` (D117). `variant` picks one of the code's message variants.
+     */
+    params?: Record<string, string | number>;
     content?: Record<string, unknown>;
     extraMessages?: unknown[];
     importance?: NotificationImportance;
@@ -58,14 +64,37 @@ function createNotifOpts(event: NotificationEvent): {
 }
 
 /**
- * Create a notification, persist to MongoDB, and push via WebSocket.
+ * The receivers among `receiverIds` who have not turned `code` off in the company (D117). Module code that sends its
+ * own email (or other message) for a notification type filters its recipients through this, so one preference
+ * covers the in-app notice and the email. Security notices are never filtered: call this only for module types.
+ */
+export async function filterUnmutedReceivers(receiverIds: string[], companyId: ObjectId | string, code: string): Promise<string[]> {
+    const ids = receiverIds.filter((id) => ObjectId.isValid(id));
+    const muted = await userService.findUsersMutingNotification(
+        ids.map((id) => new ObjectId(id)),
+        new ObjectId(companyId.toString()),
+        code,
+    );
+    return ids.filter((id) => !muted.has(id));
+}
+
+/**
+ * Create a notification, persist to MongoDB, and push via WebSocket. Returns `null` without writing when the receiver
+ * turned this code off in the company (D117); security notices are always created.
  */
 export async function createAndPushNotification(
     params: CreateNotificationInput,
     opts?: { logger?: serverLogger; auditUserId?: string; languageCode?: string; session?: any }
-): Promise<INotification> {
-    const { receiver, sender, company, code, description, content, extraMessages, importance, status, category, channels, metadata } = params;
+): Promise<INotification | null> {
+    const { receiver, sender, company, code, description, params: messageParams, content, extraMessages, importance, status, category, channels, metadata } = params;
     const logger = opts?.logger;
+
+    if (category !== NotificationCategory.SECURITY) {
+        const muted = await userService.findUsersMutingNotification([receiver], company, code);
+        if (muted.has(receiver.toString())) {
+            return null;
+        }
+    }
 
     const doc = await notificationService.create(
         {
@@ -74,6 +103,7 @@ export async function createAndPushNotification(
             company,
             code,
             description,
+            params: messageParams,
             content,
             extraMessages: extraMessages ?? [],
             importance: importance ?? NotificationImportance.NORMAL,
@@ -161,6 +191,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.MESSAGE_MENTIONED,
                         description: `${senderUsername} mentioned you in ${channelName}`,
+                        params: {sender: senderUsername, channel: channelName},
                         content: {
                             channelId,
                             messageId: payload.messageId,
@@ -194,6 +225,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.ROLE_ASSIGNED,
                         description: `${assignerUsername} assigned you the role: ${roleName}`,
+                        params: {assigner: assignerUsername, role: roleName},
                         content: { roleName, roleId: payload.roleId },
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.COMPANY
@@ -222,6 +254,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.USER_LOGGED_IN,
                         description: `New sign-in to your account from ${source} (${ip})`,
+                        params: {source, ip},
                         content: { requestIp: ip, userAgent, source },
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.SECURITY
@@ -407,6 +440,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.ACCOUNT_STATUS_CHANGED_BY_ADMIN,
                         description,
+                        params: {actor: actorUsername, variant: activated ? "activated" : "deactivated"},
                         content: { activated, actorId: payload.actorId },
                         importance: NotificationImportance.HIGH,
                         category: NotificationCategory.SECURITY
@@ -435,6 +469,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.INVITATION_RECEIVED,
                         description: `${inviterName} invited you to join ${companyName}`,
+                        params: {inviter: inviterName, company: companyName},
                         content: {
                             companyName,
                             inviterId: payload.inviterId,
@@ -469,6 +504,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.ACCOUNT_ACTIVATED,
                         description,
+                        params: {variant},
                         content: { variant },
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.COMPANY
@@ -497,6 +533,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.COMPANY_UPDATED,
                         description: `${updatedByUsername} updated company profile for ${companyName}`,
+                        params: {user: updatedByUsername, company: companyName},
                         content: {
                             companyName,
                             updatedByUserId: payload.updatedByUserId

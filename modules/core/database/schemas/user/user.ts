@@ -98,6 +98,8 @@ export interface IEmbeddedCompanyRole {
     roles: (IRole | ObjectId)[];
     /** Stored as an id; populated to ICompany only where a query asks for it. */
     company: ICompany | ObjectId;
+    /** Notification codes this member turned off in this company (D117); none means every type is on. */
+    mutedNotifications?: string[];
     _id: ObjectId;
 }
 
@@ -524,6 +526,21 @@ const UserSchema = new Schema<IUser>(
                 company: {
                     type: SchemaTypes.ObjectId,
                     ref: "Company",
+                    permissions: {
+                        self: {
+                            read: "no-permission",
+                            write: "no-permission"
+                        },
+                        others: {
+                            read: "no-permission",
+                            write: "no-permission"
+                        }
+                    }
+                },
+                // Read and written only through the notification preferences endpoints (D117).
+                mutedNotifications: {
+                    type: [SchemaTypes.String],
+                    default: undefined,
                     permissions: {
                         self: {
                             read: "no-permission",

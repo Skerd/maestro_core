@@ -6,6 +6,8 @@
  * - GET /unread-count — Unread notification count for badge display
  * - PATCH /read — Mark notifications as read (by ids or all)
  * - DELETE "" — Delete notifications (by ids or all); uses soft delete
+ * - GET /preferences — The notification types the user turned off in this company (D117)
+ * - PATCH /preferences — Turn one notification type off or back on (D117)
  *
  * All endpoints require authentication.
  *
@@ -53,6 +55,17 @@ import {
 } from "armonia/src/modules/core/api/user/private/notifications/unreadNotifications.form.response.type";
 import {ActionMessage, TableResponse} from "armonia/src/modules/core/types/shared.types";
 import {NotificationType} from "armonia/src/modules/core/api/user/private/notifications/notifications.dto";
+import {
+    notificationPreferenceFormSchema
+} from "armonia/src/modules/core/api/user/private/notifications/notificationPreference.form.validator";
+import {
+    NotificationPreferenceFormType
+} from "armonia/src/modules/core/api/user/private/notifications/notificationPreference.form.type";
+import {
+    NotificationPreferencesFormResponseType
+} from "armonia/src/modules/core/api/user/private/notifications/notificationPreferences.form.response.type";
+import {userService} from "@coreModule/database/schemas/user/user.service";
+import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 
 const router = Router();
 
@@ -301,6 +314,67 @@ async function deleteNotifications(params: DeleteNotificationsType & DeleteNotif
     return {
         message: "Notifications successfully deleted!"
     };
+}
+
+/** How many notification types one member may turn off in a company; the panel offers far fewer. */
+const MAX_MUTED_NOTIFICATION_CODES = 200;
+
+/**
+ * GET /api/user/notifications/preferences
+ *
+ * The notification types the user turned off in the current company (D117). The `specificUser` header reads another
+ * user's preferences, under the same rule as the other account-settings reads.
+ *
+ * @route GET /api/user/notifications/preferences
+ * @access Private
+ * @returns {Promise<NotificationPreferencesFormResponseType>} { mutedCodes }
+ */
+router.get(
+    "/preferences",
+    authMW("private"),
+    impersonateUserMW,
+    rateLimiter({ windowMs: 60000, max: 60 }),
+    asyncHandler(getNotificationPreferences)
+);
+async function getNotificationPreferences(params: AuthenticatedMWType): Promise<NotificationPreferencesFormResponseType> {
+    const { logger, userInfo, company, languageCode } = params;
+    const mutedCodes = await userService.findMutedNotificationCodes(userInfo._id, company._id, { logger, languageCode });
+    return { mutedCodes };
+}
+
+/**
+ * PATCH /api/user/notifications/preferences
+ *
+ * Turns one notification type off (`muted: true`) or back on for the user in the current company (D117). Handlers
+ * then skip that user for the code, in-app and in the module's matching email. Security notices are always sent.
+ *
+ * @route PATCH /api/user/notifications/preferences
+ * @access Private
+ * @requires Transaction
+ * @body {NotificationPreferenceFormType} - code, muted
+ * @returns {Promise<NotificationPreferencesFormResponseType>} { mutedCodes } after the change
+ * @throws {apiValidationException} notification_preferences_limit_reached when the user already turned off the most types allowed
+ */
+router.patch(
+    "/preferences",
+    authMW("private"),
+    impersonateUserMW,
+    rateLimiter({ windowMs: 60000, max: 60 }),
+    validateFormZod(notificationPreferenceFormSchema),
+    transactionHandler(),
+    asyncHandler(updateNotificationPreference)
+);
+type UpdateNotificationPreferenceType = TransactionRequiredParams & AuthenticatedMWType;
+async function updateNotificationPreference(params: UpdateNotificationPreferenceType & NotificationPreferenceFormType): Promise<NotificationPreferencesFormResponseType> {
+    const { logger, userInfo, company, languageCode, session, actionUserCtx, code, muted } = params;
+    const options = { session, logger, languageCode, auditUserId: actionUserCtx.userId };
+
+    const current = await userService.findMutedNotificationCodes(userInfo._id, company._id, options);
+    if (muted && !current.includes(code) && current.length >= MAX_MUTED_NOTIFICATION_CODES) {
+        throw apiValidationException("notification_preferences_limit_reached", "", null, languageCode, [String(MAX_MUTED_NOTIFICATION_CODES)]);
+    }
+    await userService.setNotificationMuted(userInfo._id, company._id, code, muted, options);
+    return { mutedCodes: await userService.findMutedNotificationCodes(userInfo._id, company._id, options) };
 }
 
 export { router };

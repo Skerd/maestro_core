@@ -6,7 +6,12 @@ import request from "supertest";
 import sharp from "sharp";
 
 // The harness stub, plus what the real authMW adds that the company routes and the upload read.
-const {creator} = vi.hoisted(() => ({creator: {userId: "", companyId: ""}}));
+const {creator} = vi.hoisted(() => {
+    // A core test runs core alone (CORE-01). With every module enabled, the first company created imported each
+    // vertical's bootstrap for its default roles inside the request: ~40 s of transforms under load (TD-B125).
+    process.env.ENABLED_MODULES = "core";
+    return {creator: {userId: "", companyId: ""}};
+});
 vi.mock("@coreModule/utilities/middlewares/authMW", async () => {
     const {authMWStub} = await import("@coreModule/_tests/httpHarness");
     const {ObjectId: Id} = await import("mongodb");

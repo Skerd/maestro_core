@@ -5,6 +5,7 @@ export function roleToSelect(role: IRole): ApiSelectDatum {
     return {
         value: role._id.toString(),
         label: role.name,
+        slug: role.slug,
     };
 }
 

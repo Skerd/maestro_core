@@ -23,8 +23,6 @@
 import {ObjectId} from "mongodb";
 import {z} from "zod";
 import type {AssistantToolContext} from "@coreModule/domain/ai/tools/assistantTool.types";
-import {companyTimeZoneOf} from "@coreModule/utilities/time/companyTimeZone";
-import {localDateOf} from "@coreModule/utilities/time/timeWindows";
 
 /** Hard cap on rows returned to the model, to protect its context window. */
 export const MAX_RESULTS = 25;
@@ -221,14 +219,6 @@ export function calendarDayRange(from?: string, to?: string): Record<string, str
     if (from) clause.$gte = from;
     if (to) clause.$lte = to;
     return clause;
-}
-
-/**
- * The company's calendar day (`YYYY-MM-DD`) at `now`, in its timezone (D91): the "today" calendar-day fields are
- * judged against, the same day the module crons use.
- */
-export async function companyToday(ctx: AssistantToolContext, now: Date = new Date()): Promise<string> {
-    return localDateOf(now, await companyTimeZoneOf(ctx.companyId));
 }
 
 /**

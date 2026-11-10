@@ -2,7 +2,7 @@ import type {ObjectId} from "mongodb";
 import type {ClientSession} from "mongoose";
 import {SERVER} from "@coreModule/environment";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
-import {isValidTimeZone} from "@coreModule/utilities/time/timeWindows";
+import {isValidTimeZone, localDateOf} from "@coreModule/utilities/time/timeWindows";
 
 /** The zone used when neither the company nor the instance names a valid one. */
 const FALLBACK_TIME_ZONE = "UTC";
@@ -30,4 +30,15 @@ export function companyTimeZone(company: {timezone?: string | null} | null | und
 export async function companyTimeZoneOf(companyId: ObjectId | string, opts: {session?: ClientSession | null} = {}): Promise<string> {
     const company = await companyService.findById(companyId, {session: opts.session ?? undefined}, undefined, "timezone");
     return companyTimeZone(company);
+}
+
+/**
+ * The company's calendar day (`YYYY-MM-DD`) at `now` in its timezone ({@link companyTimeZoneOf}): the "today" that
+ * calendar-day fields (due, expiry and rental days, D115) are judged against, the same day the module crons use.
+ * Pass the request's or cron's `session` so the company read joins the open transaction.
+ *
+ * @example const overdue = installment.dueDate < await companyTodayOf(companyId, {session});
+ */
+export async function companyTodayOf(companyId: ObjectId | string, opts: {session?: ClientSession | null; now?: Date} = {}): Promise<string> {
+    return localDateOf(opts.now ?? new Date(), await companyTimeZoneOf(companyId, {session: opts.session}));
 }

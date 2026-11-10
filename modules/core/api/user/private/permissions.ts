@@ -26,6 +26,7 @@ import {
     ChangeUserRolesFormResponseType
 } from "armonia/src/modules/core/api/user/private/permissions/changeUserRoles.form.response.type";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
+import {rolesToSelect} from "@coreModule/utilities/mappers/role/roleMapper.select";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel, hideAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
@@ -93,7 +94,7 @@ const router = Router();
 /**
  * POST /api/user/permissions/accessible/roles/select
  *
- * Returns company roles as options for dropdowns/selects (value: role id, label: role name).
+ * Returns company roles as options for dropdowns/selects (value: role id, label: role name, slug).
  * Only non-admin roles; optional name search and administration filter.
  *
  * @route POST /api/user/permissions/accessible/roles/select
@@ -125,7 +126,7 @@ async function GetAccessibleRoles(params: AuthenticatedMWType & AccessibleRolesF
 
     logger.start(`Fetching accessible roles for select...`);
 
-    const sanitizeFields = SchemaGuard.sanitizeFields(Role, {name: {}}, "read", actionUserCtx, languageCode);
+    const sanitizeFields = SchemaGuard.sanitizeFields(Role, {name: {}, slug: {}}, "read", actionUserCtx, languageCode);
     const populate = SchemaGuard.generatePopulate(sanitizeFields, Role.schema);
 
     const filter: FilterQuery<IRole> = {
@@ -160,10 +161,7 @@ async function GetAccessibleRoles(params: AuthenticatedMWType & AccessibleRolesF
     logger.finish(`Finished fetching accessible roles for select!`);
 
     return {
-        data: (roles ?? []).map((role) => ({
-            value: role._id.toString(),
-            label: role.name
-        })),
+        data: rolesToSelect(roles ?? []),
         total
     };
 }
