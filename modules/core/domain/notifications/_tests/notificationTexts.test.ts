@@ -50,6 +50,12 @@ describe("notificationText (D128)", () => {
         expect(notificationText("ACCOUNT_ACTIVATED", {variant: "invitation"}, "en-US")).toBe("Your account is now active. You can sign in.");
     });
 
+    // TD-B177: SMS and Telegram showed the stored (English) name of a default role.
+    it("names default roles in the asked language and keeps custom role names", () => {
+        const params = {assigner: "Ada", role: "General Administrator, Night shift", roleSlugs: "acme:reserved:general_administrator,acme:night-shift"};
+        expect(notificationText("ROLE_ASSIGNED", params, "de-CH")).toBe("Ada hat Ihnen die Rolle zugewiesen: Hauptadministrator, Night shift");
+    });
+
     it("returns null for an unknown code, and for a message that needs values none were given", () => {
         expect(notificationText("NO_SUCH_CODE", {}, "de-CH")).toBeNull();
         expect(notificationText("ROLE_ASSIGNED", undefined, "de-CH")).toBeNull();

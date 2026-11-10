@@ -5,27 +5,44 @@ import {
     createNotificationTypes,
     type NotificationTypes
 } from "armonia/src/modules/core/helpers/notificationTypes";
+import {
+    createDefaultRoleLabels,
+    type DefaultRoleLabels
+} from "armonia/src/modules/core/helpers/defaultRoleLabels";
 
 const REFERENCE_LANGUAGE = "en-US";
 
 let texts: NotificationTypes | undefined;
+let roleLabels: DefaultRoleLabels | undefined;
 
-/** Every module's `armonia/src/modules/<module>/helpers/static/notificationTypes/*.json`, read once. */
-function loadTexts(): NotificationTypes {
-    if (texts) return texts;
+const fallbackLocales = (): string[] => [CONSTANTS.DEFAULT_LANGUAGE ?? REFERENCE_LANGUAGE, REFERENCE_LANGUAGE];
+
+/** Every module's `armonia/src/modules/<module>/helpers/static/<folder>/*.json`, path → parsed JSON. */
+function readArmoniaStatic(folder: string): Record<string, unknown> {
     const modulesRoot = path.join(path.dirname(require.resolve("armonia/package.json")), "src", "modules");
     const files: Record<string, unknown> = {};
     for (const entry of fs.readdirSync(modulesRoot, {withFileTypes: true})) {
         if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-        const dir = path.join(modulesRoot, entry.name, "helpers", "static", "notificationTypes");
+        const dir = path.join(modulesRoot, entry.name, "helpers", "static", folder);
         if (!fs.existsSync(dir)) continue;
         for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".json"))) {
             const filePath = path.join(dir, file);
             files[filePath] = JSON.parse(fs.readFileSync(filePath, "utf8"));
         }
     }
-    texts = createNotificationTypes({files, fallbackLocales: [CONSTANTS.DEFAULT_LANGUAGE ?? REFERENCE_LANGUAGE, REFERENCE_LANGUAGE]});
+    return files;
+}
+
+/** The notification texts (D128), read once. */
+function loadTexts(): NotificationTypes {
+    texts ??= createNotificationTypes({files: readArmoniaStatic("notificationTypes"), fallbackLocales: fallbackLocales()});
     return texts;
+}
+
+/** The default-role labels (D129), read once: a role notice names default roles in the receiver's language. */
+function loadRoleLabels(): DefaultRoleLabels {
+    roleLabels ??= createDefaultRoleLabels({files: readArmoniaStatic("defaultRoles"), fallbackLocales: fallbackLocales()});
+    return roleLabels;
 }
 
 /**
@@ -39,11 +56,12 @@ export function receiverLanguage(receiver: {preferredLanguage?: string | null} |
 
 /**
  * A notification's text in `locale`, from the same files the panel reads (D117, D128): the variant `params.variant`
- * names, else the code's message, filled with `params`. `null` when no module declares `code`, or when its message needs
- * values and none were given; the caller then sends the stored English `description`.
+ * names, else the code's message, filled with `params`; a role notice's default roles are named in `locale` too (D129).
+ * `null` when no module declares `code`, or when its message needs values and none were given; the caller then sends
+ * the stored English `description`.
  *
  * @example notificationText("ROLE_ASSIGNED", {assigner: "Ada", role: "Sales"}, "de-CH")
  */
 export function notificationText(code: string, params: Record<string, string | number> | undefined, locale: string): string | null {
-    return loadTexts().notificationMessage({code, params}, locale);
+    return loadTexts().notificationMessage({code, params: loadRoleLabels().translateRoleParams(params, locale)}, locale);
 }
