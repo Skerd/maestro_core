@@ -320,6 +320,7 @@ async function UpdateUserRoles(params: TransactionRequiredParams & ChangeUserRol
     }
 
     const roleNames = updatedUserRoles.map((r) => r.name).join(", ");
+    const roleSlugs = updatedUserRoles.map((r) => r.slug).join(",");
     const assignerUsername = `${actionUserInfo.name || ""} ${actionUserInfo.surname || ""}`.trim() || actionUserInfo.username;
     emitNotificationEvent(
         NotificationEventCodes.ROLE_ASSIGNED, 
@@ -328,6 +329,7 @@ async function UpdateUserRoles(params: TransactionRequiredParams & ChangeUserRol
             payload: {
                 companyId: company._id.toString(),
                 roleName: roleNames,
+                roleSlugs,
                 roleId: updatedUserRoles[0]?._id.toString(),
                 assignerId: actionUserCtx.userId,
                 assignerUsername,

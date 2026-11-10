@@ -61,6 +61,15 @@ import {
 import {
     UpdateUserProfileTimezoneFormResponseType
 } from "armonia/src/modules/core/api/user/private/data/updateUserProfileTimezone.form.response.type";
+import type {
+    UpdateUserProfileLanguageFormType
+} from "armonia/src/modules/core/api/user/private/data/updateUserProfileLanguage.form.type";
+import type {
+    UpdateUserProfileLanguageFormResponseType
+} from "armonia/src/modules/core/api/user/private/data/updateUserProfileLanguage.form.response.type";
+import {
+    updateUserProfileLanguageFormSchema
+} from "armonia/src/modules/core/api/user/private/data/updateUserProfileLanguage.form.validator";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {
     PhoneNumberFormResponseType
@@ -112,6 +121,8 @@ import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/midd
  * - `PATCH "/phoneNumber"` – Update phone number.
  * - `GET "/timezone"` – User's timezone preference.
  * - `PATCH "/timezone"` – Update timezone preference.
+ * - `PATCH "/language"` – Update the preferred language for server-rendered notices (own account only, D128); read
+ *   through `GET ""` and `validateToken`.
  * - `GET "/profilePhoto"` – Profile photo media metadata (or null).
  * - `PATCH "/profilePhoto"` – Update profile photo (upload; replaces existing).
  * - `DELETE "/profilePhoto"` – Delete profile photo.
@@ -653,6 +664,46 @@ async function UpdateUserTimezonePreferences(params: TransactionRequiredParams &
     logger.finish(`Successfully updated user timezone!`);
 
     return { message: "Timezone updated!" };
+}
+
+/**
+ * PATCH /api/user/data/language
+ *
+ * Stores the user's preferred language. The panel calls it when the user changes its language, and once after
+ * sign-in while none is stored. Only the user can change it (field ACL: others may not write).
+ *
+ * @route PATCH /api/user/data/language
+ * @access Private
+ * @requires Transaction
+ * @body {UpdateUserProfileLanguageFormType} - One of the supported locales
+ * @returns {Promise<UpdateUserProfileLanguageFormResponseType>} Success message
+ */
+router.patch(
+    "/language",
+    authMW("private"),
+    impersonateUserMW,
+    rateLimiter({windowMs: 60000, max: 60}),
+    validateFormZod(updateUserProfileLanguageFormSchema),
+    transactionHandler(),
+    asyncHandler(updateUserLanguage)
+);
+async function updateUserLanguage(params: TransactionRequiredParams & UpdateUserProfileLanguageFormType & AuthenticatedMWType): Promise<UpdateUserProfileLanguageFormResponseType> {
+    const {preferredLanguage, logger, userInfo, session, languageCode, actionUserCtx} = params;
+
+    logger.start(`Trying to update user language...`);
+    if (userInfo.isBot) {
+        throw apiValidationException("bot_user_not_editable", null, null, languageCode);
+    }
+    SchemaGuard.sanitizeFields(User, {preferredLanguage: {}}, "write", actionUserCtx, languageCode);
+
+    userInfo.preferredLanguage = preferredLanguage;
+    userInfo.$locals = userInfo.$locals || {};
+    userInfo.$locals.auditUserId = new ObjectId(actionUserCtx.userId);
+    await userInfo.save({session});
+
+    logger.finish(`Successfully updated user language!`);
+
+    return {message: "Language updated!"};
 }
 
 /**

@@ -313,6 +313,12 @@ async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): 
     logger.start(`Trying to get company users`);
 
     const populate = SchemaGuard.generatePopulate(sanitizedReadFields, User.schema);
+    // The mapper picks this company's membership by `roles.company`, which is not a readable field; load it
+    // server-side (it is not sent back), or every row shows no roles and "inactive".
+    const selectFields = populate.select?.split(" ") ?? [];
+    if (selectFields.length > 0 && !selectFields.includes("roles") && !selectFields.includes("roles.company")) {
+        populate.select = [...selectFields, "roles.company"].join(" ");
+    }
 
     const filterQuery: FilterQuery<IUser> = {
         _id: { $ne: userInfo._id },
@@ -361,7 +367,7 @@ async function getCompanyUsers(params: GetCompanyUsersType & AllUsersFormType): 
 
     return {
         total: totalCount,
-        data: usersToCompanyUserDTO(data)
+        data: usersToCompanyUserDTO(data, company._id)
     }
 }
 
@@ -547,6 +553,7 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
         payload: {
             companyId: company._id.toString(),
             roleName: roleDoc.name,
+            roleSlugs: roleDoc.slug,
             roleId: userRole,
             assignerId: actionUserCtx.userId,
             assignerUsername: assignerNameCreated,
@@ -631,6 +638,7 @@ async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<
             payload: {
                 companyId: company._id.toString(),
                 roleName: invitedRoleDoc.name,
+                roleSlugs: invitedRoleDoc.slug,
                 roleId: userRole,
                 assignerId: actionUserCtx.userId,
                 assignerUsername: inviterName,

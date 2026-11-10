@@ -79,6 +79,7 @@ export function userToCompanyUserDTO(user: IUser | null | undefined, companyId: 
         surname: user.surname,
         phoneNumber: user.phoneNumber,
         timezone: user.timezone,
+        preferredLanguage: user.preferredLanguage,
         birthday: user.birthday ? toDate(user.birthday) : undefined,
         registerDate: user.registerDate ? toDate(user.registerDate) : undefined,
         roles: role?.roles
@@ -104,7 +105,8 @@ export function userToCompanyUserDTO(user: IUser | null | undefined, companyId: 
     };
 }
 
-export function usersToCompanyUserDTO(users: IUser[]): CompanyUserType[] {
+/** Each user as a member of `companyId` (the list's company: its roles and status, not the first membership's). */
+export function usersToCompanyUserDTO(users: IUser[], companyId: {toString(): string}): CompanyUserType[] {
     if (!users?.length) return [];
-    return users.map(userToCompanyUserDTO).filter((d): d is CompanyUserType => d != null);
+    return users.map((user) => userToCompanyUserDTO(user, companyId)).filter((d): d is CompanyUserType => d != null);
 }

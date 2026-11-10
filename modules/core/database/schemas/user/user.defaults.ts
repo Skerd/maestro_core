@@ -9,6 +9,7 @@ export const defaultSysUsers: any[] = [
         name: "echo",
         password: "echo",
         timezone: "Europe/Berlin",
+        preferredLanguage: "en-US",
         isMainUser: true
     },
     {
@@ -17,6 +18,8 @@ export const defaultSysUsers: any[] = [
         name: "User",
         password: "1234",
         timezone: "Europe/Berlin",
+        // Not English, so a dev reset shows SMS/Telegram notices rendered in the receiver's language (D128).
+        preferredLanguage: "de-CH",
         phoneNumber: "+470000000000"
     }
 ];

@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {ObjectId} from "mongodb";
 import User from "@coreModule/database/schemas/user/user";
-import {userToCompanyUserDTO} from "@coreModule/utilities/mappers/user/userMapper.dto";
+import {userToCompanyUserDTO, usersToCompanyUserDTO} from "@coreModule/utilities/mappers/user/userMapper.dto";
 
 describe("userToCompanyUserDTO", () => {
     const platform = new ObjectId();
@@ -9,6 +9,7 @@ describe("userToCompanyUserDTO", () => {
     const shopLogin = new Date("2026-11-04T10:00:00Z");
     const user = new User({
         username: "member@example.com",
+        preferredLanguage: "de-CH",
         roles: [
             {company: platform, active: "inactive", roles: [], lastLogin: new Date("2026-01-01T00:00:00Z")},
             {company: shop, active: "active", roles: [], lastLogin: shopLogin},
@@ -25,5 +26,16 @@ describe("userToCompanyUserDTO", () => {
         const dto = userToCompanyUserDTO(user, new ObjectId());
         expect(dto?.roles).toEqual([]);
         expect(dto?.status).toBe("inactive");
+    });
+
+    it("carries the user's preferred language (D128)", () => {
+        expect(userToCompanyUserDTO(user, shop)?.preferredLanguage).toBe("de-CH");
+    });
+
+    // The users list passed each user's array index as the company, so every row lost its roles and status.
+    it("maps a list as members of the list's company", () => {
+        const [dto] = usersToCompanyUserDTO([user], shop);
+        expect(dto.status).toBe("active");
+        expect(dto.lastLogin).toEqual(shopLogin);
     });
 });

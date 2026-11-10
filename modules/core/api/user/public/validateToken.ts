@@ -43,7 +43,7 @@ router.get(
  * Validates token and returns current user info and company-role permissions for the authenticated company.
  *
  * @param params - Auth context: logger, userInfo, company.
- * @returns User id, username, company, email, name, surname, timezone, maxClearance, permissions.
+ * @returns User id, username, company, email, name, surname, timezone, preferred language, maxClearance, permissions.
  */
 async function validateToken(params: AuthenticatedMWType): Promise<ValidateTokenFormResponseType> {
     const {logger, userInfo, company, companyTimeZone, actionUserCtx} = params;
@@ -62,6 +62,7 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
             name: userInfo.name,
             surname: userInfo.surname,
             timezone: userInfo.timezone,
+            preferredLanguage: userInfo.preferredLanguage,
             photo: userInfo.photo?._id || undefined,
             cover: userInfo.cover?._id || undefined,
             permissions: await userInfo.getCompanyRolePermissions(company._id)

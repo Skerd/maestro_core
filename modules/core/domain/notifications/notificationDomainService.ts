@@ -26,6 +26,8 @@ import {sendMessagingNotification} from "@coreModule/utilities/messaging/messagi
 import {sendTelegramNotification} from "@coreModule/utilities/messaging/telegramDispatchService";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {NotificationDeliveryChannel} from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
+import type {IUser} from "@coreModule/database/schemas/user/user";
+import {notificationText, receiverLanguage} from "@coreModule/domain/notifications/notificationTexts";
 
 const notificationLogger = getLogger("notification_domain");
 
@@ -34,11 +36,12 @@ export interface CreateNotificationInput {
     sender?: ObjectId;
     company: ObjectId;
     code: string;
-    /** English text, kept as the fallback where the panel has no translation for `code` (D117). */
+    /** English text, kept as the fallback where no module declares a translation for `code` (D117). */
     description?: string;
     /**
-     * Values for the code's translated message, which the panel looks up by `code` in the module's
-     * `notificationTypes.json` (D117). `variant` picks one of the code's message variants.
+     * Values for the code's translated message, looked up by `code` in the module's
+     * `armonia/src/modules/<module>/helpers/static/notificationTypes/*.json` by the panel and, for SMS/WhatsApp/Telegram,
+     * by the server in the receiver's language (D117, D128). `variant` picks one of the code's message variants.
      */
     params?: Record<string, string | number>;
     content?: Record<string, unknown>;
@@ -76,6 +79,48 @@ export async function filterUnmutedReceivers(receiverIds: string[], companyId: O
         code,
     );
     return ids.filter((id) => !muted.has(id));
+}
+
+/**
+ * Sends the notice to the receiver's SMS/WhatsApp (when `channels` asks for it) and linked Telegram chat, written in the
+ * receiver's language (D128): the code's text from the shared notification texts, else the stored English
+ * `description`. Failures are logged, never thrown: the in-app notice already exists.
+ */
+async function dispatchToReceiverChannels(input: Pick<CreateNotificationInput, "receiver" | "company" | "code" | "description" | "params" | "channels">): Promise<void> {
+    const {receiver, company, code, description, params, channels} = input;
+    const needsSms = channels?.includes(NotificationDeliveryChannel.SMS) ?? false;
+    const needsWhatsapp = channels?.includes(NotificationDeliveryChannel.WHATSAPP) ?? false;
+
+    let receiverUser: Pick<IUser, "phoneNumber" | "telegram" | "preferredLanguage"> | null;
+    try {
+        receiverUser = await userService.findById(receiver, {}, undefined, "phoneNumber telegram.chatId preferredLanguage");
+    } catch (e) {
+        notificationLogger.warn(`Receiver lookup for messaging failed: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+    }
+    const phone = receiverUser?.phoneNumber;
+    const chatId = receiverUser?.telegram?.chatId;
+    if (!(phone && (needsSms || needsWhatsapp)) && !chatId) return;
+
+    const body = notificationText(code, params, receiverLanguage(receiverUser)) ?? description;
+    if (!body) return;
+
+    if (phone && (needsSms || needsWhatsapp)) {
+        try {
+            await sendMessagingNotification({to: phone, body, channel: needsWhatsapp ? "whatsapp" : "sms", companyId: company});
+        } catch (e) {
+            // Non-fatal — log but don't fail the notification creation
+            notificationLogger.warn(`Messaging dispatch failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }
+    if (chatId) {
+        try {
+            await sendTelegramNotification({chatId, body});
+        } catch (e) {
+            // Non-fatal — log but don't fail the notification creation
+            notificationLogger.warn(`Telegram dispatch failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }
 }
 
 /**
@@ -133,41 +178,11 @@ export async function createAndPushNotification(
     const dto = notificationToDTO(populated);
     pushNotificationToUsers([receiver.toString()], [dto]);
 
-    // Dispatch SMS/WhatsApp if requested
-    if (channels && description) {
-        const needsSms      = channels.includes(NotificationDeliveryChannel.SMS);
-        const needsWhatsapp = channels.includes(NotificationDeliveryChannel.WHATSAPP);
-        if (needsSms || needsWhatsapp) {
-            try {
-                const receiverUser = await userService.findById(receiver, {}, undefined, "phoneNumber");
-                const phone = receiverUser?.phoneNumber;
-                if (phone) {
-                    const channel = needsWhatsapp ? "whatsapp" : "sms";
-                    await sendMessagingNotification({to: phone, body: description, channel, companyId: company});
-                }
-            } catch (e) {
-                // Non-fatal — log but don't fail the notification creation
-                notificationLogger.warn(`Messaging dispatch failed: ${e instanceof Error ? e.message : String(e)}`);
-            }
-        }
-    }
-
-    // Auto-dispatch to Telegram when the receiver has a linked chatId
-    if (description) {
-        try {
-            const receiverUser = await userService.findById(receiver, {}, undefined, "telegram.chatId");
-            const chatId = receiverUser?.telegram?.chatId;
-            if (chatId) {
-                await sendTelegramNotification({chatId, body: description});
-            }
-        } catch (e) {
-            // Non-fatal — log but don't fail the notification creation
-            notificationLogger.warn(`Telegram dispatch failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
-    }
+    await dispatchToReceiverChannels({receiver, company, code, description, params: messageParams, channels});
 
     return populated;
 }
+
 
 /**
  * Register event handlers that create notifications on domain events.
@@ -213,6 +228,8 @@ export function registerNotificationEventHandlers(): void {
         const { receiverIds, payload } = event;
         const companyId = payload.companyId as string;
         const roleName = (payload.roleName as string) ?? "a role";
+        // The roles' slugs, in `roleName`'s order: the panel shows a default role's name translated (D118).
+        const roleSlugs = typeof payload.roleSlugs === "string" ? payload.roleSlugs : undefined;
         const assignerUsername = (payload.assignerUsername as string) ?? "An administrator";
         const opts = createNotifOpts(event);
 
@@ -225,7 +242,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.ROLE_ASSIGNED,
                         description: `${assignerUsername} assigned you the role: ${roleName}`,
-                        params: {assigner: assignerUsername, role: roleName},
+                        params: {assigner: assignerUsername, role: roleName, ...(roleSlugs ? {roleSlugs} : {})},
                         content: { roleName, roleId: payload.roleId },
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.COMPANY

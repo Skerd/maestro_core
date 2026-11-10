@@ -16,6 +16,7 @@ import {IUserSession} from "@coreModule/database/schemas/userSession/userSession
 import {applyUserIndexes} from "./user.indexes";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
 import {UserSchemaDef} from "armonia/src/modules/core/api/company/private/users/user.schema-def";
+import {SUPPORTED_LOCALES, type SupportedLocale} from "armonia/src/modules/core/constants";
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {isKafkaConnected} from "@coreModule/connections/connectToKafka";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
@@ -162,6 +163,8 @@ export interface IUser extends Document, ILifeCyclePluginFields {
     surname: string;
     fullName: string;
     timezone: string;
+    /** The language server-rendered notices (SMS, WhatsApp, Telegram) are written in (D128); unset until picked. */
+    preferredLanguage?: SupportedLocale;
     birthday: Date;
     phoneNumber: string;
     companies: ICompany[];
@@ -267,6 +270,20 @@ const UserSchema = new Schema<IUser>(
             type: SchemaTypes.String,
             required: true,
             default: "Europe/Berlin",
+        },
+        // Set from the panel's language choice; only the user changes it (D128).
+        preferredLanguage: {
+            type: SchemaTypes.String,
+            enum: SUPPORTED_LOCALES,
+            permissions: {
+                self: {
+                    publicRead: true,
+                    publicWrite: true,
+                },
+                others: {
+                    write: "no-permission"
+                }
+            },
         },
         birthday: {
             type: SchemaTypes.Date,
