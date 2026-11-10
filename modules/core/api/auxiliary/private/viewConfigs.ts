@@ -223,6 +223,9 @@ function filterNodes(
  * Supports nested paths (e.g. "currency.abbreviation").
  */
 function hasField(fields: SanitizedFields, path: string): boolean {
+    // A plain nested object (not a sub-schema) is listed by its flat path, e.g. `stats.found`;
+    // the panel's `hasAccessPath` checks that key first too.
+    if (path in fields) return true;
     const segments = path.split(".");
     let current: SanitizedFields | undefined = fields;
     for (const seg of segments) {
