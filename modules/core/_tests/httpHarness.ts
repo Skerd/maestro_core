@@ -18,8 +18,10 @@ import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {ServerError} from "armonia/src/modules/core/types";
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
+import {companyTimeZone} from "@coreModule/utilities/time/companyTimeZone";
 
-export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]; modules?: string[]};
+/** `timeZone` is the caller's company `timezone` (D116); omitted, the instance zone applies as in authMW. */
+export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]; modules?: string[]; timeZone?: string};
 
 export const authMWStub = {
     default: (scope?: string) => (req: any, _res: any, next: any) => {
@@ -37,7 +39,8 @@ export const authMWStub = {
         // The request's site, as authMW reads it: the Origin header's host without its port
         req.body.origin = (req.get("Origin") ?? "").replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
         req.body.logger = getLogger(req.originalUrl);
-        req.body.company = {_id: new ObjectId(caller.companyId), name: "Test company"};
+        req.body.company = {_id: new ObjectId(caller.companyId), name: "Test company", timezone: caller.timeZone};
+        req.body.companyTimeZone = companyTimeZone(req.body.company);
         req.body.actionUserCtx = actionUserCtx;
         // Like authMW: only a private request names its tenant here; a public one gets it from
         // resolveCompanyByOrigin (or not at all), so tests see production's tenant scoping (D16).

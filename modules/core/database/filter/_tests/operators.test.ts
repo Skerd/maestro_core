@@ -69,4 +69,22 @@ describe("OPERATOR_HANDLERS", () => {
             scheduledAt: new Date(iso),
         });
     });
+
+    // D115: local-day columns hold `YYYY-MM-DD` text, so bounds stay day strings (a Date would match nothing).
+    it("compares local-day columns as day strings", () => {
+        const day: FilterFieldConfig = {path: "saleDate", type: COLUMN_TYPE.DATE, localDay: true};
+        expect(OPERATOR_HANDLERS.between("saleDate", ["2026-03-01", "2026-03-31"], day)).toEqual({
+            saleDate: {$gte: "2026-03-01", $lte: "2026-03-31"},
+        });
+        expect(OPERATOR_HANDLERS.lessThanOrEqual("saleDate", "2026-03-31T00:00:00.000Z", day)).toEqual({
+            saleDate: {$lte: "2026-03-31"},
+        });
+        expect(OPERATOR_HANDLERS.equals("saleDate", "2026-03-02", day)).toEqual({saleDate: "2026-03-02"});
+        expect(OPERATOR_HANDLERS.in("saleDate", ["2026-03-02", "nope"], day)).toEqual({saleDate: {$in: ["2026-03-02"]}});
+        expect(OPERATOR_HANDLERS.startsWith("saleDate", "2026-03-", day)).toEqual({saleDate: {$regex: "^2026-03-", $options: "i"}});
+        // A Date column is unchanged.
+        expect(OPERATOR_HANDLERS.lessThanOrEqual("createdAt", "2026-03-31", field(COLUMN_TYPE.DATE))).toEqual({
+            createdAt: {$lte: new Date("2026-03-31T00:00:00.000Z")},
+        });
+    });
 });

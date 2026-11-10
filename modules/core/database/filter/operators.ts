@@ -60,8 +60,24 @@ function coerceDate(v: unknown): Date | null {
     return null;
 }
 
-function coerceRangeBound(value: unknown, type: COLUMN_TYPE): Date | number | null {
-    if (isDateColumnType(type)) return coerceDate(value);
+/**
+ * A calendar day as `YYYY-MM-DD` (D115): the day itself, or the UTC date of an instant, which is how a
+ * midnight-UTC day value arrives. Local-day columns store this text, so bounds compare as strings.
+ */
+function coerceDay(v: unknown): string | null {
+    if (typeof v === "string" && DATE_ONLY.test(v.trim())) return v.trim();
+    const d = coerceDate(v);
+    return d ? d.toISOString().slice(0, 10) : null;
+}
+
+/** A date column's comparable value: a day string for a local-day column, else a `Date`. */
+function coerceDateValue(value: unknown, config: FilterFieldConfig): Date | string | null {
+    return config.localDay ? coerceDay(value) : coerceDate(value);
+}
+
+function coerceRangeBound(value: unknown, config: FilterFieldConfig): Date | string | number | null {
+    const type = config.type;
+    if (isDateColumnType(type)) return coerceDateValue(value, config);
     if (isNumberColumnType(type)) return typeof value === "number" ? value : null;
     return null;
 }
@@ -102,7 +118,7 @@ const OPERATOR_HANDLERS: Record<FilterOperator, OperatorHandler> = {
             return {[field]: id ?? value};
         }
         if (isDateColumnType(config.type)) {
-            const d = coerceDate(value);
+            const d = coerceDateValue(value, config);
             return d != null ? {[field]: d} : {[field]: value};
         }
         return {[field]: value};
@@ -115,7 +131,7 @@ const OPERATOR_HANDLERS: Record<FilterOperator, OperatorHandler> = {
             return {[field]: {$ne: id ?? value}};
         }
         if (isDateColumnType(config.type)) {
-            const d = coerceDate(value);
+            const d = coerceDateValue(value, config);
             return d != null ? {[field]: {$ne: d}} : {[field]: {$ne: value}};
         }
         return {[field]: {$ne: value}};
@@ -128,7 +144,8 @@ const OPERATOR_HANDLERS: Record<FilterOperator, OperatorHandler> = {
     },
 
     startsWith(field, value, config) {
-        if (!isStringColumnType(config.type) || typeof value !== "string") return null;
+        // A local-day column (`YYYY-MM-DD` text) also filters by month prefix, e.g. "2026-03-".
+        if ((!isStringColumnType(config.type) && !config.localDay) || typeof value !== "string") return null;
         const escaped = escapeRegex(value);
         return {[field]: {$regex: `^${escaped}`, $options: "i"}};
     },
@@ -140,25 +157,25 @@ const OPERATOR_HANDLERS: Record<FilterOperator, OperatorHandler> = {
     },
 
     greaterThan(field, value, config) {
-        const v = coerceRangeBound(value, config.type);
+        const v = coerceRangeBound(value, config);
         if (v == null) return null;
         return {[field]: {$gt: v}};
     },
 
     greaterThanOrEqual(field, value, config) {
-        const v = coerceRangeBound(value, config.type);
+        const v = coerceRangeBound(value, config);
         if (v == null) return null;
         return {[field]: {$gte: v}};
     },
 
     lessThan(field, value, config) {
-        const v = coerceRangeBound(value, config.type);
+        const v = coerceRangeBound(value, config);
         if (v == null) return null;
         return {[field]: {$lt: v}};
     },
 
     lessThanOrEqual(field, value, config) {
-        const v = coerceRangeBound(value, config.type);
+        const v = coerceRangeBound(value, config);
         if (v == null) return null;
         return {[field]: {$lte: v}};
     },
@@ -166,8 +183,8 @@ const OPERATOR_HANDLERS: Record<FilterOperator, OperatorHandler> = {
     between(field, value, config) {
         const tuple = Array.isArray(value) && value.length === 2 ? value : null;
         if (!tuple) return null;
-        const min = coerceRangeBound(tuple[0], config.type);
-        const max = coerceRangeBound(tuple[1], config.type);
+        const min = coerceRangeBound(tuple[0], config);
+        const max = coerceRangeBound(tuple[1], config);
         if (min == null || max == null) return null;
         return {[field]: {$gte: min, $lte: max}};
     },
@@ -180,7 +197,7 @@ const OPERATOR_HANDLERS: Record<FilterOperator, OperatorHandler> = {
             return {[field]: {$in: ids}};
         }
         if (isDateColumnType(config.type)) {
-            const dates = value.map(coerceDate).filter((d): d is Date => d != null);
+            const dates = value.map((v) => coerceDateValue(v, config)).filter((d): d is Date | string => d != null);
             if (dates.length === 0) return null;
             return {[field]: {$in: dates}};
         }
@@ -195,7 +212,7 @@ const OPERATOR_HANDLERS: Record<FilterOperator, OperatorHandler> = {
             return {[field]: {$nin: ids}};
         }
         if (isDateColumnType(config.type)) {
-            const dates = value.map(coerceDate).filter((d): d is Date => d != null);
+            const dates = value.map((v) => coerceDateValue(v, config)).filter((d): d is Date | string => d != null);
             if (dates.length === 0) return null;
             return {[field]: {$nin: dates}};
         }

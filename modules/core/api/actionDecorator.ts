@@ -1,5 +1,6 @@
 import type {RequestHandler} from "express";
 import type {ZodObject} from "zod";
+import type {ValidationContext} from "armonia/src/modules/core/helpers/zodBuilder";
 
 const ACTION_REGISTRY = Symbol("actionRegistry");
 
@@ -23,9 +24,9 @@ export interface ActionOptions {
     middleware?: RequestHandler[];
     /**
      * Zod schema factory (lang, form) => ZodObject for request body validation.
-     * Invoked via validateFormZod before the handler.
+     * Invoked via validateFormZod before the handler, with the {@link ValidationContext} as its 5th argument (D116).
      */
-    schema?: (lang: string, form: any) => ZodObject<any>;
+    schema?: (lang: string, form: any, writePerms?: unknown, readPerms?: unknown, context?: ValidationContext) => ZodObject<any>;
     /**
      * Access is decided by the caller's own relation to the record, not by their role: their own record
      * (account, preferences, addresses) or one they are a party to (a marketplace order or bid). Any signed-in

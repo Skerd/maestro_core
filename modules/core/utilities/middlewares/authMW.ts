@@ -21,6 +21,7 @@ import {validateActiveUserSession} from "@coreModule/utilities/security/sessionV
 import {effectiveCompanyModules, isModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
 import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModules";
 import {STUDIO_SAMPLE_HEADER, wantsStudioSample} from "@coreModule/utilities/modules/modelModules";
+import {companyTimeZone} from "@coreModule/utilities/time/companyTimeZone";
 
 export type NotAuthenticatedMWType = {
     apiCode: string,
@@ -43,6 +44,8 @@ export type Authenticated = {
     actionUserInfo: IUser,
     actionUserCtx: UserContext,
     company: ICompany,
+    /** The company's IANA zone for "today" (D116): `companyTimeZone(company)`. `validateFormZod` hands it to Zod factories. */
+    companyTimeZone: string,
 }
 
 /**
@@ -108,8 +111,9 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         req.body.userInfo = user;
         req.body.actionUserInfo = user;
 
-        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive modules isPlatformOwner");
+        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive modules isPlatformOwner timezone");
         req.body.company = company;
+        req.body.companyTimeZone = companyTimeZone(company);
         // From here on the request works on this company's data (D16); the checks below are about it.
         setRequestTenant(company._id, languageCode);
         const studioSample = wantsStudioSample(req.header(STUDIO_SAMPLE_HEADER));

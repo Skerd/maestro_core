@@ -22,6 +22,7 @@ describe("buildTableColumnsFromSchema", () => {
             dynamicTableConfiguration: {sortable: false},
         },
         name: {type: SchemaTypes.String},
+        dueDate: {type: SchemaTypes.String, dynamicTableConfiguration: {cellType: COLUMN_TYPE.DATE}},
         sharedSpaces: {type: [{type: SchemaTypes.String}]},
     });
     const TestModel = model<ProbeDocument>("SchemaToTableConfigProbe", TestSchema);
@@ -171,6 +172,16 @@ describe("buildTableColumnsFromSchema", () => {
         expect(byId.scheduledAt!.filterConfig).toEqual({
             type: COLUMN_TYPE.DATETIME,
             operators: DATE_OPERATORS,
+        });
+    });
+
+    // D115: a calendar day stored as `YYYY-MM-DD` text keeps its date filters (plus month prefixes).
+    it("gives a local-day text column date operators", () => {
+        const columns = buildTableColumnsFromSchema(TestModel, new Set(["dueDate"]));
+        expect(columns[0]!.filterConfig).toEqual({
+            type: COLUMN_TYPE.DATE,
+            operators: [...DATE_OPERATORS, "startsWith"],
+            localDay: true,
         });
     });
 });

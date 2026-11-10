@@ -2,6 +2,7 @@ import {Router, RequestHandler} from "express";
 import {ObjectId} from "mongodb";
 import {Document, Model, RefAllowlist} from "mongoose";
 import {ZodObject, type ZodType} from "zod";
+import type {ValidationContext} from "armonia/src/modules/core/helpers/zodBuilder";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {getRegisteredActions} from "@coreModule/api/actionDecorator";
@@ -128,11 +129,11 @@ export interface CrudRouterConfig<
      */
     overrideSelectHandler?: (params: SelectRouteParams) => Promise<SelectResponse>;
 
-    /** Zod schema factory for the create route. */
-    createSchema: (lang: string, form: any) => ZodType;
+    /** Zod schema factory for the create route. Also receives the {@link ValidationContext} as its 5th argument (D116). */
+    createSchema: (lang: string, form: any, writePerms?: any, readPerms?: any, context?: ValidationContext) => ZodType;
 
-    /** Zod schema factory for the edit route (receives write + read permission maps). */
-    editSchema: (lang: string, form: any, writePerms: any, readPerms: any) => ZodType;
+    /** Zod schema factory for the edit route (receives write + read permission maps, then the {@link ValidationContext}). */
+    editSchema: (lang: string, form: any, writePerms: any, readPerms: any, context?: ValidationContext) => ZodType;
 
     /** Maps a single Mongoose document to its API DTO shape. */
     toDTO: (doc: T) => unknown;
@@ -534,7 +535,7 @@ export function createCrudRouter<
         rateLimiter({windowMs: 60000, max: writeLimit}),
         transactionHandler(),
         ...(config.createMiddleware ?? []) as RequestHandler[],
-        validateFormZod((lang, form) => config.createSchema(lang ?? "", form)),
+        validateFormZod((lang, form, _writeFields, _readFields, context) => config.createSchema(lang ?? "", form, undefined, undefined, context)),
         asyncHandler(async (params: CrudCreateParams<TCreate>) => {
             const {logger, languageCode, session, company, actionUserCtx} = params;
 
@@ -581,8 +582,8 @@ export function createCrudRouter<
         transactionHandler(),
         ...(config.editMiddleware ?? []) as RequestHandler[],
         schemaSanitizer({model: collectionName, requiredModes: ["read", "write"]}),
-        validateFormZod((lang, _form, writeFields, readFields) =>
-            config.editSchema(lang ?? "", null, writeFields, readFields)
+        validateFormZod((lang, _form, writeFields, readFields, context) =>
+            config.editSchema(lang ?? "", null, writeFields, readFields, context)
         ),
         asyncHandler(async (params: TransactionRequiredParams & SchemaSanitizerMWType & TEdit & {_id: string}) => {
             const {logger, languageCode, session, _id, company, actionUserCtx, sanitizedWriteFields} = params;
@@ -752,7 +753,7 @@ export function mountActions(router: Router, ActionsClass: new () => any, model:
         if (options.rateLimit)      mw.push(rateLimiter(options.rateLimit));
         if (options.transaction)    mw.push(transactionHandler());
         if (options.middleware?.length) mw.push(...options.middleware as RequestHandler[]);
-        if (options.schema)         mw.push(validateFormZod((lang, form) => options.schema!(lang ?? "", form)));
+        if (options.schema)         mw.push(validateFormZod((lang, form, _writeFields, _readFields, context) => options.schema!(lang ?? "", form, undefined, undefined, context)));
         const handler = (actionsInstance[methodName] as Function).bind(actionsInstance);
         router.post(`/${methodName}`, ...mw, asyncHandler(handler));
     }

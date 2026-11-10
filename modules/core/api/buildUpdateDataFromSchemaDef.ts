@@ -10,6 +10,14 @@ export type SchemaDefTransformMap = Record<string, (value: unknown) => unknown>;
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * An emptied local-day field (D115) means "no day": stored as `""` it would sort before every real day and
+ * match "before today" queries, so create skips it and update clears it like `null`.
+ */
+function isEmptyLocalDay(fieldDef: FieldDef, value: unknown): boolean {
+    return value === "" && fieldDef.type === "string" && "format" in fieldDef && fieldDef.format === "localDate";
+}
+
 /** Date-only `YYYY-MM-DD` is UTC midnight; ISO datetimes (with `T` / `Z` / offset) parse as instants. */
 function parseSchemaDate(value: unknown): Date {
     if (value instanceof Date) return value;
@@ -109,7 +117,7 @@ function buildCreateRecursive(
 
     for (const [key, fieldDef] of Object.entries(schemaDef)) {
         const value = fieldValue(params, key, prefix);
-        if (value === undefined || value === null) continue;
+        if (value === undefined || value === null || isEmptyLocalDay(fieldDef, value)) continue;
 
         const fullKey = prefix ? `${prefix}.${key}` : key;
         data[key] = applyFieldTransform(
@@ -173,7 +181,7 @@ function buildUpdateRecursive(
 
         const fullKey = prefix ? `${prefix}.${key}` : key;
 
-        if (value === null) {
+        if (value === null || isEmptyLocalDay(fieldDef, value)) {
             update[key] = null;
             continue;
         }

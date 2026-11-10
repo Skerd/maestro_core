@@ -14,6 +14,7 @@ export const SERVER_KEYS: ReadonlySet<string> = new Set([
     "actionUserInfo",
     "apiCode",
     "company",
+    "companyTimeZone",
     "customer",
     "deviceId",
     "dslFilterQuery",

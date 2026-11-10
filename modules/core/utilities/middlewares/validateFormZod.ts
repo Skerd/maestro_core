@@ -4,12 +4,18 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {ValidationError} from "armonia/src/modules/core/types";
 import {CONSTANTS} from "@coreModule/environment";
 import {clientValuesOfServerKeys, SERVER_KEYS} from "@coreModule/utilities/middlewares/serverKeys";
+import {companyTimeZone} from "@coreModule/utilities/time/companyTimeZone";
+import type {ValidationContext} from "armonia/src/modules/core/helpers/zodBuilder";
 
 /**
  * Form Validation Middleware (Zod-based)
  *
  * Validates request body against a Zod schema. The schema is created per-request
  * from a factory so it can use languageCode for localized error messages.
+ *
+ * The factory is called as `(languageCode, form = null, sanitizedWriteFields, sanitizedReadFields, context)`. `context`
+ * is the armonia {@link ValidationContext} (D116): `timeZone` is the caller's company zone, from the `companyTimeZone`
+ * server key authMW writes; a route without authMW (public) gets the instance zone (`companyTimeZone(null)`).
  *
  * @param schemaFactory - A function (languageCode, form) => ZodSchema, e.g., getAllUsersFormSchema
  *
@@ -24,7 +30,7 @@ import {clientValuesOfServerKeys, SERVER_KEYS} from "@coreModule/utilities/middl
  * ```
  */
 // Only `safeParse` is used, so any Zod type qualifies, including the `z.preprocess` pipes some validators return.
-export const validateFormZod = (schemaFactory: (languageCode: string | undefined, form?: any, sanitizedFields?: any, sanitizedReadFields?: any) => ZodType) => {
+export const validateFormZod = (schemaFactory: (languageCode: string | undefined, form?: any, sanitizedFields?: any, sanitizedReadFields?: any, context?: ValidationContext) => ZodType) => {
     return function (req: Request, _: Response, next: NextFunction) {
 
         if (req.body == null || typeof req.body !== "object") {
@@ -32,7 +38,8 @@ export const validateFormZod = (schemaFactory: (languageCode: string | undefined
         }
         const body = req.body;
         const languageCode = body.languageCode ?? CONSTANTS.DEFAULT_LANGUAGE;
-        const schema = schemaFactory(languageCode, null, req.body?.sanitizedWriteFields ?? {}, req.body?.sanitizedReadFields ?? {});
+        const context: ValidationContext = {timeZone: body.companyTimeZone ?? companyTimeZone(null)};
+        const schema = schemaFactory(languageCode, null, body.sanitizedWriteFields ?? {}, body.sanitizedReadFields ?? {}, context);
         // Validate what the client sent: server-written keys are swapped back for the client's own values
         // (quarantined by stripServerKeys), so a contract field like a recipient's `languageCode` sees its input.
         const input: Record<string, unknown> = {};

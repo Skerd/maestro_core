@@ -143,7 +143,8 @@ export function validateSchemaDefAgainstMongoose(
         // Check 4: constraint compatibility — only when BOTH sides define the constraint
         const opts = mongoosePath.options ?? {};
 
-        if (fieldDef.type === "string") {
+        // A localDate day has no length bounds.
+        if (fieldDef.type === "string" && fieldDef.format !== "localDate") {
             const mongooseMin: number | undefined = typeof opts.minlength === "number" ? opts.minlength : undefined;
             const mongooseMax: number | undefined = typeof opts.maxlength === "number" ? opts.maxlength : undefined;
 

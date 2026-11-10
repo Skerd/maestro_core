@@ -59,6 +59,15 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
         };
     }
 
+    // A calendar day stored as `YYYY-MM-DD` text (D115): date operators on the day strings, plus month prefixes.
+    if (schemaType instanceof SchemaTypes.String && cellTypeOverride === COLUMN_TYPE.DATE) {
+        return {
+            type: COLUMN_TYPE.DATE,
+            operators: [...DATE_OPERATORS, "startsWith"],
+            localDay: true,
+        };
+    }
+
     // String (no enum)
     if (schemaType instanceof SchemaTypes.String) {
         return {

@@ -4,6 +4,7 @@ import type {NextFunction} from "express";
 
 vi.mock("@coreModule/environment", () => ({
     CONSTANTS: {DEFAULT_LANGUAGE: "en-US"},
+    SERVER: {TIMEZONE: "UTC"},
 }));
 
 import {clientValuesOfServerKeys, stripServerKeys} from "../serverKeys";

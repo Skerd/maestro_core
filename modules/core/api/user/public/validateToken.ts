@@ -46,7 +46,7 @@ router.get(
  * @returns User id, username, company, email, name, surname, timezone, maxClearance, permissions.
  */
 async function validateToken(params: AuthenticatedMWType): Promise<ValidateTokenFormResponseType> {
-    const {logger, userInfo, company, actionUserCtx} = params;
+    const {logger, userInfo, company, companyTimeZone, actionUserCtx} = params;
     try {
         logger.start("Validating token...");
         logger.finish(`Finished validating token!`);
@@ -54,7 +54,7 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
         return {
             id: userInfo._id.toString(),
             username: userInfo.username,
-            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company)},
+            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company), timezone: companyTimeZone},
             isPlatformAdmin: isPlatformCompany(company) && actionUserCtx.isAdmin,
             canErasePeople: actionUserCtx.isAdmin === true && (await personErasureModules()).some((name) => (actionUserCtx.modules ?? []).includes(name)),
             email: userInfo.username,
