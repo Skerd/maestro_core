@@ -83,7 +83,7 @@ export const defaultCompaniesValues: any = {
             "siteSlug": "store",
             "shopListedOnPortal": true,
             "allowedDomains": ["*", "store.localhost"],
-            "modules": ["core", "finance", "eCommerce"],
+            "modules": ["core", "finance", "eCommerce", "marketplace"],
             "logoPhotoId": "1441986300917-64674bd600d8",
             "demoAddress": {
                 countryCode: "AL",

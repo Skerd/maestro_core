@@ -5,7 +5,7 @@
  * Supports transactions, timing, and consistent error handling.
  */
 
-import {ClientSession, Document, Error as MongooseError, FilterQuery, Model, QueryOptions, UpdateQuery} from 'mongoose';
+import {ClientSession, Document, Error as MongooseError, FilterQuery, Model, PopulateOptions, QueryOptions, UpdateQuery} from 'mongoose';
 import {Decimal128, ObjectId} from 'mongodb';
 import {performance} from 'perf_hooks';
 import {serverLogger} from '@coreModule/loggers/serverLog';
@@ -74,6 +74,9 @@ export interface PaginatedResult<T> {
     hasNext: boolean;
     hasPrev: boolean;
 }
+
+/** One page of a read-only catalog query (storefront and portal catalogs: fixed projection, sort and page). */
+export type CatalogPage = {select: string; populate: PopulateOptions[]; sort: Record<string, 1 | -1>; skip: number; limit: number};
 
 function lowerFirst(str: string): string {
     if (!str) return str;

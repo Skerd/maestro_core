@@ -20,7 +20,11 @@
   },
   "eCommerce": {
     "dependsOn": ["core", "finance"],
-    "description": "Product commerce and services marketplace"
+    "description": "Product commerce: shop, inventory, till and storefront"
+  },
+  "marketplace": {
+    "dependsOn": ["core", "finance"],
+    "description": "Services marketplace: listings, task requests, bids and escrow-held services orders"
   },
   "carRental": {
     "dependsOn": ["core", "finance"],

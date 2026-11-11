@@ -41,6 +41,7 @@
       "@swissOutreachModule/*": ["./modules/swissOutreach/*"],
       "@carRentalModule/*": ["./modules/carRental/*"],
       "@dentalClinicModule/*": ["./modules/dentalClinic/*"],
+      "@marketplaceModule/*": ["./modules/marketplace/*"],
       "@initializer": ["./initializer"],
       "armonia/*": ["../armonia/*"],
     },
