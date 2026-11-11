@@ -49,3 +49,26 @@ export async function configCurrencies(configModel: Model<any>, companyIds: Obje
         .lean<{company: ObjectId; currency?: {abbreviation?: string}}[]>();
     return new Map(configs.flatMap((config) => config.currency?.abbreviation ? [[config.company.toString(), config.currency.abbreviation]] : []));
 }
+
+/**
+ * The companies a price filter or a price sort may compare: amounts mean nothing across currencies, so only the
+ * companies pricing in one currency stay, the one the visitor picked (`f.currency`), else the one most of them use
+ * (ties go to the alphabetically first code). Without a price filter or price sort, every company stays.
+ */
+export function samePriceCurrencyCompanies(
+    companyIds: ObjectId[],
+    currencies: Map<string, string>,
+    params: {priceMin?: number; priceMax?: number; sort?: string; filters: PortalBrowseFilters},
+): ObjectId[] {
+    const comparesPrices = params.priceMin != null || params.priceMax != null || params.sort === "priceAsc" || params.sort === "priceDesc";
+    if (!comparesPrices) return companyIds;
+    const picked = filterValue(params.filters, "currency")?.toUpperCase();
+    const counts = new Map<string, number>();
+    for (const id of companyIds) {
+        const code = currencies.get(id.toString());
+        if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+    }
+    const common = [...counts.entries()].sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))[0]?.[0];
+    const currency = picked ?? common;
+    return companyIds.filter((id) => currencies.get(id.toString()) === currency);
+}
