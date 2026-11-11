@@ -22,6 +22,12 @@ import {personErasureModules} from "@coreModule/utilities/erasure/personErasure"
 
 const router = Router();
 
+/** Where the company is on the map (its first address with a pin), so map pickers open there instead of a fixed city. */
+function companyLocation(company: {addresses?: {latitude?: number; longitude?: number}[]}): {location?: {latitude: number; longitude: number}} {
+    const pinned = company.addresses?.find((address) => typeof address.latitude === "number" && typeof address.longitude === "number");
+    return pinned?.latitude != null && pinned.longitude != null ? {location: {latitude: pinned.latitude, longitude: pinned.longitude}} : {};
+}
+
 /**
  * GET /api/user/validateToken
  *
@@ -54,7 +60,7 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
         return {
             id: userInfo._id.toString(),
             username: userInfo.username,
-            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company), timezone: companyTimeZone},
+            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company), timezone: companyTimeZone, ...companyLocation(company)},
             isPlatformAdmin: isPlatformCompany(company) && actionUserCtx.isAdmin,
             canErasePeople: actionUserCtx.isAdmin === true && (await personErasureModules()).some((name) => (actionUserCtx.modules ?? []).includes(name)),
             email: userInfo.username,
