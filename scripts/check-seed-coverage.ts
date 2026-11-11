@@ -40,7 +40,7 @@ const EXCLUDED: Record<string, readonly string[]> = {
         "userSession",
     ],
     eCommerce: ["posCompanyPosLock", "savedSearch"],
-    eCommerceMarketplace: [],
+    marketplace: [],
     finance: ["paymentWebhookEvent"],
     musicIndustry: [],
     /*
