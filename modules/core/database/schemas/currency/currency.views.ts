@@ -75,52 +75,58 @@ export const currencySheetView: ViewConfig = {
 
 const currencyCreateFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 2},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CURRENCY_NAME_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "symbol",
-                    widget: "#Input",
-                    label: "form.symbolLabel",
-                    placeholder: "form.symbolPlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CURRENCY_SYMBOL_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "abbreviation",
-                    widget: "#Input",
-                    label: "form.abbreviationLabel",
-                    placeholder: "form.abbreviationPlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CURRENCY_ABBREVIATION_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "decimalPlaces",
-                    widget: "#Input",
-                    label: "form.decimalPlacesLabel",
-                    placeholder: "form.decimalPlacesPlaceholder",
-                    required: true,
-                    widgetProps: {type: "number", min: 0, max: 8, step: 1},
-                },
+                render: "#FormGrid",
+                props: {columns: 2},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CURRENCY_NAME_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "symbol",
+                            widget: "#Input",
+                            label: "form.symbolLabel",
+                            placeholder: "form.symbolPlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CURRENCY_SYMBOL_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "abbreviation",
+                            widget: "#Input",
+                            label: "form.abbreviationLabel",
+                            placeholder: "form.abbreviationPlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CURRENCY_ABBREVIATION_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "decimalPlaces",
+                            widget: "#Input",
+                            label: "form.decimalPlacesLabel",
+                            placeholder: "form.decimalPlacesPlaceholder",
+                            required: true,
+                            widgetProps: {type: "number", min: 0, max: 8, step: 1},
+                        },
+                    },
+                ],
             },
         ],
     },
@@ -128,57 +134,63 @@ const currencyCreateFormNodes: ViewConfig["nodes"] = [
 
 const currencyEditFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 2},
-        permissions: {writeAny: ["name", "symbol", "abbreviation", "decimalPlaces"]},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CURRENCY_NAME_MAX},
-                },
-                permissions: {read: "name", write: "name"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "symbol",
-                    widget: "#Input",
-                    label: "form.symbolLabel",
-                    placeholder: "form.symbolPlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CURRENCY_SYMBOL_MAX},
-                },
-                permissions: {read: "symbol", write: "symbol"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "abbreviation",
-                    widget: "#Input",
-                    label: "form.abbreviationLabel",
-                    placeholder: "form.abbreviationPlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CURRENCY_ABBREVIATION_MAX},
-                },
-                permissions: {read: "abbreviation", write: "abbreviation"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "decimalPlaces",
-                    widget: "#Input",
-                    label: "form.decimalPlacesLabel",
-                    placeholder: "form.decimalPlacesPlaceholder",
-                    required: true,
-                    widgetProps: {type: "number", min: 0, max: 8, step: 1},
-                },
-                permissions: {read: "decimalPlaces", write: "decimalPlaces"},
+                render: "#FormGrid",
+                props: {columns: 2},
+                permissions: {writeAny: ["name", "symbol", "abbreviation", "decimalPlaces"]},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CURRENCY_NAME_MAX},
+                        },
+                        permissions: {read: "name", write: "name"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "symbol",
+                            widget: "#Input",
+                            label: "form.symbolLabel",
+                            placeholder: "form.symbolPlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CURRENCY_SYMBOL_MAX},
+                        },
+                        permissions: {read: "symbol", write: "symbol"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "abbreviation",
+                            widget: "#Input",
+                            label: "form.abbreviationLabel",
+                            placeholder: "form.abbreviationPlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CURRENCY_ABBREVIATION_MAX},
+                        },
+                        permissions: {read: "abbreviation", write: "abbreviation"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "decimalPlaces",
+                            widget: "#Input",
+                            label: "form.decimalPlacesLabel",
+                            placeholder: "form.decimalPlacesPlaceholder",
+                            required: true,
+                            widgetProps: {type: "number", min: 0, max: 8, step: 1},
+                        },
+                        permissions: {read: "decimalPlaces", write: "decimalPlaces"},
+                    },
+                ],
             },
         ],
     },

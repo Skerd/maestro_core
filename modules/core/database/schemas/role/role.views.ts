@@ -32,16 +32,6 @@ export const roleSheetView: ViewConfig = {
                                 widgetProps: {icon: "#Shield"},
                             },
                         },
-                        {
-                            render: "#DisplayCard",
-                            permissions: {read: "slug"},
-                            field: {
-                                name: "slug",
-                                widget: "#DisplayCard",
-                                label: "slug",
-                                widgetProps: {icon: "#Hash"},
-                            },
-                        },
                     ],
                 },
                 {

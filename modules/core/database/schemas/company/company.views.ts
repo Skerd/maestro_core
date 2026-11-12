@@ -33,21 +33,25 @@ export const companySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "website",
                             permissions: {read: "website"},
                             field: {name: "website", widget: "#DisplayCard", label: "website", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "linkedin",
                             permissions: {read: "linkedin"},
                             field: {name: "linkedin", widget: "#DisplayCard", label: "linkedin", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "instagram",
                             permissions: {read: "instagram"},
                             field: {name: "instagram", widget: "#DisplayCard", label: "instagram", widgetProps: {icon: "#World", externalLink: true}},
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "facebook",
                             permissions: {read: "facebook"},
                             field: {name: "facebook", widget: "#DisplayCard", label: "facebook", widgetProps: {icon: "#World", externalLink: true}},
                         },
@@ -58,6 +62,7 @@ export const companySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "siteSlug",
                             permissions: {read: "siteSlug"},
                             field: {name: "siteSlug", widget: "#DisplayCard", label: "siteSlug", widgetProps: {icon: "#Hash"}},
                         },
@@ -68,6 +73,7 @@ export const companySheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "parentCompany",
                             permissions: {read: "parentCompany"},
                             field: {
                                 name: "parentCompany",
@@ -106,7 +112,7 @@ export const companySheetView: ViewConfig = {
         {
             render: "#SheetGroup",
             props: {title: "siteHost"},
-            // dependent: "siteHost",
+            dependentAny: ["siteHost", "siteProvision.status"],
             permissions: {read: "siteHost"},
             children: [
                 {
@@ -162,6 +168,7 @@ export const companySheetView: ViewConfig = {
         {
             render: "#SheetGroup",
             props: {title: "whoAreWe"},
+            dependent: "description",
             permissions: {read: "description"},
             children: [
                 {
@@ -184,6 +191,7 @@ export const companySheetView: ViewConfig = {
         {
             render: "#SheetGroup",
             props: {title: "logo"},
+            dependent: "logo",
             permissions: {read: "logo"},
             children: [
                 {
@@ -209,6 +217,7 @@ export const companySheetView: ViewConfig = {
         {
             render: "#SheetGroup",
             props: {title: "publicAiChat"},
+            dependent: "publicAiChat.enabled",
             permissions: {read: "publicAiChat"},
             children: [
                 {
@@ -250,6 +259,7 @@ export const companySheetView: ViewConfig = {
                 {
                     render: "#SheetGroup",
                     props: {title: "greeting", collapsible: false},
+                    dependent: "publicAiChat.greeting",
                     permissions: {read: "publicAiChat"},
                     children: [
                         {
@@ -272,6 +282,7 @@ export const companySheetView: ViewConfig = {
                 {
                     render: "#SheetGroup",
                     props: {title: "persona", collapsible: false},
+                    dependent: "publicAiChat.persona",
                     permissions: {read: "publicAiChat"},
                     children: [
                         {

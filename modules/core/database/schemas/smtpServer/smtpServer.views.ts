@@ -110,6 +110,7 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "username",
                             permissions: {read: "username"},
                             field: {
                                 name: "username",
@@ -153,6 +154,7 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "fromName",
                             permissions: {read: "fromName"},
                             field: {
                                 name: "fromName",
@@ -163,6 +165,7 @@ export const smtpServerSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "replyTo",
                             permissions: {read: "replyTo"},
                             field: {
                                 name: "replyTo",
@@ -178,6 +181,7 @@ export const smtpServerSheetView: ViewConfig = {
         {
             render: "#SheetGroup",
             props: {title: "lastTest"},
+            dependent: "lastTestedAt",
             children: [
                 {
                     render: "#SheetGrid",
@@ -238,142 +242,154 @@ export const smtpServerSheetView: ViewConfig = {
 
 const smtpServerCreateFormNode: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
+        render: "#TitleWithCollapse",
+        props: {title: "form.connectionSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: SMTP_NAME_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "sequence",
-                    widget: "#Input",
-                    label: "form.sequenceLabel",
-                    placeholder: "form.sequencePlaceholder",
-                    required: true,
-                    widgetProps: {type: "number", min: 0, max: 10000, step: 1},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "host",
-                    widget: "#Input",
-                    label: "form.hostLabel",
-                    placeholder: "form.hostPlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: SMTP_HOST_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "port",
-                    widget: "#Input",
-                    label: "form.portLabel",
-                    placeholder: "form.portPlaceholder",
-                    required: true,
-                    widgetProps: {type: "number", min: 1, max: 65535, step: 1},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "encryption",
-                    widget: "#SimpleSelect",
-                    label: "form.encryptionLabel",
-                    required: true,
-                    widgetProps: {
-                        options: [
-                            {value: "none", label: "form.encryption.none"},
-                            {value: "ssl", label: "form.encryption.ssl"},
-                            {value: "starttls", label: "form.encryption.starttls"},
-                        ],
-                        className: "grow w-full",
-                    },
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "authType",
-                    widget: "#SimpleSelect",
-                    label: "form.authTypeLabel",
-                    required: true,
-                    widgetProps: {
-                        options: [
-                            {value: "login", label: "form.authType.login"},
-                            {value: "none", label: "form.authType.none"},
-                        ],
-                        className: "grow w-full",
-                    },
-                },
-            },
-            {
-                render: "#FormWhenFieldValueIn",
-                props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "passwordEncrypted"]},
+                render: "#FormGrid",
+                props: {columns: 3},
                 children: [
                     {
                         render: "#Field",
                         field: {
-                            name: "username",
+                            name: "name",
                             widget: "#Input",
-                            label: "form.usernameLabel",
-                            placeholder: "form.usernamePlaceholder",
-                            widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: SMTP_NAME_MAX},
                         },
                     },
                     {
                         render: "#Field",
-                        field: {name: "passwordEncrypted", widget: "#Input", label: "form.passwordEncryptedLabel", placeholder: "form.passwordEncryptedPlaceholder", widgetProps: {type: "password", autoComplete: "new-password"}},
+                        field: {
+                            name: "sequence",
+                            widget: "#Input",
+                            label: "form.sequenceLabel",
+                            placeholder: "form.sequencePlaceholder",
+                            required: true,
+                            widgetProps: {type: "number", min: 0, max: 10000, step: 1},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "host",
+                            widget: "#Input",
+                            label: "form.hostLabel",
+                            placeholder: "form.hostPlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: SMTP_HOST_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "port",
+                            widget: "#Input",
+                            label: "form.portLabel",
+                            placeholder: "form.portPlaceholder",
+                            required: true,
+                            widgetProps: {type: "number", min: 1, max: 65535, step: 1},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "encryption",
+                            widget: "#SimpleSelect",
+                            label: "form.encryptionLabel",
+                            required: true,
+                            widgetProps: {
+                                options: [
+                                    {value: "none", label: "form.encryption.none"},
+                                    {value: "ssl", label: "form.encryption.ssl"},
+                                    {value: "starttls", label: "form.encryption.starttls"},
+                                ],
+                                className: "grow w-full",
+                            },
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "authType",
+                            widget: "#SimpleSelect",
+                            label: "form.authTypeLabel",
+                            required: true,
+                            widgetProps: {
+                                options: [
+                                    {value: "login", label: "form.authType.login"},
+                                    {value: "none", label: "form.authType.none"},
+                                ],
+                                className: "grow w-full",
+                            },
+                        },
+                    },
+                    {
+                        render: "#FormWhenFieldValueIn",
+                        props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "passwordEncrypted"]},
+                        children: [
+                            {
+                                render: "#Field",
+                                field: {
+                                    name: "username",
+                                    widget: "#Input",
+                                    label: "form.usernameLabel",
+                                    placeholder: "form.usernamePlaceholder",
+                                    widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                                },
+                            },
+                            {
+                                render: "#Field",
+                                field: {name: "passwordEncrypted", widget: "#Input", label: "form.passwordEncryptedLabel", placeholder: "form.passwordEncryptedPlaceholder", widgetProps: {type: "password", autoComplete: "new-password"}},
+                            },
+                        ],
                     },
                 ],
             },
         ],
     },
     {
-        render: "#FormGrid",
-        props: {columns: 3},
+        render: "#TitleWithCollapse",
+        props: {title: "form.senderSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "fromEmail",
-                    widget: "#Input",
-                    label: "form.fromEmailLabel",
-                    placeholder: "form.fromEmailPlaceholder",
-                    required: true,
-                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "fromName",
-                    widget: "#Input",
-                    label: "form.fromNameLabel",
-                    placeholder: "form.fromNamePlaceholder",
-                    widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "replyTo",
-                    widget: "#Input",
-                    label: "form.replyToLabel",
-                    placeholder: "form.replyToPlaceholder",
-                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
-                },
+                render: "#FormGrid",
+                props: {columns: 3},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "fromEmail",
+                            widget: "#Input",
+                            label: "form.fromEmailLabel",
+                            placeholder: "form.fromEmailPlaceholder",
+                            required: true,
+                            widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "fromName",
+                            widget: "#Input",
+                            label: "form.fromNameLabel",
+                            placeholder: "form.fromNamePlaceholder",
+                            widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "replyTo",
+                            widget: "#Input",
+                            label: "form.replyToLabel",
+                            placeholder: "form.replyToPlaceholder",
+                            widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
+                        },
+                    },
+                ],
             },
         ],
     },
@@ -381,153 +397,165 @@ const smtpServerCreateFormNode: ViewConfig["nodes"] = [
 
 const smtpServerEditFormNode: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
+        render: "#TitleWithCollapse",
+        props: {title: "form.connectionSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: SMTP_NAME_MAX},
-                },
-                permissions: {read: "name", write: "name"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "sequence",
-                    widget: "#Input",
-                    label: "form.sequenceLabel",
-                    placeholder: "form.sequencePlaceholder",
-                    required: true,
-                    widgetProps: {type: "number", min: 0, max: 10000, step: 1},
-                },
-                permissions: {read: "sequence", write: "sequence"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "host",
-                    widget: "#Input",
-                    label: "form.hostLabel",
-                    placeholder: "form.hostPlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: SMTP_HOST_MAX},
-                },
-                permissions: {read: "host", write: "host"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "port",
-                    widget: "#Input",
-                    label: "form.portLabel",
-                    placeholder: "form.portPlaceholder",
-                    required: true,
-                    widgetProps: {type: "number", min: 1, max: 65535, step: 1},
-                },
-                permissions: {read: "port", write: "port"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "encryption",
-                    widget: "#SimpleSelect",
-                    label: "form.encryptionLabel",
-                    required: true,
-                    widgetProps: {
-                        options: [
-                            {value: "none", label: "form.encryption.none"},
-                            {value: "ssl", label: "form.encryption.ssl"},
-                            {value: "starttls", label: "form.encryption.starttls"},
-                        ],
-                        className: "grow w-full",
-                    },
-                },
-                permissions: {read: "encryption", write: "encryption"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "authType",
-                    widget: "#SimpleSelect",
-                    label: "form.authTypeLabel",
-                    required: true,
-                    widgetProps: {
-                        options: [
-                            {value: "login", label: "form.authType.login"},
-                            {value: "none", label: "form.authType.none"},
-                        ],
-                        className: "grow w-full",
-                    },
-                },
-                permissions: {read: "authType", write: "authType"},
-            },
-            {
-                render: "#FormWhenFieldValueIn",
-                props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "passwordEncrypted"]},
+                render: "#FormGrid",
+                props: {columns: 3},
                 children: [
                     {
                         render: "#Field",
                         field: {
-                            name: "username",
+                            name: "name",
                             widget: "#Input",
-                            label: "form.usernameLabel",
-                            placeholder: "form.usernamePlaceholder",
-                            widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: SMTP_NAME_MAX},
                         },
-                        permissions: {read: "username", write: "username"},
+                        permissions: {read: "name", write: "name"},
                     },
                     {
                         render: "#Field",
-                        field: {name: "passwordEncrypted", widget: "#Input", required: false, label: "form.passwordEncryptedLabel", placeholder: "form.passwordEncryptedPlaceholder", widgetProps: {type: "password", autoComplete: "new-password"}},
-                        permissions: {write: "passwordEncrypted"},
+                        field: {
+                            name: "sequence",
+                            widget: "#Input",
+                            label: "form.sequenceLabel",
+                            placeholder: "form.sequencePlaceholder",
+                            required: true,
+                            widgetProps: {type: "number", min: 0, max: 10000, step: 1},
+                        },
+                        permissions: {read: "sequence", write: "sequence"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "host",
+                            widget: "#Input",
+                            label: "form.hostLabel",
+                            placeholder: "form.hostPlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: SMTP_HOST_MAX},
+                        },
+                        permissions: {read: "host", write: "host"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "port",
+                            widget: "#Input",
+                            label: "form.portLabel",
+                            placeholder: "form.portPlaceholder",
+                            required: true,
+                            widgetProps: {type: "number", min: 1, max: 65535, step: 1},
+                        },
+                        permissions: {read: "port", write: "port"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "encryption",
+                            widget: "#SimpleSelect",
+                            label: "form.encryptionLabel",
+                            required: true,
+                            widgetProps: {
+                                options: [
+                                    {value: "none", label: "form.encryption.none"},
+                                    {value: "ssl", label: "form.encryption.ssl"},
+                                    {value: "starttls", label: "form.encryption.starttls"},
+                                ],
+                                className: "grow w-full",
+                            },
+                        },
+                        permissions: {read: "encryption", write: "encryption"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "authType",
+                            widget: "#SimpleSelect",
+                            label: "form.authTypeLabel",
+                            required: true,
+                            widgetProps: {
+                                options: [
+                                    {value: "login", label: "form.authType.login"},
+                                    {value: "none", label: "form.authType.none"},
+                                ],
+                                className: "grow w-full",
+                            },
+                        },
+                        permissions: {read: "authType", write: "authType"},
+                    },
+                    {
+                        render: "#FormWhenFieldValueIn",
+                        props: {watchField: "authType", whenValues: ["login"], clearFields: ["username", "passwordEncrypted"]},
+                        children: [
+                            {
+                                render: "#Field",
+                                field: {
+                                    name: "username",
+                                    widget: "#Input",
+                                    label: "form.usernameLabel",
+                                    placeholder: "form.usernamePlaceholder",
+                                    widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                                },
+                                permissions: {read: "username", write: "username"},
+                            },
+                            {
+                                render: "#Field",
+                                field: {name: "passwordEncrypted", widget: "#Input", required: false, label: "form.passwordEncryptedLabel", placeholder: "form.passwordEncryptedPlaceholder", widgetProps: {type: "password", autoComplete: "new-password"}},
+                                permissions: {write: "passwordEncrypted"},
+                            },
+                        ],
                     },
                 ],
             },
         ],
     },
     {
-        render: "#FormGrid",
-        props: {columns: 3},
+        render: "#TitleWithCollapse",
+        props: {title: "form.senderSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "fromEmail",
-                    widget: "#Input",
-                    label: "form.fromEmailLabel",
-                    placeholder: "form.fromEmailPlaceholder",
-                    required: true,
-                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
-                },
-                permissions: {read: "fromEmail", write: "fromEmail"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "fromName",
-                    widget: "#Input",
-                    label: "form.fromNameLabel",
-                    placeholder: "form.fromNamePlaceholder",
-                    widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
-                },
-                permissions: {read: "fromName", write: "fromName"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "replyTo",
-                    widget: "#Input",
-                    label: "form.replyToLabel",
-                    placeholder: "form.replyToPlaceholder",
-                    widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
-                },
-                permissions: {read: "replyTo", write: "replyTo"},
+                render: "#FormGrid",
+                props: {columns: 3},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "fromEmail",
+                            widget: "#Input",
+                            label: "form.fromEmailLabel",
+                            placeholder: "form.fromEmailPlaceholder",
+                            required: true,
+                            widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
+                        },
+                        permissions: {read: "fromEmail", write: "fromEmail"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "fromName",
+                            widget: "#Input",
+                            label: "form.fromNameLabel",
+                            placeholder: "form.fromNamePlaceholder",
+                            widgetProps: {maxLength: SMTP_SHORT_TEXT_MAX},
+                        },
+                        permissions: {read: "fromName", write: "fromName"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "replyTo",
+                            widget: "#Input",
+                            label: "form.replyToLabel",
+                            placeholder: "form.replyToPlaceholder",
+                            widgetProps: {type: "email", maxLength: SMTP_EMAIL_MAX},
+                        },
+                        permissions: {read: "replyTo", write: "replyTo"},
+                    },
+                ],
             },
         ],
     },

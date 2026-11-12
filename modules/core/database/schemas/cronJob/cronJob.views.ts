@@ -72,6 +72,7 @@ export const cronJobSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "pausedAt",
                             permissions: {read: "pausedAt"},
                             field: {
                                 name: "pausedAt",
@@ -88,6 +89,7 @@ export const cronJobSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
+                            dependent: "description",
                             permissions: {read: "description"},
                             field: {
                                 name: "description",
@@ -134,6 +136,7 @@ export const cronJobSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
+                            dependent: "lastRunAt",
                             permissions: {read: "lastRunAt"},
                             field: {
                                 name: "lastRunAt",

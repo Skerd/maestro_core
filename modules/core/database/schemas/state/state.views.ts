@@ -71,41 +71,47 @@ export const stateSheetView: ViewConfig = {
 
 const stateCreateFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: STATE_NAME_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "code",
-                    widget: "#Input",
-                    label: "form.codeLabel",
-                    placeholder: "form.codePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: STATE_CODE_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                props: {skipRenderWhenFormExtraTruthy: "countryIdLocked"},
-                field: {
-                    name: "country",
-                    widget: "#ApiSelect",
-                    label: "form.countryLabel",
-                    placeholder: "form.countryPlaceholder",
-                    widgetProps: {apiUrl: "/api/auxiliary/country/select"},
-                },
+                render: "#FormGrid",
+                props: {columns: 3},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: STATE_NAME_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "code",
+                            widget: "#Input",
+                            label: "form.codeLabel",
+                            placeholder: "form.codePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: STATE_CODE_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        props: {skipRenderWhenFormExtraTruthy: "countryIdLocked"},
+                        field: {
+                            name: "country",
+                            widget: "#ApiSelect",
+                            label: "form.countryLabel",
+                            placeholder: "form.countryPlaceholder",
+                            widgetProps: {apiUrl: "/api/auxiliary/country/select"},
+                        },
+                    },
+                ],
             },
         ],
     },
@@ -113,48 +119,54 @@ const stateCreateFormNodes: ViewConfig["nodes"] = [
 
 const stateEditFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
-        permissions: {writeAny: ["name", "code", "country"]},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: STATE_NAME_MAX},
-                },
-                permissions: {write: "name", read: "name"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "code",
-                    widget: "#Input",
-                    label: "form.codeLabel",
-                    placeholder: "form.codePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: STATE_CODE_MAX},
-                },
-                permissions: {write: "code", read: "code"},
-            },
-            {
-                render: "#Field",
-                props: {skipRenderWhenFormExtraTruthy: "countryIdLocked"},
-                field: {
-                    name: "country",
-                    widget: "#ApiSelect",
-                    label: "form.countryLabel",
-                    placeholder: "form.countryPlaceholder",
-                    widgetProps: {
-                        apiUrl: "/api/auxiliary/country/select",
-                        pageSize: 200
-                    }
-                },
-                permissions: {write: "country", read: "country"},
+                render: "#FormGrid",
+                props: {columns: 3},
+                permissions: {writeAny: ["name", "code", "country"]},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: STATE_NAME_MAX},
+                        },
+                        permissions: {write: "name", read: "name"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "code",
+                            widget: "#Input",
+                            label: "form.codeLabel",
+                            placeholder: "form.codePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: STATE_CODE_MAX},
+                        },
+                        permissions: {write: "code", read: "code"},
+                    },
+                    {
+                        render: "#Field",
+                        props: {skipRenderWhenFormExtraTruthy: "countryIdLocked"},
+                        field: {
+                            name: "country",
+                            widget: "#ApiSelect",
+                            label: "form.countryLabel",
+                            placeholder: "form.countryPlaceholder",
+                            widgetProps: {
+                                apiUrl: "/api/auxiliary/country/select",
+                                pageSize: 200
+                            }
+                        },
+                        permissions: {write: "country", read: "country"},
+                    },
+                ],
             },
         ],
     },

@@ -74,49 +74,55 @@ export const citySheetView: ViewConfig = {
 
 const cityCreateFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CITY_NAME_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                props: {skipRenderWhenFormExtraTruthy: "lockCountrySelect"},
-                field: {
-                    name: "country",
-                    widget: "#ApiSelect",
-                    label: "form.countryLabel",
-                    placeholder: "form.countryPlaceholder",
-                    widgetProps: {
-                        apiUrl: "/api/auxiliary/country/select",
-                        cascadeClearFormFields: ["state"],
+                render: "#FormGrid",
+                props: {columns: 3},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CITY_NAME_MAX},
+                        },
                     },
-                },
-            },
-            {
-                render: "#Field",
-                props: {skipRenderWhenFormExtraTruthy: "lockStateSelect"},
-                field: {
-                    name: "state",
-                    widget: "#ApiSelect",
-                    label: "form.stateLabel",
-                    placeholder: "form.statePlaceholder",
-                    widgetProps: {
-                        apiUrl: "/api/auxiliary/state/select",
-                        postBodyFromFormField: {field: "country", paramName: "country"},
-                        enableWhenFormFieldsNonEmpty: ["country"],
-                        normalizeEmptyToUndefined: true,
+                    {
+                        render: "#Field",
+                        props: {skipRenderWhenFormExtraTruthy: "lockCountrySelect"},
+                        field: {
+                            name: "country",
+                            widget: "#ApiSelect",
+                            label: "form.countryLabel",
+                            placeholder: "form.countryPlaceholder",
+                            widgetProps: {
+                                apiUrl: "/api/auxiliary/country/select",
+                                cascadeClearFormFields: ["state"],
+                            },
+                        },
                     },
-                },
+                    {
+                        render: "#Field",
+                        props: {skipRenderWhenFormExtraTruthy: "lockStateSelect"},
+                        field: {
+                            name: "state",
+                            widget: "#ApiSelect",
+                            label: "form.stateLabel",
+                            placeholder: "form.statePlaceholder",
+                            widgetProps: {
+                                apiUrl: "/api/auxiliary/state/select",
+                                postBodyFromFormField: {field: "country", paramName: "country"},
+                                enableWhenFormFieldsNonEmpty: ["country"],
+                                normalizeEmptyToUndefined: true,
+                            },
+                        },
+                    },
+                ],
             },
         ],
     },
@@ -124,53 +130,59 @@ const cityCreateFormNodes: ViewConfig["nodes"] = [
 
 const cityEditFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
-        permissions: {writeAny: ["name", "country", "state"]},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: CITY_NAME_MAX},
-                },
-                permissions: {read: "name", write: "name"},
-            },
-            {
-                render: "#Field",
-                props: {skipRenderWhenFormExtraTruthy: "lockCountrySelect"},
-                field: {
-                    name: "country",
-                    widget: "#ApiSelect",
-                    label: "form.countryLabel",
-                    placeholder: "form.countryPlaceholder",
-                    widgetProps: {
-                        apiUrl: "/api/auxiliary/country/select",
-                        cascadeClearFormFields: ["state"],
+                render: "#FormGrid",
+                props: {columns: 3},
+                permissions: {writeAny: ["name", "country", "state"]},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: CITY_NAME_MAX},
+                        },
+                        permissions: {read: "name", write: "name"},
                     },
-                },
-                permissions: {read: "country", write: "country"},
-            },
-            {
-                render: "#Field",
-                props: {skipRenderWhenFormExtraTruthy: "lockStateSelect"},
-                field: {
-                    name: "state",
-                    widget: "#ApiSelect",
-                    label: "form.stateLabel",
-                    placeholder: "form.statePlaceholder",
-                    widgetProps: {
-                        apiUrl: "/api/auxiliary/state/select",
-                        postBodyFromFormField: {field: "country", paramName: "country"},
-                        enableWhenFormFieldsNonEmpty: ["country"],
-                        normalizeEmptyToUndefined: true,
+                    {
+                        render: "#Field",
+                        props: {skipRenderWhenFormExtraTruthy: "lockCountrySelect"},
+                        field: {
+                            name: "country",
+                            widget: "#ApiSelect",
+                            label: "form.countryLabel",
+                            placeholder: "form.countryPlaceholder",
+                            widgetProps: {
+                                apiUrl: "/api/auxiliary/country/select",
+                                cascadeClearFormFields: ["state"],
+                            },
+                        },
+                        permissions: {read: "country", write: "country"},
                     },
-                },
-                permissions: {read: "state", write: "state"},
+                    {
+                        render: "#Field",
+                        props: {skipRenderWhenFormExtraTruthy: "lockStateSelect"},
+                        field: {
+                            name: "state",
+                            widget: "#ApiSelect",
+                            label: "form.stateLabel",
+                            placeholder: "form.statePlaceholder",
+                            widgetProps: {
+                                apiUrl: "/api/auxiliary/state/select",
+                                postBodyFromFormField: {field: "country", paramName: "country"},
+                                enableWhenFormFieldsNonEmpty: ["country"],
+                                normalizeEmptyToUndefined: true,
+                            },
+                        },
+                        permissions: {read: "state", write: "state"},
+                    },
+                ],
             },
         ],
     },

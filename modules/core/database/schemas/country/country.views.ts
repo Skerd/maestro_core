@@ -65,40 +65,46 @@ export const countrySheetView: ViewConfig = {
 
 const countryCreateFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: COUNTRY_NAME_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "code",
-                    widget: "#Input",
-                    label: "form.codeLabel",
-                    placeholder: "form.codePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: COUNTRY_CODE_MAX},
-                },
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "phoneCode",
-                    widget: "#Input",
-                    label: "form.phoneCodeLabel",
-                    placeholder: "form.phoneCodePlaceholder",
-                    widgetProps: {maxLength: COUNTRY_PHONE_CODE_MAX},
-                },
+                render: "#FormGrid",
+                props: {columns: 3},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: COUNTRY_NAME_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "code",
+                            widget: "#Input",
+                            label: "form.codeLabel",
+                            placeholder: "form.codePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: COUNTRY_CODE_MAX},
+                        },
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "phoneCode",
+                            widget: "#Input",
+                            label: "form.phoneCodeLabel",
+                            placeholder: "form.phoneCodePlaceholder",
+                            widgetProps: {maxLength: COUNTRY_PHONE_CODE_MAX},
+                        },
+                    },
+                ],
             },
         ],
     },
@@ -106,45 +112,51 @@ const countryCreateFormNodes: ViewConfig["nodes"] = [
 
 const countryEditFormNodes: ViewConfig["nodes"] = [
     {
-        render: "#FormGrid",
-        props: {columns: 3},
-        permissions: {writeAny: ["name", "code", "phoneCode", "currency"]},
+        render: "#TitleWithCollapse",
+        props: {title: "form.detailsSectionTitle"},
         children: [
             {
-                render: "#Field",
-                field: {
-                    name: "name",
-                    widget: "#Input",
-                    label: "form.nameLabel",
-                    placeholder: "form.namePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: COUNTRY_NAME_MAX},
-                },
-                permissions: {read: "name", write: "name"},
+                render: "#FormGrid",
+                props: {columns: 3},
+                permissions: {writeAny: ["name", "code", "phoneCode", "currency"]},
+                children: [
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "name",
+                            widget: "#Input",
+                            label: "form.nameLabel",
+                            placeholder: "form.namePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: COUNTRY_NAME_MAX},
+                        },
+                        permissions: {read: "name", write: "name"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "code",
+                            widget: "#Input",
+                            label: "form.codeLabel",
+                            placeholder: "form.codePlaceholder",
+                            required: true,
+                            widgetProps: {maxLength: COUNTRY_CODE_MAX},
+                        },
+                        permissions: {write: "code", read: "code"},
+                    },
+                    {
+                        render: "#Field",
+                        field: {
+                            name: "phoneCode",
+                            widget: "#Input",
+                            label: "form.phoneCodeLabel",
+                            placeholder: "form.phoneCodePlaceholder",
+                            widgetProps: {maxLength: COUNTRY_PHONE_CODE_MAX},
+                        },
+                        permissions: {read: "phoneCode", write: "phoneCode"},
+                    }
+                ],
             },
-            {
-                render: "#Field",
-                field: {
-                    name: "code",
-                    widget: "#Input",
-                    label: "form.codeLabel",
-                    placeholder: "form.codePlaceholder",
-                    required: true,
-                    widgetProps: {maxLength: COUNTRY_CODE_MAX},
-                },
-                permissions: {write: "code", read: "code"},
-            },
-            {
-                render: "#Field",
-                field: {
-                    name: "phoneCode",
-                    widget: "#Input",
-                    label: "form.phoneCodeLabel",
-                    placeholder: "form.phoneCodePlaceholder",
-                    widgetProps: {maxLength: COUNTRY_PHONE_CODE_MAX},
-                },
-                permissions: {read: "phoneCode", write: "phoneCode"},
-            }
         ],
     },
 ];
