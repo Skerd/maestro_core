@@ -29,13 +29,24 @@ const SEED_USER_AGENT = "ArpeggioDemoSeed/1.0";
 
 /**
  * Stable Media `_id` keyed by entity + seed + slot + source so a kit change
- * replaces the wrong hero instead of reusing a stale GridFS blob. The prefix is
- * kept from the eCommerce original so ids seeded before the move stay the same.
+ * replaces the wrong hero instead of reusing a stale GridFS blob.
  */
 function seedMediaId(entityKind: string, seedKey: string, galleryIndex: number, sourceId: string): ObjectId {
-    const material = `ecom-marketplace-media:v1:${entityKind}:${seedKey}:g${galleryIndex}:${sourceId}`;
+    const material = `demo-media:v1:${entityKind}:${seedKey}:g${galleryIndex}:${sourceId}`;
     const hex = createHash("sha256").update(material).digest("hex").slice(0, 24);
     return new ObjectId(hex);
+}
+
+/**
+ * The image's Media `_id` for this company. The first company to seed a kit keeps the plain id (so databases seeded
+ * before keep reusing their rows); when that id already belongs to another company, which a record may not point to
+ * (D104), this company gets its own id.
+ */
+async function companySeedMediaId(entityKind: string, seedKey: string, galleryIndex: number, sourceId: string, company: ICompany): Promise<ObjectId> {
+    const shared = seedMediaId(entityKind, seedKey, galleryIndex, sourceId);
+    const existing = await Media.findById(shared).select("company").lean<{company?: ObjectId}>();
+    if (!existing || String(existing.company) === String(company._id)) return shared;
+    return seedMediaId(entityKind, `${company._id}:${seedKey}`, galleryIndex, sourceId);
 }
 
 function unsplashUrl(photoId: string, width: number, height: number): string {
@@ -200,9 +211,8 @@ export async function resolveDemoImagesFromUnsplash(
     try {
         for (let i = 0; i < photoIds.length; i++) {
             const photoId = photoIds[i]!;
-            const mediaId = seedMediaId(entityKind, seedKey, i, photoId);
-            const existing = await Media.findById(mediaId).select("_id");
-            if (existing) {
+            const mediaId = await companySeedMediaId(entityKind, seedKey, i, photoId, company);
+            if (await Media.findById(mediaId).select("_id")) {
                 galleryIds.push(mediaId);
                 continue;
             }
