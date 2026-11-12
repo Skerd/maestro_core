@@ -65,3 +65,11 @@ export function receiverLanguage(receiver: {preferredLanguage?: string | null} |
 export function notificationText(code: string, params: Record<string, string | number> | undefined, locale: string): string | null {
     return loadTexts().notificationMessage({code, params: loadRoleLabels().translateRoleParams(params, locale)}, locale);
 }
+
+/**
+ * The panel path a notification opens (D145), from the same files the panel reads: the code's `link` filled from the
+ * notification's `content`. An email about the notice links to it on the panel host. `null` when there is none.
+ */
+export function notificationLink(code: string, content: Record<string, unknown> | undefined, locale: string): string | null {
+    return loadTexts().notificationLink({code, content}, locale);
+}
