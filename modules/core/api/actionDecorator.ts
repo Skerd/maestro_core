@@ -1,6 +1,7 @@
 import type {RequestHandler} from "express";
 import type {ZodObject} from "zod";
 import type {ValidationContext} from "armonia/src/modules/core/helpers/zodBuilder";
+import type {PortalBuyerTarget} from "@coreModule/utilities/security/portalBuyer";
 
 const ACTION_REGISTRY = Symbol("actionRegistry");
 
@@ -34,6 +35,11 @@ export interface ActionOptions {
      * itself (owner or party check on `actionUserCtx`), never trusting the body.
      */
     selfService?: boolean;
+    /**
+     * A portal buyer action (D143): names the company the record lives in, whose modules gate the action for a
+     * portal-zone caller whose own company lacks the module (see `AuthMWOptions.portalBuyer`).
+     */
+    portalBuyer?: PortalBuyerTarget;
     /**
      * The permission scope the action always needs (D65). Omitted, it follows the request (`self`, or `others`
      * when acting as another user). `"others"` is for an action on another user's record named in the body,

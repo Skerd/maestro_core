@@ -54,6 +54,7 @@ export const defaultCompaniesValues: any = {
             "timezone": "Europe/Tirane",
             "isActive": true,
             "isPlatformOwner": true,
+            "isProtected": true,
             "isDefaultForSignUp": true,
             "allowedDomains": ["*"],
             "modules": ["core"],
@@ -91,6 +92,29 @@ export const defaultCompaniesValues: any = {
                 street: "Rruga Myslym Shyri 26",
                 postalCode: "1001",
                 geoLocation: {latitude: 41.3234, longitude: 19.8182},
+            },
+        },
+        {
+            // The services marketplace's operator (D143): it owns the shared service categories and every job posted
+            // on the portal, so it is protected and sells nothing itself. The marketplace module finds it by its VAT.
+            "name": "Arpeggio Services",
+            "email": "services@arpeggio.com",
+            "description": "Arpeggio Services runs the services marketplace on the portal. It keeps one list of service categories, takes the jobs clients post and passes each one to the providers who do that work.",
+            "website": "https://services.arpeggio.io",
+            "phoneNumber": "+355 4 223 0110",
+            "vat": "Z000000001Z",
+            "timezone": "Europe/Tirane",
+            "isActive": true,
+            "isPlatformOwner": false,
+            "isProtected": true,
+            "isDefaultForSignUp": false,
+            "modules": ["core", "finance", "marketplace"],
+            "demoAddress": {
+                countryCode: "AL",
+                cityName: "Tirana",
+                street: "Rruga Ibrahim Rugova 1",
+                postalCode: "1001",
+                geoLocation: {latitude: 41.3210, longitude: 19.8225},
             },
         },
         {
@@ -226,7 +250,7 @@ export const defaultCompaniesValues: any = {
 const PROFILE_KEYS = [
     "name", "email", "description", "website", "phoneNumber",
     "linkedin", "instagram", "facebook", "isActive", "allowedDomains",
-    "siteSlug", "timezone", "shopListedOnPortal", "isDefaultForSignUp", "isPlatformOwner",
+    "siteSlug", "timezone", "shopListedOnPortal", "isDefaultForSignUp", "isPlatformOwner", "isProtected",
 ] as const;
 
 function actorId(createdBy: any): ObjectId | undefined {

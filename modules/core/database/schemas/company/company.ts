@@ -116,6 +116,11 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     isPlatformOwner: boolean;
     /** Set by the platform owner: the company is left off the portal and the shop apex. */
     hiddenFromPortal: boolean;
+    /**
+     * A company the platform cannot run without (the platform owner, the marketplace operator): it cannot be
+     * deactivated, hidden from the portal or lose a module. Set only by the seed.
+     */
+    isProtected: boolean;
     /** The company's own opt-in to list its shop on the portal and the shop apex. */
     shopListedOnPortal: boolean;
     publicAiChat?: {
@@ -345,6 +350,14 @@ const CompanySchema: Schema = new Schema(
             },
         },
         hiddenFromPortal: {
+            type: SchemaTypes.Boolean,
+            default: false,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        isProtected: {
             type: SchemaTypes.Boolean,
             default: false,
             permissions: {
@@ -738,5 +751,5 @@ normalizeSchemaPermissions(Company);
 export default Company;
 
 addModelData(Company, companyViews);
-validateSchemaDefAgainstMongoose(CompanySchema, CompanySchemaDef, "Company", ["isDefaultForSignUp", "modules", "isPlatformOwner", "hiddenFromPortal"]);
+validateSchemaDefAgainstMongoose(CompanySchema, CompanySchemaDef, "Company", ["isDefaultForSignUp", "modules", "isPlatformOwner", "hiddenFromPortal", "isProtected"]);
 

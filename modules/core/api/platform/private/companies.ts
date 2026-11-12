@@ -32,7 +32,7 @@ import {
     invalidateCompanyModules,
 } from "@coreModule/utilities/modules/companyModules";
 import {skipMissedCronRuns} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs";
-import {assertPlatformAdmin} from "@coreModule/utilities/security/platformAccess";
+import {assertCompanyChangeAllowed, assertPlatformAdmin} from "@coreModule/utilities/security/platformAccess";
 
 /**
  * Platform administration of companies (Private)
@@ -150,7 +150,9 @@ async function setCompanyModules(params: SetCompanyModulesType, routeParams: {id
     const before = effectiveCompanyModules(target);
     // The panel only offers installed modules; keep grants it could not show.
     const keptUninstalled = (target.modules ?? []).filter((name) => !installed.has(name));
-    target.modules = closeCompanyModules([...modules, ...keptUninstalled]);
+    const next = closeCompanyModules([...modules, ...keptUninstalled]);
+    assertCompanyChangeAllowed(target, {removedModules: (target.modules ?? []).filter((name) => !next.includes(name))}, languageCode);
+    target.modules = next;
     target.$locals = target.$locals || {};
     target.$locals.auditUserId = actionUserCtx.userId;
     await target.save({session});
@@ -194,6 +196,7 @@ async function setPortalVisibility(params: SetPortalVisibilityType, routeParams:
     if (!target) {
         throw apiValidationException("not_found", "", null, languageCode);
     }
+    assertCompanyChangeAllowed(target, {hideFromPortal: hiddenFromPortal}, languageCode);
     target.hiddenFromPortal = hiddenFromPortal;
     target.$locals = target.$locals || {};
     target.$locals.auditUserId = actionUserCtx.userId;

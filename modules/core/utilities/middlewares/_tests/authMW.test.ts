@@ -1,9 +1,11 @@
 import {describe, expect, it, vi} from "vitest";
 
-const {companyId, userId, findCompany} = vi.hoisted(() => ({
+const {companyId, userId, sellerId, findCompany, findTarget} = vi.hoisted(() => ({
     companyId: "6512f0a1b2c3d4e5f6a7b8c9",
     userId: "6512f0a1b2c3d4e5f6a7b8ca",
+    sellerId: "6512f0a1b2c3d4e5f6a7b8cb",
     findCompany: vi.fn(),
+    findTarget: vi.fn(),
 }));
 
 vi.mock("@coreModule/utilities/security/jwtValidator", () => ({
@@ -20,13 +22,20 @@ vi.mock("@coreModule/database/schemas/user/user.service", () => ({
         }),
     },
 }));
-vi.mock("@coreModule/database/schemas/company/company.service", () => ({companyService: {findByIdOrThrow: findCompany}}));
+vi.mock("@coreModule/database/schemas/company/company.service", () => ({companyService: {findByIdOrThrow: findCompany, findById: findTarget}}));
 vi.mock("@coreModule/environment", async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
     SERVER: {TIMEZONE: "Europe/Tirane"},
+    PORTAL_ROOT_DOMAIN: "portal.test",
+}));
+// A fixture module ("widgets"), so the gate is tested without naming a vertical (CORE-01).
+vi.mock("@coreModule/utilities/modules/companyModules", () => ({
+    effectiveCompanyModules: (company: {modules?: string[]}) => company.modules ?? [],
+    isModuleEnabledForCompany: (company: {modules?: string[]}, name: string) => name === "core" || (company.modules ?? []).includes(name),
 }));
 
-import authMW from "../authMW";
+import authMW, {type AuthMWOptions} from "../authMW";
+import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 
 /** Runs authMW("private") on a signed-in request whose company stores `timezone`; returns the body it wrote. */
 async function authenticate(timezone: string | undefined, clientBody: Record<string, unknown> = {}) {
@@ -57,5 +66,51 @@ describe("authMW company zone (D116)", () => {
     it("falls back to the instance zone when the company has none or an unknown one", async () => {
         expect((await authenticate(undefined)).companyTimeZone).toBe("Europe/Tirane");
         expect((await authenticate("Europe/Atlantis")).companyTimeZone).toBe("Europe/Tirane");
+    });
+});
+
+/** Runs authMW("private") for a buyer of a core-only company on a "widgets" route; returns what `next` got. */
+async function buyerRequest(origin: string, options: AuthMWOptions, target?: {isActive: boolean; modules: string[]} | null) {
+    findCompany.mockResolvedValueOnce({_id: companyId, name: "Platform", isActive: true, modules: ["core"]});
+    findTarget.mockReset();
+    if (target !== undefined) findTarget.mockResolvedValueOnce(target && {_id: sellerId, ...target});
+    const headers: Record<string, string> = {"x-auth-token": "token", Origin: origin};
+    const req = {
+        body: {order: sellerId},
+        params: {},
+        originalUrl: "/api/widgets/my",
+        socket: {remoteAddress: "127.0.0.1"},
+        headers: {},
+        header: (name: string) => headers[name],
+        get: (name: string) => headers[name],
+    };
+    const next = vi.fn();
+    await requestContext.run({routeModule: "widgets"}, () => authMW("private", options)(req, {}, next));
+    return next.mock.calls[0]?.[0];
+}
+
+const sellerOf: AuthMWOptions = {portalBuyer: async ({body}) => body.order as string};
+
+describe("authMW portal buyer module gate (D143, TD-B189)", () => {
+    it("lets a portal buyer through when the record's company has the module", async () => {
+        expect(await buyerRequest("http://portal.test", sellerOf, {isActive: true, modules: ["core", "widgets"]})).toBeUndefined();
+        expect(await buyerRequest("http://acme.portal.test", sellerOf, {isActive: true, modules: ["core", "widgets"]})).toBeUndefined();
+        expect(findTarget.mock.calls.at(-1)![0].toString()).toBe(sellerId);
+    });
+
+    it("refuses when the record's company lacks the module or is inactive", async () => {
+        expect((await buyerRequest("http://portal.test", sellerOf, {isActive: true, modules: ["core"]}))?.error_code).toBe("module_not_enabled");
+        expect((await buyerRequest("http://portal.test", sellerOf, {isActive: false, modules: ["core", "widgets"]}))?.error_code).toBe("module_not_enabled");
+    });
+
+    it("refuses when the route names no company it can find", async () => {
+        expect((await buyerRequest("http://portal.test", sellerOf, null))?.error_code).toBe("module_not_enabled");
+        expect((await buyerRequest("http://portal.test", {portalBuyer: async () => "not-an-id"}))?.error_code).toBe("module_not_enabled");
+    });
+
+    it("keeps the session company's gate outside the portal zone and on routes that are not buyer routes", async () => {
+        expect((await buyerRequest("http://panel.example.com", sellerOf))?.error_code).toBe("module_not_enabled");
+        expect((await buyerRequest("http://portal.test", {}))?.error_code).toBe("module_not_enabled");
+        expect(findTarget).not.toHaveBeenCalled();
     });
 });

@@ -22,6 +22,7 @@ import {effectiveCompanyModules, isModuleEnabledForCompany} from "@coreModule/ut
 import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModules";
 import {STUDIO_SAMPLE_HEADER, wantsStudioSample} from "@coreModule/utilities/modules/modelModules";
 import {companyTimeZone} from "@coreModule/utilities/time/companyTimeZone";
+import {portalBuyerTargetHasModule, type PortalBuyerTarget} from "@coreModule/utilities/security/portalBuyer";
 
 export type NotAuthenticatedMWType = {
     apiCode: string,
@@ -57,7 +58,15 @@ export type Authenticated = {
  */
 export type AuthenticatedMWType = NotAuthenticatedMWType & Authenticated;
 
-export default (type: "public" | "private") => async (req: any, res: any, next: any) => {
+export type AuthMWOptions = {
+    /**
+     * A portal buyer route (D143): for a request from the portal zone, the route's module is checked on the company
+     * this names (where the buyer's record lives) when the buyer's own company does not have it.
+     */
+    portalBuyer?: PortalBuyerTarget;
+};
+
+export default (type: "public" | "private", options: AuthMWOptions = {}) => async (req: any, res: any, next: any) => {
 
     const isPublic = type === "public";
     const token = req.header('x-auth-token');
@@ -133,7 +142,8 @@ export default (type: "public" | "private") => async (req: any, res: any, next: 
         }
 
         const routeModule = requestContext.getStore()?.routeModule;
-        if (routeModule && !studioSample && !isModuleEnabledForCompany(company, routeModule)) {
+        if (routeModule && !studioSample && !isModuleEnabledForCompany(company, routeModule)
+            && !(await portalBuyerTargetHasModule(options.portalBuyer, {body: req.body, params: req.params ?? {}}, origin, routeModule))) {
             throw apiValidationException("module_not_enabled", "module", null, languageCode);
         }
 

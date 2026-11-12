@@ -13,7 +13,7 @@ import {effectiveCompanyModules} from "@coreModule/utilities/modules/companyModu
 import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 /** Platform-managed fields `companyToDTO` maps; add them to any projected company read. */
-export const COMPANY_MODULE_FIELDS = "modules isPlatformOwner hiddenFromPortal";
+export const COMPANY_MODULE_FIELDS = "modules isPlatformOwner hiddenFromPortal isProtected";
 /** What a member always sees of the companies they belong to: the company switcher's name, description and logo. */
 export const COMPANY_BASIC_INFO_SELECT = "name description logo";
 
@@ -66,6 +66,7 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
         modules: effectiveCompanyModules(company),
         isPlatformOwner: company.isPlatformOwner === true,
         hiddenFromPortal: company.hiddenFromPortal === true,
+        isProtected: company.isProtected === true,
         shopListedOnPortal: company.shopListedOnPortal,
         publicAiChat: company.publicAiChat ? {
             enabled: company.publicAiChat.enabled,

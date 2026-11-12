@@ -14,6 +14,7 @@ import {
 import {editCompanyFormSchema} from "armonia/src/modules/core/api/company/private/company/editCompany.form.validator";
 import {COMPANY_BASIC_INFO_SELECT, COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
+import {assertCompanyChangeAllowed} from "@coreModule/utilities/security/platformAccess";
 import {mediaService} from "@coreModule/database/schemas/media/media.service";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
@@ -644,13 +645,14 @@ async function deactivateCompany(params: DeactivateCompanyType): Promise<ActionM
     logger.start(`Trying to deactivate company...`);
     SchemaGuard.sanitizeFields(Company, {isActive: {}}, "write", actionUserCtx, languageCode);
 
-    let companyData = await companyService.findByIdOrThrow(company._id, { logger, languageCode, session }, "", "_id name company");
+    let companyData = await companyService.findByIdOrThrow(company._id, { logger, languageCode, session }, "", "_id name company isProtected");
     if( name !== companyData.name ){
         throw apiValidationException("company_name_does_not_match", null, null, languageCode);
     }
     if( companyData.company.equals(companyData._id) ){
         throw apiValidationException("cannot_deactivate_main_company", null, null, languageCode);
     }
+    assertCompanyChangeAllowed(companyData, {deactivate: true}, languageCode);
 
     await companyService.updateByIdOrThrow(
         company._id,
