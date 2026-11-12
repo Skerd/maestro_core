@@ -109,6 +109,12 @@ declare module "mongoose" {
             hrefTemplate?: string;
 
             /**
+             * For number columns holding money: path on the row to its currency (a record field such as
+             * `priceCurrency`, or a `currency` the list route adds), so the cell reads "€ 12.50" (UX-07, D149).
+             */
+            currencyPath?: string;
+
+            /**
              * Path on the referenced document holding a media ref (e.g. "photo"), shown as an
              * avatar on each badge of an objectId cell. The path must be on the field's
              * `refAllowlist` or it never reaches the client.

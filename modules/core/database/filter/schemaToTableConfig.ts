@@ -235,6 +235,9 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
                 if (typeof dtc.flagCodePath === "string" && dtc.flagCodePath.length > 0) {
                     meta.flagCodePath = dtc.flagCodePath;
                 }
+                if (typeof dtc.currencyPath === "string" && dtc.currencyPath.length > 0) {
+                    meta.currencyPath = dtc.currencyPath;
+                }
                 const embeddedEnumTones = sanitizeEnumTones(dtc.enumTones);
                 if (embeddedEnumTones) {
                     meta.enumTones = embeddedEnumTones;
@@ -308,6 +311,13 @@ export function buildTableColumnsFromSchema<T extends Document>(model: Model<T>,
             columnConfig["meta"] = {
                 ...columnConfig.meta,
                 avatarPath: schemaType.options.dynamicTableConfiguration.avatarPath,
+            };
+        }
+        if (typeof schemaType?.options?.dynamicTableConfiguration?.currencyPath === "string"
+            && schemaType.options.dynamicTableConfiguration.currencyPath.length > 0) {
+            columnConfig["meta"] = {
+                ...columnConfig.meta,
+                currencyPath: schemaType.options.dynamicTableConfiguration.currencyPath,
             };
         }
         /*

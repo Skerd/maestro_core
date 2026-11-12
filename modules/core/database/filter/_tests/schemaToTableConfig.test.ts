@@ -92,6 +92,20 @@ describe("buildTableColumnsFromSchema", () => {
         });
     });
 
+    it("passes a money column's currency path through to the column meta (D149)", () => {
+        const MoneySchema = new Schema<ProbeDocument>({
+            price: {type: SchemaTypes.Decimal128, dynamicTableConfiguration: {currencyPath: "priceCurrency"}},
+            totals: {type: {total: {type: SchemaTypes.Number, dynamicTableConfiguration: {currencyPath: "currency"}}}},
+            area: {type: SchemaTypes.Number},
+        });
+        const MoneyModel = model<ProbeDocument>("SchemaToTableConfigMoneyProbe", MoneySchema);
+        const columns = buildTableColumnsFromSchema(MoneyModel, new Set(["price", "totals.total", "area"]));
+        const metaOf = (id: string) => columns.find((column) => column.id === id)?.meta;
+        expect(metaOf("price")?.currencyPath).toBe("priceCurrency");
+        expect(metaOf("totals.total")?.currencyPath).toBe("currency");
+        expect(metaOf("area")?.currencyPath).toBeUndefined();
+    });
+
     it("drops tones the client cannot paint instead of shipping a dead class name", () => {
         const BadToneSchema = new Schema<ProbeDocument>({
             status: {
