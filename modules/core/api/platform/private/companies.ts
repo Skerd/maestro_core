@@ -33,6 +33,7 @@ import {
 } from "@coreModule/utilities/modules/companyModules";
 import {skipMissedCronRuns} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs";
 import {assertCompanyChangeAllowed, assertPlatformAdmin} from "@coreModule/utilities/security/platformAccess";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 /**
  * Platform administration of companies (Private)
@@ -155,15 +156,18 @@ async function setCompanyModules(params: SetCompanyModulesType, routeParams: {id
     target.modules = next;
     target.$locals = target.$locals || {};
     target.$locals.auditUserId = actionUserCtx.userId;
-    await target.save({session});
 
     const after = effectiveCompanyModules(target);
     const enabled = after.filter((name) => !before.includes(name));
-    if (enabled.length > 0) {
-        await target.createDefaultRoles(logger, session);
-        await target.seedCronJobs(session);
-        await skipMissedCronRuns(target._id, enabled, session);
-    }
+    // The target's own rows (its logo's media, roles, jobs) are written in its tenant, not the platform's (TD-B188).
+    await withTenant(target._id, async () => {
+        await target.save({session});
+        if (enabled.length > 0) {
+            await target.createDefaultRoles(logger, session);
+            await target.seedCronJobs(session);
+            await skipMissedCronRuns(target._id, enabled, session);
+        }
+    });
     await runAfterCommit(session, () => invalidateCompanyModules(target._id));
 
     logger.finish(`Company '${target.name}' modules: ${after.join(", ")}`);
@@ -200,7 +204,8 @@ async function setPortalVisibility(params: SetPortalVisibilityType, routeParams:
     target.hiddenFromPortal = hiddenFromPortal;
     target.$locals = target.$locals || {};
     target.$locals.auditUserId = actionUserCtx.userId;
-    await target.save({session});
+    // Saved in the target's tenant: its public-media plugin touches the target's logo (TD-B188).
+    await withTenant(target._id, () => target.save({session}));
     logger.debug(`Company '${target.name}' ${hiddenFromPortal ? "hidden from" : "shown on"} the portal`);
     return {_id: target._id.toString(), hiddenFromPortal: target.hiddenFromPortal};
 }
