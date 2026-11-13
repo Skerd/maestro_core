@@ -63,6 +63,9 @@ export type CrudUpdateParams<T extends Document, TEdit extends object = CrudLoos
         existing: T;
     };
 
+/** A select's `ids` are checked again here: a route with its own `selectSchema` may not validate them. */
+const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
+
 type SelectRouteParams = AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType & SelectForm & CrudLooseBody;
 type ListRouteParams = AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType & TableForm & CrudLooseBody;
 
@@ -435,11 +438,20 @@ export function createCrudRouter<
                 company: company._id,
                 ...(await extraSelectFilter(params)),
             };
-            if (name !== undefined && name !== "") {
-                filter[selectSearchField] = {$regex: escapeRegex(String(name).trim()), $options: "i"};
-            }
-            if (dslFilterQuery && Object.keys(dslFilterQuery as object).length > 0) {
-                filter.$and = [...((filter.$and as unknown[]) ?? []), dslFilterQuery];
+            // `ids` asks for the labels of stored values (a disabled select, a value past page 1): only those records,
+            // whatever the search or the client's filters, still inside the company and the route's own filter (TD-F70/F71).
+            const ids = Array.isArray(params.ids)
+                ? params.ids.filter((id): id is string => typeof id === "string" && OBJECT_ID_PATTERN.test(id))
+                : [];
+            if (ids.length > 0) {
+                filter._id = {$in: ids};
+            } else {
+                if (name !== undefined && name !== "") {
+                    filter[selectSearchField] = {$regex: escapeRegex(String(name).trim()), $options: "i"};
+                }
+                if (dslFilterQuery && Object.keys(dslFilterQuery as object).length > 0) {
+                    filter.$and = [...((filter.$and as unknown[]) ?? []), dslFilterQuery];
+                }
             }
 
             const [docs, total] = await Promise.all([

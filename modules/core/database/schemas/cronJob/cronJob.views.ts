@@ -215,6 +215,8 @@ export const cronJobSheetView: ViewConfig = {
                 },
             ],
         },
+        // The next runs and the run history, above Lifecycle (UX-03, TD-F67). Each part checks its own access.
+        {render: "#CronJobRuns", field: {name: "_id", widget: "#CronJobRuns"}},
         lifecycleSheetGroup,
     ],
 };
