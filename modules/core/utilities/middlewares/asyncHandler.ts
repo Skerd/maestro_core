@@ -8,6 +8,24 @@ import {apiValidationException} from 'armonia/src/modules/core/helpers/exception
 /** Attempts per request before a transient transaction error is passed on. */
 const MAX_TRANSACTION_ATTEMPTS = 3;
 
+/** Shortest wait before the first replay; each later replay waits proportionally longer. */
+const RETRY_BASE_DELAY_MS = 20;
+
+/**
+ * How long to wait before replaying after failed attempt `attempt` (1-based): 20–50 ms after the
+ * first, 40–100 ms after the second. Replaying at once tends to meet the same concurrent writer
+ * again; the random spread keeps two requests that collided from colliding on the replay too.
+ *
+ * @param attempt - the attempt that just failed (1-based)
+ * @param random - a number in [0, 1); tests pass a fixed one
+ */
+export function transactionRetryDelayMs(attempt: number, random: () => number = Math.random): number {
+    const base = RETRY_BASE_DELAY_MS * attempt;
+    return Math.round(base + random() * base * 1.5);
+}
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /** MongoDB labels errors that are safe to retry (write conflicts, unknown commit outcomes). */
 function hasErrorLabel(error: unknown, label: "TransientTransactionError" | "UnknownTransactionCommitResult"): boolean {
     const labelled = error as {hasErrorLabel?: (label: string) => boolean} | null;
@@ -41,9 +59,13 @@ async function commitWithRetry(session: ClientSession): Promise<void> {
  * If a transaction session exists (from transactionHandler), it will automatically
  * commit on success or abort on error. A transient transaction error (e.g. a
  * write conflict with a concurrent request) re-runs the handler in a fresh
- * transaction, up to MAX_TRANSACTION_ATTEMPTS times; work queued with
- * `runAfterCommit` by a failed attempt is dropped. Handlers must therefore be
- * safe to replay: gateway calls inside them carry idempotency keys.
+ * transaction, up to MAX_TRANSACTION_ATTEMPTS times: the failed attempt is
+ * aborted first (releasing its locks), then the replay waits a short jittered
+ * delay that grows per attempt (`transactionRetryDelayMs`, about 20–100 ms) so
+ * the conflicting writer can commit. Work queued with `runAfterCommit` by a
+ * failed attempt is dropped. Handlers must therefore be safe to replay:
+ * gateway calls inside them carry idempotency keys. When every attempt
+ * conflicts, the request fails with a retryable 409 `concurrent_request_retry`.
  * 
  * @param fn - The async handler function
  * @param notify - Optional notification flag (reserved for future use)
@@ -70,9 +92,10 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
                     if (attempt >= MAX_TRANSACTION_ATTEMPTS) {
                         throw concurrentRequestError(req);
                     }
-                    logger.warn(`Transient transaction error, retrying (attempt ${attempt + 1}/${MAX_TRANSACTION_ATTEMPTS})`);
+                    logger.warn(`Transient transaction error, retrying (attempt ${attempt + 1}/${MAX_TRANSACTION_ATTEMPTS}): ${error instanceof Error ? error.message : String(error)}`);
                     await session.abortTransaction();
                     await flushAfterCommitTasks(session, false, () => undefined);
+                    await wait(transactionRetryDelayMs(attempt));
                     session.startTransaction();
                 }
             }

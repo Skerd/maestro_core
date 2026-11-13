@@ -56,6 +56,25 @@ describe("core users select by ids", {timeout: 60000}, () => {
         expect(byId.body.data.map((o: {value: string; label: string}) => [o.value, o.label])).toEqual([[users[2], "Cleo Charlie"]]);
         expect(byId.body.total).toBe(1);
     });
+
+    it("labels former staff (an inactive membership) by id, while the search list offers active members only (D157)", async () => {
+        const former = {...memberOf(companyId, "Dora Departed"), roles: [{company: companyId, active: "inactive", roles: []}]};
+        // Active in another company, inactive here: still former staff of this one.
+        const movedOn = {
+            ...memberOf(companyId, "Dan Departed"), companies: [companyId, otherCompanyId],
+            roles: [{company: otherCompanyId, active: "active", roles: []}, {company: companyId, active: "inactive", roles: []}],
+        };
+        const [formerId, movedOnId] = insertedIds(await User.collection.insertMany([former, movedOn]));
+
+        const search = await post("/api/company/users/select", {page: 1, limit: 10, name: "Departed"});
+        expect(search.status).toBe(200);
+        expect(search.body.data).toEqual([]);
+        expect(search.body.total).toBe(0);
+
+        const byId = await post("/api/company/users/select", {page: 1, limit: 10, administration: true, ids: [formerId, movedOnId]});
+        expect(byId.status).toBe(200);
+        expect(byId.body.data.map((o: {value: string; label: string}) => [o.value, o.label])).toEqual([[movedOnId, "Dan Departed"], [formerId, "Dora Departed"]]);
+    });
 });
 
 describe("core accessible roles select by ids", {timeout: 60000}, () => {

@@ -1,7 +1,7 @@
 import {afterAll, beforeAll, describe, expect, it} from "vitest";
 import {connectTestDatabase, disconnectTestDatabase} from "@coreModule/_tests/testDatabase";
 import mongoose from "mongoose";
-import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
+import {asyncHandler, transactionRetryDelayMs} from "@coreModule/utilities/middlewares/asyncHandler";
 import {flushAfterCommitTasks, runAfterCommit} from "@coreModule/utilities/middlewares/transactionUtils";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
@@ -130,14 +130,25 @@ describe("asyncHandler transient-error retry (E-21)", {timeout: 30000}, () => {
         expect((await Counter.findById(counter._id))!.get("hits")).toBe(1);
     });
 
-    it("gives up after the last attempt with a retryable 409", async () => {
-        let attempts = 0;
+    it("gives up after the last attempt with a retryable 409, waiting longer before each replay (TD-B229)", async () => {
+        const startedAt: number[] = [];
         const failure = await runHandler(async () => {
-            attempts += 1;
+            startedAt.push(performance.now());
             throw Object.assign(new Error("still conflicting"), {hasErrorLabel: () => true});
         });
         expect(failure).toMatchObject({error_code: "concurrent_request_retry", status: 409});
-        expect(attempts).toBe(3);
+        expect(startedAt).toHaveLength(3);
+        // At least the shortest delay of each replay (20 ms, then 40 ms); a timer can fire a millisecond early.
+        expect(startedAt[1] - startedAt[0]).toBeGreaterThanOrEqual(19);
+        expect(startedAt[2] - startedAt[1]).toBeGreaterThanOrEqual(39);
+    });
+
+    it("spreads the replay delay at random and grows it per attempt, about 20-100 ms", () => {
+        expect(transactionRetryDelayMs(1, () => 0)).toBe(20);
+        expect(transactionRetryDelayMs(1, () => 0.999)).toBe(50);
+        expect(transactionRetryDelayMs(2, () => 0)).toBe(40);
+        expect(transactionRetryDelayMs(2, () => 0.999)).toBe(100);
+        expect(transactionRetryDelayMs(2, () => 0.5)).toBe(70);
     });
 
     it("passes non-transient errors through untouched", async () => {

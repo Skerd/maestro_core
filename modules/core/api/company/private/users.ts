@@ -165,7 +165,8 @@ function companyUsersListAsOthers(req: Request, _res: Response, next: NextFuncti
 /**
  * POST /api/company/users/select
  *
- * Returns active company users as options for dropdowns/selects.
+ * Returns active company users as options for dropdowns/selects; with `ids`, labels those users if they
+ * ever belonged to the company (an inactive membership included).
  * Response: { data: Array<{ value: userId, label }>, total }.
  *
  * @route POST /api/company/users/select
@@ -206,15 +207,17 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
     const filter: FilterQuery<IUser> = {
         companies: company._id,
         "roles.company": company._id,
-        "roles.active": "active"
     }
     const opts = { logger, languageCode };
-    // `ids` labels stored users (a value past page 1, a disabled select): only those, still active members of this
-    // company, without the search or the staff/customer narrowing the picker posts (TD-B225).
+    // `ids` labels stored users (a value past page 1, a disabled select): only those, without the search or the
+    // staff/customer narrowing the picker posts (TD-B225). A record keeps naming someone who has since left, so any
+    // member of this company is labelled whatever their status; the search list offers active staff only (D157).
     const ids = selectIdsOf(params);
     if (ids.length > 0) {
         filter._id = { $in: ids };
     } else {
+        // Active in this company: a separate `roles.active` test would also match someone active only elsewhere.
+        filter.roles = { $elemMatch: { company: company._id, active: "active" } };
         if (name?.trim()) {
             const escaped = escapeRegex(name.trim());
             filter.$or = [
