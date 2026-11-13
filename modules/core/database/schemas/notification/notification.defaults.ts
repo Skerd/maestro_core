@@ -7,7 +7,8 @@ import {
     NotificationDeliveryChannel,
 } from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
 
-const DEMO_NOTIFICATIONS: readonly {
+/** For echo (a core user every dev profile has), so the bell shows them from the one demo login. */
+export const DEMO_NOTIFICATIONS: readonly {
     code: string;
     description: string;
     receiver: string;
@@ -26,7 +27,7 @@ const DEMO_NOTIFICATIONS: readonly {
     {
         code: "core-demo-seed:gift-card-issued",
         description: "Gift card DEMO-GIFT-50 was issued from DEMO-ORD-1008.",
-        receiver: "almir@leka.com",
+        receiver: "echo@echo.com",
         importance: NotificationImportance.MEDIUM,
         status: NotificationStatus.Info,
         category: NotificationCategory.FINANCIAL,

@@ -66,6 +66,19 @@ export type CrudUpdateParams<T extends Document, TEdit extends object = CrudLoos
 /** A select's `ids` are checked again here: a route with its own `selectSchema` may not validate them. */
 const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
 
+/**
+ * The ids a select posts to label its stored values (a value past page 1, a disabled select: TD-F70/F71), or `[]` when it
+ * asks for a page of options. When they are given, the select answers with only those records, still inside the company
+ * and the route's access rules, but without its text search or the client's filters. The built-in `/select` does this. An
+ * `overrideSelectHandler` does the same and also drops the narrowing its picker posts (a parent, "active only", "not this
+ * one"): a stored value no longer on the list must still show its label (TD-B217).
+ */
+export function selectIdsOf(params: {ids?: unknown}): string[] {
+    return Array.isArray(params.ids)
+        ? params.ids.filter((id): id is string => typeof id === "string" && OBJECT_ID_PATTERN.test(id))
+        : [];
+}
+
 type SelectRouteParams = AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType & SelectForm & CrudLooseBody;
 type ListRouteParams = AuthenticatedMWType & SchemaSanitizerMWType & DslFilterMWType & TableForm & CrudLooseBody;
 
@@ -440,9 +453,7 @@ export function createCrudRouter<
             };
             // `ids` asks for the labels of stored values (a disabled select, a value past page 1): only those records,
             // whatever the search or the client's filters, still inside the company and the route's own filter (TD-F70/F71).
-            const ids = Array.isArray(params.ids)
-                ? params.ids.filter((id): id is string => typeof id === "string" && OBJECT_ID_PATTERN.test(id))
-                : [];
+            const ids = selectIdsOf(params);
             if (ids.length > 0) {
                 filter._id = {$in: ids};
             } else {

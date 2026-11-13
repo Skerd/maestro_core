@@ -1,6 +1,6 @@
 import {ObjectId} from "mongodb";
 import {loginHistoryWriteFormSchema} from "armonia/src/modules/core/api/user/private/loginHistory/loginHistoryWrite.form.validator";
-import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
+import {createCrudRouter, selectIdsOf} from "@coreModule/api/crudRouterFactory";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {loginHistoryService} from "@coreModule/database/schemas/loginHistory/loginHistory.service";
 import LoginHistory from "@coreModule/database/schemas/loginHistory/loginHistory";
@@ -48,11 +48,11 @@ export const {router} = createCrudRouter({
 
         SchemaGuard.sanitizeFields(LoginHistory, {time: {}}, "read", actionUserCtx, languageCode);
 
-        const filter: Record<string, unknown> = {
-            company: company._id,
-            ...loginHistoryExtraFilter({userId, status}),
-        };
-        if (name !== undefined && name !== "") {
+        const ids = selectIdsOf(params);
+        const filter: Record<string, unknown> = ids.length > 0
+            ? {company: company._id, _id: {$in: ids}}
+            : {company: company._id, ...loginHistoryExtraFilter({userId, status})};
+        if (ids.length === 0 && name !== undefined && name !== "") {
             filter.ip = {$regex: String(name).trim(), $options: "i"};
         }
 

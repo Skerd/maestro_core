@@ -1,6 +1,6 @@
 import {ObjectId} from "mongodb";
 import {userSessionWriteFormSchema} from "armonia/src/modules/core/api/user/private/userSession/userSessionWrite.form.validator";
-import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
+import {createCrudRouter, selectIdsOf} from "@coreModule/api/crudRouterFactory";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
 import UserSession from "@coreModule/database/schemas/userSession/userSession";
@@ -59,11 +59,11 @@ export const {router} = createCrudRouter({
 
         SchemaGuard.sanitizeFields(UserSession, {sessionId: {}}, "read", actionUserCtx, languageCode);
 
-        const filter: Record<string, unknown> = {
-            company: company._id,
-            ...userSessionExtraFilter({userId, isActive}),
-        };
-        if (name !== undefined && name !== "") {
+        const ids = selectIdsOf(params);
+        const filter: Record<string, unknown> = ids.length > 0
+            ? {company: company._id, _id: {$in: ids}}
+            : {company: company._id, ...userSessionExtraFilter({userId, isActive})};
+        if (ids.length === 0 && name !== undefined && name !== "") {
             filter.sessionId = {$regex: String(name).trim(), $options: "i"};
         }
 

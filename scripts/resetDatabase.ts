@@ -14,6 +14,7 @@ process.env.MONGODB_INIT = "true";
 import {connectToMongoDb, mongooseInstance} from "@coreModule/connections/connectToMongoDb";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {MONGO_DB} from "@coreModule/environment";
+import {loadModuleExceptionLocales} from "@coreModule/utilities/helpers/exceptionLocales";
 
 async function main(): Promise<void> {
     if (!process.env.ARPEGGIO_RESET_DB || process.env.ARPEGGIO_RESET_DB !== MONGO_DB.DB_NAME) {
@@ -21,6 +22,8 @@ async function main(): Promise<void> {
         process.exit(2);
     }
 
+    // The modules' API errors, registered as the servers do, so a seed step the API refuses logs its message.
+    loadModuleExceptionLocales();
     const logger = getLogger("reset_database");
     await connectToMongoDb(logger, true);
 

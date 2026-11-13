@@ -426,7 +426,6 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                                                     placeholder: "form.countryPlaceholder",
                                                     widgetProps: {
                                                         apiUrl: "/api/auxiliary/country/select",
-                                                        method: "POST",
                                                         pageSize: 50,
                                                         cascadeClearFormFields: ["state", "city"],
                                                     },
@@ -441,7 +440,6 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                                                     placeholder: "form.statePlaceholder",
                                                     widgetProps: {
                                                         apiUrl: "/api/auxiliary/state/select",
-                                                        method: "POST",
                                                         pageSize: 50,
                                                         postBodyFromFormFields: [{field: "country", paramName: "country"}],
                                                         enableWhenFormFieldsNonEmpty: ["country"],
@@ -458,7 +456,6 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                                                     placeholder: "form.cityPlaceholder",
                                                     widgetProps: {
                                                         apiUrl: "/api/auxiliary/city/select",
-                                                        method: "POST",
                                                         pageSize: 50,
                                                         postBodyFromFormFields: [{field: "country", paramName: "country"}, {field: "state", paramName: "state"}],
                                                         enableWhenFormFieldsNonEmpty: ["country"],

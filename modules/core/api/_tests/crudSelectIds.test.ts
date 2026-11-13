@@ -15,6 +15,8 @@ import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 import {validateSingleForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import * as userSessionRoute from "@coreModule/api/user/private/userSession";
+import UserSession from "@coreModule/database/schemas/userSession/userSession";
 
 interface IThing extends Document {title?: string; company: Types.ObjectId}
 const schema = new Schema<IThing>({title: String});
@@ -86,5 +88,30 @@ describe("createCrudRouter select by ids (TD-F70, TD-F71)", {timeout: 60000}, ()
     it("refuses ids that are not object ids", async () => {
         const res = await select({page: 1, limit: 5, ids: [{$ne: null}]});
         expect(res.status).toBe(400);
+    });
+});
+
+describe("a custom select handler honours ids too (TD-B217)", {timeout: 60000}, () => {
+    const sessionApp = appFor([userSessionRoute]);
+    const sessionCaller: TestCaller = {userId: new Types.ObjectId().toString(), companyId, permissions: allPermissionTags([UserSession])};
+    const selectSessions = (body: Record<string, unknown>) =>
+        request(sessionApp).post("/api/user/userSession/select").set(callerHeader(sessionCaller)).send(body);
+
+    it("labels a session past the first page and outside the user the form narrows to, never another company's", async () => {
+        const user = new Types.ObjectId();
+        const rows = ["s-1", "s-2", "s-3"].map((sessionId, index) => ({
+            sessionId, deviceId: `d-${index + 1}`, user, isActive: true, lastActiveAt: new Date(2026, 0, 10 - index),
+            company: new Types.ObjectId(companyId), deletedAt: null,
+        }));
+        const inserted = Object.values((await UserSession.collection.insertMany(rows)).insertedIds).map(String);
+        const foreign = (await UserSession.collection.insertOne({sessionId: "s-x", deviceId: "d-x", user, isActive: true, company: new Types.ObjectId(otherCompanyId), deletedAt: null})).insertedId.toString();
+
+        const firstPage = await selectSessions({page: 1, limit: 1});
+        expect(firstPage.status).toBe(200);
+        expect(firstPage.body.data).toEqual([{value: inserted[0], label: "s-1 — d-1"}]);
+
+        const byId = await selectSessions({page: 1, limit: 1, name: "s-1", userId: new Types.ObjectId().toString(), ids: [inserted[2], foreign]});
+        expect(byId.status).toBe(200);
+        expect(byId.body.data).toEqual([{value: inserted[2], label: "s-3 — d-3"}]);
     });
 });

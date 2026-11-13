@@ -194,7 +194,6 @@ const blogPostCreateFormNodes: ViewConfig["nodes"] = [
                                 required: true,
                                 widgetProps: {
                                     apiUrl: "/api/auxiliary/blogCategory/select",
-                                    method: "POST",
                                     pageSize: 50,
                                 },
                             },
@@ -315,7 +314,6 @@ const blogPostEditFormNodes: ViewConfig["nodes"] = [
                             required: true,
                             widgetProps: {
                                 apiUrl: "/api/auxiliary/blogCategory/select",
-                                method: "POST",
                                 pageSize: 50,
                             },
                         },

@@ -6,19 +6,20 @@ import {ICompany} from "@coreModule/database/schemas/company/company";
 import {CORE_DEMO_CHANNEL_NAME} from "@coreModule/database/schemas/channel/channel.defaults";
 import {DecryptStringSafe, EncryptString} from "@coreModule/utilities/security/encryption";
 
-const DEMO_MESSAGES: readonly {from: string; to: string; text: string}[] = [
+/** Between the two core users (`defaultSysUsers`), the members of the demo ops channel, so every dev profile has them. */
+export const DEMO_MESSAGES: readonly {from: string; to: string; text: string}[] = [
     {
         from: "echo@echo.com",
-        to: "almir@leka.com",
+        to: "user@test.com",
         text: "Welcome to the Kudoo ops channel.\n\n[core-demo-seed:msg-01]",
     },
     {
-        from: "almir@leka.com",
+        from: "user@test.com",
         to: "echo@echo.com",
         text: "Gift-card order DEMO-ORD-1008 landed — finance should issue the card.\n\n[core-demo-seed:msg-02]",
     },
     {
-        from: "skerd@xhafa.com",
+        from: "user@test.com",
         to: "echo@echo.com",
         text: "POS till in Tirana is closed for the day.\n\n[core-demo-seed:msg-03]",
     },
