@@ -7,15 +7,18 @@ import {
     NotificationDeliveryChannel,
 } from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
 
-/** For echo (a core user every dev profile has), so the bell shows them from the one demo login. */
-export const DEMO_NOTIFICATIONS: readonly {
+/** A demo in-app notification; `receiver` is a username. */
+export type DemoNotification = {
     code: string;
     description: string;
     receiver: string;
     importance: NotificationImportance;
     status: NotificationStatus;
     category: NotificationCategory;
-}[] = [
+};
+
+/** For echo (a core user every dev profile has), so the bell shows them from the one demo login. */
+export const DEMO_NOTIFICATIONS: readonly DemoNotification[] = [
     {
         code: "core-demo-seed:welcome",
         description: "Welcome to Kudoo — demo data is ready.",
@@ -25,22 +28,23 @@ export const DEMO_NOTIFICATIONS: readonly {
         category: NotificationCategory.SYSTEM,
     },
     {
-        code: "core-demo-seed:gift-card-issued",
-        description: "Gift card DEMO-GIFT-50 was issued from DEMO-ORD-1008.",
+        code: "core-demo-seed:profile-reminder",
+        description: "Add a photo and your phone number so your team can reach you.",
         receiver: "echo@echo.com",
-        importance: NotificationImportance.MEDIUM,
+        importance: NotificationImportance.LOW,
         status: NotificationStatus.Info,
-        category: NotificationCategory.FINANCIAL,
+        category: NotificationCategory.COMPANY,
     },
 ];
 
 /**
- * Two in-app notifications so the bell is not empty on a fresh init.
- * Idempotent on `{receiver, code}`.
+ * Two in-app notifications so the bell is not empty on a fresh init. A module seeds its own notices about its
+ * records through `rows`. Idempotent on `{receiver, code}`.
  */
 export async function createNotifications(
     parentLogger: serverLogger,
     company: ICompany,
+    rows: readonly DemoNotification[] = DEMO_NOTIFICATIONS,
 ): Promise<void> {
     const logger = getLogger("mongoDbInitialization-createNotifications", parentLogger);
     logger.start("Creating demo notifications...");
@@ -54,7 +58,7 @@ export async function createNotifications(
         }
 
         let created = 0;
-        for (const row of DEMO_NOTIFICATIONS) {
+        for (const row of rows) {
             const receiver = await User.findOne({username: row.receiver}).select("_id");
             if (!receiver) {
                 logger.warn(`Skipping notification ${row.code}: receiver "${row.receiver}" not found.`);

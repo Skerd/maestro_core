@@ -61,7 +61,7 @@ import {usersToCompanyUserDTO} from "@coreModule/utilities/mappers/user/userMapp
 import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/dslFilterMW";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
-import {mountActions} from "@coreModule/api/crudRouterFactory";
+import {mountActions, selectIdsOf} from "@coreModule/api/crudRouterFactory";
 import {UserActions} from "@coreModule/database/schemas/user/user.actions";
 import type {ActionMessage, SelectResponse, TableResponse} from "armonia/src/modules/core/types/shared.types";
 
@@ -208,41 +208,48 @@ async function getUsersSelect(params: AuthenticatedMWType & GetUsersSelectFormTy
         "roles.company": company._id,
         "roles.active": "active"
     }
-    if (name?.trim()) {
-        const escaped = escapeRegex(name.trim());
-        filter.$or = [
-            { fullName: { $regex: escaped, $options: "i" } }
-        ];
-    }
-
     const opts = { logger, languageCode };
-    if (administration !== undefined) {
-        const findCorrectRoles = await roleService.find(
-            {
-                company: company._id,
-                isSignupDefault: !administration
-            },
-            opts
-        );
-        if (administration) {
-            filter["roles.roles"] = {
-                $in: findCorrectRoles
-            };
-            filter.isBot = { $ne: true };
-        }
-        else {
-            // Bots have no roles but are not customers either (same rule as the users list).
-            filter.isBot = { $ne: true };
-            const rolesOr = [
-                { "roles.roles": { $in: findCorrectRoles } },
-                { "roles.roles": { $size: 0 } },
-                { "roles.roles": { $exists: false } }
+    // `ids` labels stored users (a value past page 1, a disabled select): only those, still active members of this
+    // company, without the search or the staff/customer narrowing the picker posts (TD-B225).
+    const ids = selectIdsOf(params);
+    if (ids.length > 0) {
+        filter._id = { $in: ids };
+    } else {
+        if (name?.trim()) {
+            const escaped = escapeRegex(name.trim());
+            filter.$or = [
+                { fullName: { $regex: escaped, $options: "i" } }
             ];
-            if (filter.$or) {
-                filter.$and = [{ $or: filter.$or }, { $or: rolesOr }];
-                delete filter.$or;
-            } else {
-                filter["$or"] = rolesOr;
+        }
+
+        if (administration !== undefined) {
+            const findCorrectRoles = await roleService.find(
+                {
+                    company: company._id,
+                    isSignupDefault: !administration
+                },
+                opts
+            );
+            if (administration) {
+                filter["roles.roles"] = {
+                    $in: findCorrectRoles
+                };
+                filter.isBot = { $ne: true };
+            }
+            else {
+                // Bots have no roles but are not customers either (same rule as the users list).
+                filter.isBot = { $ne: true };
+                const rolesOr = [
+                    { "roles.roles": { $in: findCorrectRoles } },
+                    { "roles.roles": { $size: 0 } },
+                    { "roles.roles": { $exists: false } }
+                ];
+                if (filter.$or) {
+                    filter.$and = [{ $or: filter.$or }, { $or: rolesOr }];
+                    delete filter.$or;
+                } else {
+                    filter["$or"] = rolesOr;
+                }
             }
         }
     }

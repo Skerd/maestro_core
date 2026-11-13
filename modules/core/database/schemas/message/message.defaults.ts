@@ -16,12 +16,12 @@ export const DEMO_MESSAGES: readonly {from: string; to: string; text: string}[] 
     {
         from: "user@test.com",
         to: "echo@echo.com",
-        text: "Gift-card order DEMO-ORD-1008 landed — finance should issue the card.\n\n[core-demo-seed:msg-02]",
+        text: "The weekly report is ready — could you look it over before Friday?\n\n[core-demo-seed:msg-02]",
     },
     {
         from: "user@test.com",
         to: "echo@echo.com",
-        text: "POS till in Tirana is closed for the day.\n\n[core-demo-seed:msg-03]",
+        text: "The team meeting moved to 10:00 tomorrow.\n\n[core-demo-seed:msg-03]",
     },
 ];
 

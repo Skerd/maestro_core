@@ -27,6 +27,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/permissions/changeUserRoles.form.response.type";
 import {roleService} from "@coreModule/database/schemas/role/role.service";
 import {rolesToSelect} from "@coreModule/utilities/mappers/role/roleMapper.select";
+import {selectIdsOf} from "@coreModule/api/crudRouterFactory";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel, hideAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
@@ -134,13 +135,20 @@ async function GetAccessibleRoles(params: AuthenticatedMWType & AccessibleRolesF
         isAdmin: false,
     };
 
-    if (name?.trim()) {
-        const escaped = escapeRegex(name.trim());
-        filter.name = { $regex: escaped, $options: "i" };
-    }
+    // `ids` labels stored roles (a value past page 1, a disabled select): only those, still this company's non-admin
+    // roles, without the search or the staff/customer narrowing the picker posts (TD-B225).
+    const ids = selectIdsOf(params);
+    if (ids.length > 0) {
+        filter._id = { $in: ids };
+    } else {
+        if (name?.trim()) {
+            const escaped = escapeRegex(name.trim());
+            filter.name = { $regex: escaped, $options: "i" };
+        }
 
-    if (administration !== undefined) {
-        filter["isSignupDefault"] = !administration;
+        if (administration !== undefined) {
+            filter["isSignupDefault"] = !administration;
+        }
     }
 
     const opts = { logger, languageCode };
