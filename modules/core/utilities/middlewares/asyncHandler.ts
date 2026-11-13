@@ -3,6 +3,7 @@ import {ClientSession} from 'mongoose';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {getGridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
 import {flushAfterCommitTasks} from '@coreModule/utilities/middlewares/transactionUtils';
+import {openTransactionOnServer} from '@coreModule/utilities/middlewares/transactionHandler';
 import {apiValidationException} from 'armonia/src/modules/core/helpers/exceptions';
 
 /** Attempts per request before a transient transaction error is passed on. */
@@ -62,7 +63,8 @@ async function commitWithRetry(session: ClientSession): Promise<void> {
  * transaction, up to MAX_TRANSACTION_ATTEMPTS times: the failed attempt is
  * aborted first (releasing its locks), then the replay waits a short jittered
  * delay that grows per attempt (`transactionRetryDelayMs`, about 20–100 ms) so
- * the conflicting writer can commit. Work queued with `runAfterCommit` by a
+ * the conflicting writer can commit, and the fresh transaction is opened on the
+ * server before the handler runs again (`openTransactionOnServer`). Work queued with `runAfterCommit` by a
  * failed attempt is dropped. Handlers must therefore be safe to replay:
  * gateway calls inside them carry idempotency keys. When every attempt
  * conflicts, the request fails with a retryable 409 `concurrent_request_retry`.
@@ -83,6 +85,9 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
             let returnThis: any;
             for (let attempt = 1; ; attempt++) {
                 try {
+                    // transactionHandler opened the first attempt's transaction; a replay opens its fresh one here,
+                    // inside the try so a transient failure of that read is replayed like the handler's own (TD-B230).
+                    if (attempt > 1 && session) await openTransactionOnServer(session);
                     returnThis = await fn(req.body, req.params, req, res);
                     break;
                 } catch (error) {
