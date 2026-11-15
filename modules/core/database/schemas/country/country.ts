@@ -1,6 +1,7 @@
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
+import requestablePlugin, {type IRequestablePluginFields} from "@coreModule/database/plugins/requestablePlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import {
@@ -21,7 +22,7 @@ import {
 } from "armonia/src/modules/core/api/auxiliary/private/country/country.schema-def";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
 
-export interface ICountry extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
+export interface ICountry extends Document, IOwnershipPluginFields, IRequestablePluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     code: string;
     phoneCode: string;
@@ -74,7 +75,10 @@ const CountrySchema = new Schema<ICountry>(
     }
 );
 
-ownershipPlugin(CountrySchema);
+// A platform list (D160): the platform company owns every row and every company reads and links to them.
+ownershipPlugin(CountrySchema, {tenantScoped: false});
+// Another company asks for a missing entry with the list's own create form; the platform approves it.
+requestablePlugin(CountrySchema);
 auditPlugin(CountrySchema);
 softDeletePlugin(CountrySchema);
 lifeCyclePlugin(CountrySchema);

@@ -41,6 +41,7 @@ import {
     accessibleRolesFormSchema
 } from "armonia/src/modules/core/api/user/private/permissions/accessibleRoles.form.validator";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
+import {platformListAccess} from "@coreModule/api/platformListRoute";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {AccessFormType} from "armonia/src/modules/core/api/user/private/permissions/access.form.type";
 import {AccessFormResponseType} from "armonia/src/modules/core/api/user/private/permissions/access.form.response.type";
@@ -442,7 +443,7 @@ async function AccessResource(
     }
 
     logger.finish(`Finished checking if user can access resource!`);
-    return returnThis;
+    return platformListAccess(requestedResource, returnThis, params.company);
 }
 
 /**
@@ -531,7 +532,7 @@ async function AccessAllResources(params: AuthenticatedMWType & AccessAllFormTyp
             logger.debug?.(e);
         }
 
-        return returnThis;
+        return platformListAccess(model, returnThis, params.company);
     }
 
     for( let collectedData of Object.values(COLLECTED_DATA) ) {

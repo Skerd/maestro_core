@@ -1,6 +1,7 @@
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
+import requestablePlugin, {type IRequestablePluginFields} from "@coreModule/database/plugins/requestablePlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
@@ -21,7 +22,7 @@ import {
     CURRENCY_SYMBOL_MAX,
 } from "armonia/src/modules/core/api/finance/private/currency/currency.schema-def";
 
-export interface ICurrency extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
+export interface ICurrency extends Document, IOwnershipPluginFields, IRequestablePluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     symbol: string;
     decimalPlaces: number;
@@ -89,7 +90,10 @@ const CurrencySchema = new Schema<ICurrency>(
     }
 );
 
-ownershipPlugin(CurrencySchema);
+// A platform list (D160): the platform company owns every row and every company reads and links to them.
+ownershipPlugin(CurrencySchema, {tenantScoped: false});
+// Another company asks for a missing entry with the list's own create form; the platform approves it.
+requestablePlugin(CurrencySchema);
 auditPlugin(CurrencySchema);
 softDeletePlugin(CurrencySchema);
 lifeCyclePlugin(CurrencySchema);

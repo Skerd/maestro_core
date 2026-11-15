@@ -214,6 +214,13 @@ export interface CrudRouterConfig<
     /** Extra middleware inserted in the PUT route after rateLimiter (e.g. `mediaUploadMW`). */
     createMiddleware?: RequestHandler[];
 
+    /**
+     * Replaces the create route's check of the model `create` permission; throw to refuse. Use when another permission
+     * may also create, e.g. a requestable platform list, where a company other than the platform creates with its
+     * `request` permission (`platformListRouteOptions`, D160). It must still check the `create` permission where that applies.
+     */
+    checkCreatePermission?: (params: CrudCreateParams<TCreate>) => void | Promise<void>;
+
     /** Extra middleware inserted in the PATCH route after rateLimiter (e.g. `mediaUploadMW`). */
     editMiddleware?: RequestHandler[];
 
@@ -563,7 +570,8 @@ export function createCrudRouter<
             const {logger, languageCode, session, company, actionUserCtx} = params;
 
             logger.start(`Creating ${entityName}...`);
-            SchemaGuard.checkModelPermission(model, "create", actionUserCtx, languageCode);
+            if (config.checkCreatePermission) await config.checkCreatePermission(params);
+            else SchemaGuard.checkModelPermission(model, "create", actionUserCtx, languageCode);
 
             const createData = await buildCreateData(params);
             const createPayload = Object.prototype.hasOwnProperty.call(createData, "company")

@@ -82,6 +82,12 @@ Each resource under `database/schemas/<resource>/` typically includes:
 
 Standard plugins: `ownershipPlugin`, `auditPlugin`, `softDeletePlugin`, `lifeCyclePlugin`. `publicMediaPlugin` marks SchemaDef `publicAccess` media. Not every schema takes the full stack.
 
+## Platform lists (D160)
+
+Countries, states, cities and currencies belong to the platform company (`Company.isPlatformOwner`) and are shared by every company: `ownershipPlugin(…, {tenantScoped: false})`, seeded once for the platform in `createCompanies`. Their CRUD routes spread `platformListRouteOptions` (`modules/core/api/platformListRoute.ts`): every company reads and selects the platform's rows, only a session in the platform company writes them (`platform_company_required`). Records in any company reference these rows directly; never look them up with a `company` filter or copy them.
+
+A list becomes requestable with `requestablePlugin` (`database/plugins/requestablePlugin.ts`): a company other than the platform that holds the model's `request` action permission creates a missing entry with the list's own create route, and the row is stored as `requestStatus: "requested"` (with `requestedAt`, `requestedBy`, `requestedByCompany(Name)`), seen only by that company and the platform and offered by no select. Decisions record `decidedAt`, `decidedBy` and `decisionNotes`; a rejected or withdrawn entry keeps that status and is deleted (restoring it makes it `requested` again); the sheet shows them in `requestSheetGroup`, whose requesting company opens through `POST /api/companies/single` (a company the user belongs to, or any company for an admin of the platform company). The router gets `approve` and `reject` (permission `decideRequest`, platform only; reject deletes the row and needs a reason) and `withdraw` (permission `request`, the requesting company only), from `api/requestableActions.ts`. Notifications: `ENTRY_REQUESTED`, `ENTRY_REQUEST_APPROVED`, `ENTRY_REQUEST_REJECTED`.
+
 ## Module selection
 
 Set `ENABLED_MODULES` (comma-separated) to limit which folders under `modules/` load at runtime. When unset, every present module folder is enabled. `core` is always included, and each requested module brings the modules it `dependsOn` in `modules/core/modules.manifest.json` (the one manifest, also read by the sinfonia build and the root checks).

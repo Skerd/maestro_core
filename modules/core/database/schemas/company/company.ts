@@ -19,10 +19,6 @@ import {
     IOwnershipPluginFields,
     ISoftDeletePluginFields
 } from "@coreModule/database/types/plugin-fields";
-import {createCurrencies} from "@coreModule/database/schemas/currency/currency.defaults";
-import {createCountries} from "@coreModule/database/schemas/country/country.defaults";
-import {createStates} from "@coreModule/database/schemas/state/state.defaults";
-import {createCities} from "@coreModule/database/schemas/city/city.defaults";
 import {addModelData} from "@coreModule/database/collections";
 import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
 import {CitySimpleSnippet} from "@coreModule/database/schemas/city/city.snippets";
@@ -606,18 +602,6 @@ CompanySchema.methods.addCompanyDemoData = async function (parentLogger?: server
     logger.start(`Adding company demo data for company named '${this.name}' with VAT '${this.vat}'...`);
 
     try{
-        logger.debug(`Adding currencies, countries, states and cities...`);
-        await createCurrencies(logger, this);
-        await createCountries(logger, this);
-        await createStates(logger, this);
-        await createCities(logger, this);
-        logger.debug(`Added currencies, countries, states and cities!`);
-    }catch (e){
-        logger.err(e instanceof Error ? (e.stack ?? e.message) : String(e));
-        logger.fail("Failed to add company demo data for company named '" + this.name + "' with VAT '" + this.vat + "'!");
-    }
-
-    try{
         logger.debug(`Adding core demo data...`);
         await seedCoreDemoData(logger, this);
         logger.debug(`Added core demo data!`);
@@ -739,7 +723,7 @@ CompanySchema.methods.getAllRoles = async function (fetchAdminRoles: boolean = f
 
 // `company` here is the parent company that created this one, not a tenant partition (D16).
 ownershipPlugin(CompanySchema, {tenantScoped: false});
-// Its addresses' places and its logo are its own rows (D104): `company` names the parent, so they are judged by `_id`.
+// Its logo is its own row (D104): `company` names the parent, so it is judged by `_id`. Places are platform lists (D160).
 checkTenantReferences(CompanySchema, "_id");
 publicMediaPlugin(CompanySchema, {schemaDef: CompanySchemaDef, companyFromDocumentId: true});
 auditPlugin(CompanySchema);

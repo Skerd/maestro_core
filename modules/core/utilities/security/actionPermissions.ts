@@ -60,6 +60,16 @@ export function actionPermissionEntries(): {name: string; group: string; tag: st
 }
 
 /**
+ * Whether the caller's role holds the permission of `methodName` on `model`: the `others` tag when acting as another
+ * user, the action's own `scope` when it declares one. Also checks a permission that gates something other than an
+ * action route, e.g. requesting an entry of a requestable list through its create route (D160).
+ */
+export function hasActionPermission(model: Model<any>, methodName: string, ctx: UserContext | undefined, scope?: Scope): boolean {
+    const tag = actionPermissionTag(model, methodName, scope ?? (ctx?.isSelf === false ? "others" : "self"));
+    return !!tag && (ctx?.permissions?.includes(tag) ?? false);
+}
+
+/**
  * Refuses the action unless the caller's role holds its permission. Runs after `authMW`; acting as
  * another user (impersonation) needs the `others` tag, like the model permissions. An action that declares
  * its `scope` always needs that scope's tag.
@@ -67,8 +77,8 @@ export function actionPermissionEntries(): {name: string; group: string; tag: st
 export function actionPermissionMW(model: Model<any>, methodName: string, scope?: Scope): RequestHandler {
     return (req, _res, next) => {
         const ctx: UserContext | undefined = req.body?.actionUserCtx;
+        if (hasActionPermission(model, methodName, ctx, scope)) return next();
         const tag = actionPermissionTag(model, methodName, scope ?? (ctx?.isSelf === false ? "others" : "self"));
-        if (tag && ctx?.permissions?.includes(tag)) return next();
         const label = tag ?? `${model.collection.name}[action:others:${methodName}]`;
         const module = requestContext.getStore()?.routeModule ?? "no module";
         logger.warn(`Action permission refused ${label} for user ${ctx?.userId ?? "unknown"} in ${module}`);

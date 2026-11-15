@@ -3,6 +3,7 @@ import {ICurrency} from "@coreModule/database/schemas/currency/currency";
 import {
     mapLifeCycleToDTO,
     mapOwnershipToDTO,
+    mapRequestableToDTO,
     mapSoftDeleteToDTO
 } from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
@@ -15,6 +16,7 @@ export function currencyToDTO(currency: ICurrency): Currency {
         abbreviation: currency.abbreviation,
         ...mapSoftDeleteToDTO(currency),
         ...mapOwnershipToDTO(currency),
+        ...mapRequestableToDTO(currency),
         ...mapLifeCycleToDTO(currency),
     };
 }

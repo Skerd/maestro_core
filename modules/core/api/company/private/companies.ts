@@ -15,7 +15,9 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/dslFilterMW";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
 import {TableForm, TableResponse} from "armonia/src/modules/core/types/shared.types";
-import {validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import {validateSingleForm, validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
+import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import {companiesBasicInfoFormSchema} from "armonia/src/modules/core/api/company/private/company/companiesBasicInfo.form.validator";
 import {escapeRegex} from "@coreModule/utilities/helpers";
 import {SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
@@ -64,7 +66,7 @@ type GetCompaniesType = AuthenticatedMWType & DslFilterMWType & SchemaSanitizerM
  * @remarks Fetches company ids first, then full company per id with role-resolved permissions
  */
 async function getCompanies(params: GetCompaniesType): Promise<TableResponse<CompanyData>> {
-    const {logger, userInfo, languageCode, actionUserCtx, actionUserInfo, offset, limit, sortBy, sortOrder, dslFilterQuery, sanitizedReadFields} = params;
+    const {logger, userInfo, languageCode, offset, limit, sortBy, sortOrder, dslFilterQuery} = params;
 
     logger.start(`Trying to get all companies (offset ${offset}, limit ${limit})...`);
 
@@ -82,27 +84,55 @@ async function getCompanies(params: GetCompaniesType): Promise<TableResponse<Com
         companyService.count(filterQuery, opts)
     ]);
 
-    const data = await Promise.all(
-        companyIdsResult.map(async (company) => {
-            const permissions = company._id.toString() === actionUserCtx.orgId ? actionUserCtx.permissions : await actionUserInfo.getCompanyRolePermissions(company._id);
-            const ctx = { ...actionUserCtx, permissions };
-
-            const companyFields = COLLECTED_DATA["companies"]?.readFields || {};
-            const perCompanyFields = SchemaGuard.sanitizeFields(Company, companyFields, "read", ctx, languageCode);
-            const perCompanyPopulate = SchemaGuard.generatePopulate(perCompanyFields, Company.schema);
-            const fullCompany = await companyService.findOneOrThrow(
-                company._id,
-                { logger, languageCode },
-                perCompanyPopulate.populate || [],
-                `${perCompanyPopulate.select} company ${COMPANY_MODULE_FIELDS}`
-            );
-            return companyToDTO(fullCompany);
-        })
-    );
+    const data = await Promise.all(companyIdsResult.map((company) => readCompany(company._id, params)));
 
     logger.finish(`Finished fetching companies (${data.length} of ${total})!`);
 
     return { data, total };
+}
+
+/**
+ * One company as the session may read it: the fields its role in THAT company grants (the session company's own
+ * permissions when it is the one asked for).
+ */
+async function readCompany(companyId: ObjectId, params: AuthenticatedMWType): Promise<CompanyData> {
+    const {logger, languageCode, actionUserCtx, actionUserInfo} = params;
+    const permissions = companyId.toString() === actionUserCtx.orgId ? actionUserCtx.permissions : await actionUserInfo.getCompanyRolePermissions(companyId);
+    const ctx = {...actionUserCtx, permissions};
+    const companyFields = COLLECTED_DATA["companies"]?.readFields || {};
+    const perCompanyFields = SchemaGuard.sanitizeFields(Company, companyFields, "read", ctx, languageCode);
+    const perCompanyPopulate = SchemaGuard.generatePopulate(perCompanyFields, Company.schema);
+    const fullCompany = await companyService.findOneOrThrow(
+        companyId,
+        {logger, languageCode},
+        perCompanyPopulate.populate || [],
+        `${perCompanyPopulate.select} company ${COMPANY_MODULE_FIELDS}`,
+    );
+    return companyToDTO(fullCompany);
+}
+
+/**
+ * POST /api/companies/single
+ *
+ * One company, for a sheet opened from a reference (e.g. who requested a platform list entry, D160): a company the
+ * user belongs to, or any company for an admin of the platform company. Anything else is `company_not_found`.
+ */
+router.post(
+    "/single",
+    authMW("private"),
+    rateLimiter({windowMs: 60000, max: 60}),
+    validateFormZod(validateSingleForm),
+    asyncHandler(getCompany),
+);
+async function getCompany(params: AuthenticatedMWType & {_id: string}): Promise<CompanyData> {
+    const {userInfo, languageCode} = params;
+    const companyId = new ObjectId(params._id);
+    const ownIds = userInfo.companies.map((c: {_id?: ObjectId}) => String(c._id ?? c));
+    const platformAdmin = isPlatformCompany(params.company) && params.actionUserCtx.isAdmin;
+    if (!platformAdmin && !ownIds.includes(companyId.toString())) {
+        throw apiValidationException("company_not_found", "", null, languageCode);
+    }
+    return readCompany(companyId, params);
 }
 
 /**

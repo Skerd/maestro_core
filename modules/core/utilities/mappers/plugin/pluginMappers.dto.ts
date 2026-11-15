@@ -1,11 +1,12 @@
 /**
- * Reusable mappers for Mongoose plugin data (softDeletePlugin, ownershipPlugin).
+ * Reusable mappers for Mongoose plugin data (softDeletePlugin, ownershipPlugin, requestablePlugin).
  * Use these to avoid duplicating mapping logic across entity DTOs.
  */
 
 import type {ObjectId} from "mongodb";
 import type {CompanyBlank} from "armonia/src/modules/core/dto/company.dto";
 import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
+import type {RequestableData, RequestStatus} from "armonia/src/modules/core/types/shared.types";
 import {CompanyBlankSnippet} from "@coreModule/database/schemas/company/company.snippets";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
@@ -99,4 +100,31 @@ export function mapLifeCycleToDTO<T extends LifeCycleDTO>(doc: T): Partial<LifeC
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt
     }
+}
+/** Doc shape with requestablePlugin fields */
+export type RequestableDoc = {
+    requestStatus?: RequestStatus;
+    requestedAt?: Date;
+    requestedBy?: UserRefSource;
+    requestedByCompany?: ObjectId | null;
+    requestedByCompanyName?: string;
+    decidedAt?: Date;
+    decidedBy?: UserRefSource;
+    decisionNotes?: string;
+};
+
+/** Maps requestablePlugin fields to the DTO shape; rows from before the plugin read as approved. */
+export function mapRequestableToDTO<T extends RequestableDoc>(doc: T): RequestableData {
+    const requestedBy = mapSnippet<SimpleBlankUser>()(doc.requestedBy, SimpleBlankUserSnippet);
+    const decidedBy = mapSnippet<SimpleBlankUser>()(doc.decidedBy, SimpleBlankUserSnippet);
+    return {
+        requestStatus: doc.requestStatus ?? "approved",
+        ...(doc.requestedAt ? {requestedAt: doc.requestedAt} : {}),
+        ...(requestedBy ? {requestedBy} : {}),
+        ...(doc.requestedByCompany ? {requestedByCompany: doc.requestedByCompany.toString()} : {}),
+        ...(doc.requestedByCompanyName ? {requestedByCompanyName: doc.requestedByCompanyName} : {}),
+        ...(doc.decidedAt ? {decidedAt: doc.decidedAt} : {}),
+        ...(decidedBy ? {decidedBy} : {}),
+        ...(doc.decisionNotes ? {decisionNotes: doc.decisionNotes} : {}),
+    };
 }

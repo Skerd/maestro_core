@@ -1,5 +1,6 @@
 import {ObjectId} from "mongodb";
 import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
+import {platformListRouteOptions} from "@coreModule/api/platformListRoute";
 import {cityService} from "@coreModule/database/schemas/city/city.service";
 import {countryService} from "@coreModule/database/schemas/country/country.service";
 import {stateService} from "@coreModule/database/schemas/state/state.service";
@@ -24,30 +25,35 @@ export const {router} = createCrudRouter<ICity, CreateCityFormType, EditCityForm
     toDTO:           cityToDTO,
     toDTOArray:      citiesToDTO,
     toSelect:        citiesToSelect,
-    buildCreateData: async ({name, country, state, company, session, logger, languageCode}) => {
-        const resolvedCountry = await countryService.findOneOrThrow(
-            {_id: new ObjectId(country), company: company._id},
-            {session, logger, languageCode},
-        );
-        let resolvedState = undefined;
-        if (state) {
-            resolvedState = await stateService.findOneOrThrow(
-                {_id: new ObjectId(state), company: company._id, country: resolvedCountry._id},
+    // A platform list (D160): every company reads the same rows, only the platform company writes them; another
+    // company's create is a request the platform approves (requestablePlugin).
+    ...platformListRouteOptions<ICity, CreateCityFormType>({
+        model: City,
+        collectionName: "cities",
+        toDTO: cityToDTO,
+        service: cityService,
+        buildCreateData: async ({name, country, state, session, logger, languageCode}) => {
+            const resolvedCountry = await countryService.findOneOrThrow(
+                {_id: new ObjectId(country)},
                 {session, logger, languageCode},
             );
-        }
-        return {
-            name, 
-            country: resolvedCountry, 
-            state: resolvedState
-        };
-    },
-    buildUpdateData: async ({name, country, state, company, session, logger, languageCode}, writeFields) => {
+            let resolvedState = undefined;
+            if (state) {
+                resolvedState = await stateService.findOneOrThrow(
+                    {_id: new ObjectId(state), country: resolvedCountry._id},
+                    {session, logger, languageCode},
+                );
+            }
+            return {
+                name, 
+                country: resolvedCountry, 
+                state: resolvedState
+            };
+        },
+    }),
+    buildUpdateData: async ({name, country, state, session, logger, languageCode}, writeFields) => {
         const resolvedCountry = country !== undefined && writeFields.country ? await countryService.findOneOrThrow(
-            {
-                _id: new ObjectId(country),
-                company: company._id
-            },
+            {_id: new ObjectId(country)},
             {session, logger, languageCode},
         ) : undefined;
         let resolvedState: Awaited<ReturnType<typeof stateService.findOneOrThrow>> | null | undefined;
@@ -58,7 +64,6 @@ export const {router} = createCrudRouter<ICity, CreateCityFormType, EditCityForm
                 resolvedState = await stateService.findOneOrThrow(
                     {
                         _id: new ObjectId(state),
-                        company: company._id,
                         ...(resolvedCountry ? {country: resolvedCountry._id} : {}),
                     },
                     {session, logger, languageCode},

@@ -31,6 +31,12 @@ export const NotificationEventCodes = {
     COMPANY_UPDATED: "COMPANY_UPDATED",
     /** A public-website visitor is waiting for a human to join their chat. */
     PUBLIC_CHAT_HANDOFF_REQUESTED: "PUBLIC_CHAT_HANDOFF_REQUESTED",
+    /** A company requested an entry of a requestable platform list (requestablePlugin, D160); to the platform's deciders. */
+    ENTRY_REQUESTED: "ENTRY_REQUESTED",
+    /** The platform approved the requested entry; to whoever requested it. */
+    ENTRY_REQUEST_APPROVED: "ENTRY_REQUEST_APPROVED",
+    /** The platform rejected (deleted) the requested entry; to whoever requested it, with the reason. */
+    ENTRY_REQUEST_REJECTED: "ENTRY_REQUEST_REJECTED",
 } as const;
 
 export interface NotificationEvent {

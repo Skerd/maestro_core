@@ -6,7 +6,8 @@ import type {ViewNode} from "armonia/src/modules/core/api/auxiliary/private/view
  */
 export const lifecycleSheetGroup: ViewNode = {
     render: "#SheetGroup",
-    props: {title: "lifecycle", defaultOpen: true},
+    // A management section, not the record's own data: its own icon and a neutral accent on every sheet.
+    props: {title: "lifecycle", defaultOpen: true, titleIcon: "#History", accent: "neutral"},
     dependentAny: ["createdAt", "updatedAt", "createdBy", "deletedAt", "deletedBy"],
     permissions: { readAny: ["createdAt", "updatedAt", "createdBy", "deletedAt", "deletedBy"] },
     children: [

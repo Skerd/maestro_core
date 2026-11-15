@@ -5,6 +5,7 @@ import {
     CURRENCY_SYMBOL_MAX,
 } from "armonia/src/modules/core/api/finance/private/currency/currency.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
+import {requestSheetGroup} from "../shared/requestSheetGroup";
 
 export const currencySheetView: ViewConfig = {
     model: "currencies",
@@ -70,6 +71,7 @@ export const currencySheetView: ViewConfig = {
             ],
         },
         lifecycleSheetGroup,
+        requestSheetGroup,
     ],
 };
 

@@ -1,6 +1,7 @@
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
+import requestablePlugin, {type IRequestablePluginFields} from "@coreModule/database/plugins/requestablePlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
@@ -22,7 +23,7 @@ import {
     CITY_NAME_MAX,
 } from "armonia/src/modules/core/api/auxiliary/private/city/city.schema-def";
 
-export interface ICity extends Document, IOwnershipPluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
+export interface ICity extends Document, IOwnershipPluginFields, IRequestablePluginFields, ISoftDeletePluginFields, ILifeCyclePluginFields {
     name: string;
     state?: IState;
     country: ICountry;
@@ -79,7 +80,10 @@ const CitySchema = new Schema<ICity>(
     }
 );
 
-ownershipPlugin(CitySchema);
+// A platform list (D160): the platform company owns every row and every company reads and links to them.
+ownershipPlugin(CitySchema, {tenantScoped: false});
+// Another company asks for a missing entry with the list's own create form; the platform approves it.
+requestablePlugin(CitySchema);
 auditPlugin(CitySchema);
 softDeletePlugin(CitySchema);
 lifeCyclePlugin(CitySchema);

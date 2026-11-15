@@ -6,6 +6,7 @@ import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 import {
     mapLifeCycleToDTO,
     mapOwnershipToDTO,
+    mapRequestableToDTO,
     mapSoftDeleteToDTO
 } from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
@@ -17,6 +18,7 @@ export function stateToDTO(state: IState): State {
         country: mapSnippet<CountrySimple>()(state.country, CountrySimpleSnippet)!,
         ...mapSoftDeleteToDTO(state),
         ...mapOwnershipToDTO(state),
+        ...mapRequestableToDTO(state),
         ...mapLifeCycleToDTO(state)
     };
 }

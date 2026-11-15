@@ -36,6 +36,8 @@ declare module "mongoose" {
         permissions?: ModelPermissions;
         // if access mode is strict, self and others permissions are applied, otherwise just self
         accessMode?: AccessMode;
+        // set by requestablePlugin: the model's rows may be requested by companies other than the platform (D160)
+        requestable?: boolean;
     }
 
 

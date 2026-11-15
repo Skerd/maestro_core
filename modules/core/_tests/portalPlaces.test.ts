@@ -39,16 +39,17 @@ beforeEach(() => asCrossTenant("test setup", async () => {
 }));
 
 describe("portal address places (D142)", () => {
-    it("lists the host company's countries, and a country's states and cities, to a visitor with no account", async () => {
-        const {albania, otherAlbania} = await asCrossTenant("test setup", async () => {
+    it("lists the platform's countries, and a country's states and cities, to a visitor with no account (D160)", async () => {
+        const {albania, stray} = await asCrossTenant("test setup", async () => {
             const albania = (await Country.collection.insertOne({name: "Albania", code: "AL", phoneCode: "355", company: platform, deletedAt: null})).insertedId;
-            const otherAlbania = (await Country.collection.insertOne({name: "Albania", code: "AL", phoneCode: "355", company: other, deletedAt: null})).insertedId;
+            // A row only the platform list may hold: another company's leftover never shows.
+            const stray = (await Country.collection.insertOne({name: "Kosovo", code: "XK", phoneCode: "383", company: other, deletedAt: null})).insertedId;
             await State.collection.insertOne({name: "Tirana District", code: "TR", country: albania, company: platform, deletedAt: null});
             await City.collection.insertMany([
                 {name: "Tirana", country: albania, company: platform, deletedAt: null},
                 {name: "Durres", country: albania, company: platform, deletedAt: null},
             ]);
-            return {albania, otherAlbania};
+            return {albania, stray};
         });
 
         const countries = await request(app).get("/api/portal/places/countries").set(visitor());
@@ -56,7 +57,7 @@ describe("portal address places (D142)", () => {
         const cities = await request(app).post("/api/portal/places/cities").set(visitor()).send({countryId: albania.toString()});
 
         expect(countries.body.data).toEqual([{_id: albania.toString(), name: "Albania", code: "AL"}]);
-        expect(countries.body.data.map((row: {_id: string}) => row._id)).not.toContain(otherAlbania.toString());
+        expect(countries.body.data.map((row: {_id: string}) => row._id)).not.toContain(stray.toString());
         expect(states.body.data.map((row: {name: string}) => row.name)).toEqual(["Tirana District"]);
         expect(cities.body.data.map((row: {name: string}) => row.name)).toEqual(["Durres", "Tirana"]);
     });

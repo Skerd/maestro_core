@@ -1,6 +1,7 @@
 import type {ViewConfig} from "armonia/src/modules/core/api/auxiliary/private/viewConfig";
 import {CITY_NAME_MAX} from "armonia/src/modules/core/api/auxiliary/private/city/city.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
+import {requestSheetGroup} from "../shared/requestSheetGroup";
 
 export const citySheetView: ViewConfig = {
     model: "cities",
@@ -69,6 +70,7 @@ export const citySheetView: ViewConfig = {
             ],
         },
         lifecycleSheetGroup,
+        requestSheetGroup,
     ],
 };
 

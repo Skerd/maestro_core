@@ -87,7 +87,7 @@ beforeEach(async () => {
 });
 
 describe("PUT /api/company (TD-B115)", {timeout: 60000}, () => {
-    it("creates a company with a logo and an address, both its own rows", async () => {
+    it("creates a company with its own logo and an address naming the platform's places (D160)", async () => {
         const res = await createCompany({name: "Lakeside", vat: "LK-1", siteSlug: "lakeside"});
         expect(res.body.error_code ? res.body : "ok").toBe("ok");
 
@@ -95,16 +95,9 @@ describe("PUT /api/company (TD-B115)", {timeout: 60000}, () => {
         expect(created).toBeTruthy();
         const id = created!._id;
         const [address] = created!.addresses;
-        const [country, state, city] = await Promise.all([
-            Country.collection.findOne({_id: address.country}),
-            State.collection.findOne({_id: address.state}),
-            City.collection.findOne({_id: address.city}),
-        ]);
-        expect([country?.company, state?.company, city?.company]).toEqual([id, id, id]);
-        expect([country?.code, state?.name, city?.name]).toEqual(["CH", "Zurich", "Zurich"]);
-        expect([String(state?.country), String(city?.country), String(city?.state)]).toEqual([String(country?._id), String(country?._id), String(state?._id)]);
-        // The creator's places stay as they were.
-        expect(await Country.collection.countDocuments({company: creatorCompany})).toBe(1);
+        // The same rows the dialog offered: places are platform lists, never copied.
+        expect([address.country, address.state, address.city].map(String)).toEqual([places.country, places.state, places.city].map(String));
+        expect(await Country.collection.countDocuments({})).toBe(1);
 
         // One logo file, moved to the new company and public like every company logo.
         const media = await Media.collection.find({}).toArray();
@@ -114,7 +107,7 @@ describe("PUT /api/company (TD-B115)", {timeout: 60000}, () => {
         expect(media[0].isPublic).toBe(true);
     });
 
-    it("reuses the new company's place rows for a second address in the same country", async () => {
+    it("takes two addresses in one country without adding place rows", async () => {
         const second = await City.collection.insertOne({company: creatorCompany, name: "Winterthur", country: places.country, state: places.state, deletedAt: null});
         const data = {
             name: "Twin", vat: "TW-1", siteSlug: "twin", allowedDomains: [],
@@ -125,19 +118,18 @@ describe("PUT /api/company (TD-B115)", {timeout: 60000}, () => {
         const res = await request(app).put("/api/company").set(callerHeader(admin)).field("data", JSON.stringify(data));
         expect(res.body.error_code ? res.body : "ok").toBe("ok");
         const created = await Company.collection.findOne({vat: "TW-1"});
-        expect(await Country.collection.countDocuments({company: created!._id})).toBe(1);
-        expect(await State.collection.countDocuments({company: created!._id})).toBe(1);
-        expect(await City.collection.countDocuments({company: created!._id})).toBe(2);
+        expect(created!.addresses.map((address: {city: ObjectId}) => String(address.city))).toEqual([places.city, second.insertedId].map(String));
+        expect([await Country.collection.countDocuments({}), await State.collection.countDocuments({}), await City.collection.countDocuments({})]).toEqual([1, 1, 2]);
     });
 
-    it("still refuses another company's place", async () => {
+    it("refuses a city that is not in the address's country", async () => {
         const foreign = await Country.collection.insertOne({company: new ObjectId(), name: "Elsewhere", code: "XX", phoneCode: "1", deletedAt: null});
         const data = {
             name: "Odd", vat: "OD-1", siteSlug: "odd", allowedDomains: [],
             addresses: [{street: "s", postalCode: "1", latitude: 47.37, longitude: 8.54, country: foreign.insertedId.toString(), city: places.city.toString()}],
         };
         const res = await request(app).put("/api/company").set(callerHeader(admin)).field("data", JSON.stringify(data));
-        expect(res.body.error_code).toBe("country_not_found");
+        expect(res.body.error_code).toBe("city_not_found");
         expect(await Company.collection.countDocuments({vat: "OD-1"})).toBe(0);
     });
 

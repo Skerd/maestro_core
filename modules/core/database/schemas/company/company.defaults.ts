@@ -1,4 +1,4 @@
-import Company from "./company";
+import Company, {type ICompany} from "./company";
 import {ObjectId} from "mongodb";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
@@ -6,6 +6,10 @@ import User from "@coreModule/database/schemas/user/user";
 import {ensureModuleDefaultRolesRegistered} from "@coreModule/utilities/modules/ensureModuleDefaultRoles";
 import Country from "@coreModule/database/schemas/country/country";
 import City from "@coreModule/database/schemas/city/city";
+import {createCurrencies} from "@coreModule/database/schemas/currency/currency.defaults";
+import {createCountries} from "@coreModule/database/schemas/country/country.defaults";
+import {createStates} from "@coreModule/database/schemas/state/state.defaults";
+import {createCities} from "@coreModule/database/schemas/city/city.defaults";
 import {resolveDemoImagesFromUnsplash} from "@coreModule/database/demo/demoMedia";
 import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
 
@@ -304,15 +308,13 @@ function applyCompanyProfile(company: any, seed: any, includeModules: boolean): 
 }
 
 /**
- * Sets the company's street address from its own country and city records (seeded
- * per company by `addCompanyDemoData`). The city is what the portal's "where" search matches.
+ * Sets the company's street address from the platform's country and city lists (D160). The city is what the portal's
+ * "where" search matches.
  */
 async function applyDemoAddress(company: any, address: DemoAddress | undefined): Promise<void> {
     if (!address) return;
-    const [country, city] = await Promise.all([
-        Country.findOne({company: company._id, code: address.countryCode}).select("_id"),
-        City.findOne({company: company._id, name: address.cityName}).select("_id"),
-    ]);
+    const country = await Country.findOne({code: address.countryCode}).select("_id");
+    const city = country ? await City.findOne({country: country._id, name: address.cityName}).select("_id") : null;
     if (!country || !city) return;
     const current = company.addresses?.[0];
     company.addresses = [{
@@ -361,6 +363,14 @@ async function syncCompanyBot(company: any): Promise<void> {
     await bot.save();
 }
 
+/** Currencies, countries, states and cities: the platform lists, owned by the platform company (D160). */
+async function createPlatformLists(logger: serverLogger, platformCompany: ICompany): Promise<void> {
+    await createCurrencies(logger, platformCompany);
+    await createCountries(logger, platformCompany);
+    await createStates(logger, platformCompany);
+    await createCities(logger, platformCompany);
+}
+
 export async function createCompanies(parentLogger?: serverLogger, demoData: boolean = false){
     let logger = getLogger("mongoDbInitialization-createCompanies", parentLogger);
     logger.start(`Creating companies...`);
@@ -396,6 +406,10 @@ export async function createCompanies(parentLogger?: serverLogger, demoData: boo
             }
 
             logger.debug("Creating needed company data...");
+            if (currentCompany.isPlatformOwner) {
+                // The platform lists (D160) are seeded once, owned by the platform company; every company reads them.
+                await createPlatformLists(logger, currentCompany);
+            }
             await currentCompany.createDefaultRoles(logger);
             if( demoData ){
                 if (!existed) {

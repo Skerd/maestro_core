@@ -5,6 +5,7 @@ import {
     COUNTRY_PHONE_CODE_MAX,
 } from "armonia/src/modules/core/api/auxiliary/private/country/country.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
+import {requestSheetGroup} from "../shared/requestSheetGroup";
 
 export const countrySheetView: ViewConfig = {
     model: "countries",
@@ -60,6 +61,7 @@ export const countrySheetView: ViewConfig = {
             ],
         },
         lifecycleSheetGroup,
+        requestSheetGroup,
     ],
 };
 

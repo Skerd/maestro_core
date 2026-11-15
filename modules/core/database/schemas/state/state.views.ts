@@ -4,6 +4,7 @@ import {
     STATE_NAME_MAX,
 } from "armonia/src/modules/core/api/auxiliary/private/state/state.schema-def";
 import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
+import {requestSheetGroup} from "../shared/requestSheetGroup";
 
 export const stateSheetView: ViewConfig = {
     model: "states",
@@ -66,6 +67,7 @@ export const stateSheetView: ViewConfig = {
             ],
         },
         lifecycleSheetGroup,
+        requestSheetGroup,
     ],
 };
 

@@ -314,7 +314,7 @@ describe("records without the tenant scope (TD-B109)", () => {
         expect((await Member.findById(member._id))!.memberships[0].rates).toEqual([]);
     });
 
-    it("applies to Company (its own places and logo) and User (each membership's roles)", async () => {
+    it("applies to Company (its own logo; places are platform lists) and User (each membership's roles)", async () => {
         const [{insertedId: roleA}, {insertedId: roleB}, {insertedId: countryB}, {insertedId: mediaB}] = await Promise.all([
             Role.collection.insertOne({company: companyA, name: "A"}),
             Role.collection.insertOne({company: companyB, name: "B"}),
@@ -322,8 +322,9 @@ describe("records without the tenant scope (TD-B109)", () => {
             Media.collection.insertOne({company: companyB}),
         ]);
         await expect(Company.updateOne({_id: companyA}, {$set: {logo: mediaB}})).rejects.toMatchObject(refused);
+        // A country is a platform row every company names (D160), whoever owns it.
         await expect(Company.updateOne({_id: companyA}, {$set: {addresses: [{street: "s", postalCode: "1", city: new ObjectId(), country: countryB}]}}))
-            .rejects.toMatchObject({...refused, content: ["Company.addresses.country"]});
+            .resolves.toBeTruthy();
         // Its own logo; publicMediaPlugin then marks it public inside that company's scope.
         await expect(requestContext.run({tenantCompanyId: companyB.toString()}, async () => await Company.updateOne({_id: companyB}, {$set: {logo: mediaB}}))).resolves.toBeTruthy();
 

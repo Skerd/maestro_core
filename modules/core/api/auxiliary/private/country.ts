@@ -1,4 +1,5 @@
 import {createCrudRouter} from "@coreModule/api/crudRouterFactory";
+import {platformListRouteOptions} from "@coreModule/api/platformListRoute";
 import {countryService} from "@coreModule/database/schemas/country/country.service";
 import Country, {type ICountry} from "@coreModule/database/schemas/country/country";
 import {countriesToDTO, countryToDTO} from "@coreModule/utilities/mappers/country/countryMapper.dto";
@@ -18,10 +19,18 @@ export const {router} = createCrudRouter<ICountry, CreateCountryFormType, EditCo
     toDTO:          countryToDTO,
     toDTOArray:     countriesToDTO,
     toSelect:       countriesToSelect,
-    buildCreateData: ({name, code, phoneCode}) => ({
-        name,
-        code:      code.toUpperCase(),
-        phoneCode,
+    // A platform list (D160): every company reads the same rows, only the platform company writes them; another
+    // company's create is a request the platform approves (requestablePlugin).
+    ...platformListRouteOptions<ICountry, CreateCountryFormType>({
+        model: Country,
+        collectionName: "countries",
+        toDTO: countryToDTO,
+        service: countryService,
+        buildCreateData: ({name, code, phoneCode}) => ({
+            name,
+            code:      code.toUpperCase(),
+            phoneCode,
+        }),
     }),
     buildUpdateData: ({name, code, phoneCode}, writeFields) => ({
         ...(name      !== undefined && writeFields.name      && {name}),

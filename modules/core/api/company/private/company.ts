@@ -47,7 +47,6 @@ import {isValidTimeZone} from "@coreModule/utilities/time/timeWindows";
 import type {FilterQuery} from "mongoose";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
 import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
-import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
 
 /**
  * Company Management Endpoints (Private)
@@ -102,7 +101,6 @@ async function assertSiteSlugAvailable(
 
 async function validateAndMapAddresses(
     addresses: any[] | undefined,
-    companyId: ObjectId,
     ctx: {logger: any; languageCode: string; session: any},
 ): Promise<any[]> {
     // `addresses` is optional on the form: none sent means none to store.
@@ -112,13 +110,13 @@ async function validateAndMapAddresses(
             const stateId   = addr.state ? new ObjectId(addr.state) : undefined;
             const cityId    = new ObjectId(addr.city);
 
-            const cityFilter: Record<string, any> = {_id: cityId, company: companyId, country: countryId};
+            const cityFilter: Record<string, any> = {_id: cityId, country: countryId};
             if (stateId) cityFilter.state = stateId;
 
             const [country, state, city] = await Promise.all([
-                countryService.findOne({_id: countryId, company: companyId}, ctx),
+                countryService.findOne({_id: countryId}, ctx),
                 stateId
-                    ? stateService.findOne({_id: stateId, company: companyId, country: countryId}, ctx)
+                    ? stateService.findOne({_id: stateId, country: countryId}, ctx)
                     : Promise.resolve(true as any),
                 cityService.findOne(cityFilter, ctx),
             ]);
@@ -243,57 +241,6 @@ async function getCompanyBasicInfo(params: GetCompanyBasicInfoType): Promise<Bas
     };
 }
 
-type MappedAddress = Awaited<ReturnType<typeof validateAndMapAddresses>>[number];
-
-/**
- * A new company's addresses name its own places (D104), but it has none yet: the dialog offers the creator's. Each
- * place is copied into the new company once (country by row, then its state and city under the copies), so the
- * address keeps what the creator chose and every reference is the new company's own row.
- */
-async function copyPlacesToNewCompany(
-    addresses: MappedAddress[],
-    newCompanyId: ObjectId,
-    ctx: CrudOptions & {languageCode: string},
-): Promise<MappedAddress[]> {
-    if (addresses.length === 0) return addresses;
-    // The creator's rows, read in the creator's scope before switching to the new company's.
-    const ids = (key: "country" | "state" | "city") => [...new Set(addresses.flatMap((address) => (address[key] ? [String(address[key])] : [])))];
-    const [countries, states, cities] = await Promise.all([
-        countryService.find({_id: {$in: ids("country")}}, ctx, undefined, "name code phoneCode"),
-        stateService.find({_id: {$in: ids("state")}}, ctx, undefined, "name code"),
-        cityService.find({_id: {$in: ids("city")}}, ctx, undefined, "name"),
-    ]);
-    const row = <T extends {_id?: unknown}>(rows: T[], id: unknown) => rows.find((candidate) => String(candidate._id) === String(id));
-
-    return withTenant(newCompanyId, async () => {
-        const copies = new Map<string, ObjectId>();
-        const copyOnce = async (key: string, create: () => Promise<{_id?: unknown}>) => {
-            const known = copies.get(key);
-            if (known) return known;
-            const created = new ObjectId(String((await create())._id));
-            copies.set(key, created);
-            return created;
-        };
-        const mapped: MappedAddress[] = [];
-        for (const address of addresses) {
-            const country = row(countries, address.country);
-            const state = address.state ? row(states, address.state) : undefined;
-            const city = row(cities, address.city);
-            if (!country || !city || (address.state && !state)) throw apiValidationException("city_not_found", null, null, ctx.languageCode);
-            const countryId = await copyOnce(`country:${country._id}`, () =>
-                countryService.create({name: country.name, code: country.code, phoneCode: country.phoneCode, company: newCompanyId}, ctx));
-            const stateId = state
-                ? await copyOnce(`state:${state._id}`, () =>
-                    stateService.create({name: state.name, code: state.code, country: countryId, company: newCompanyId}, ctx))
-                : undefined;
-            const cityId = await copyOnce(`city:${city._id}`, () =>
-                cityService.create({name: city.name, country: countryId, ...(stateId ? {state: stateId} : {}), company: newCompanyId}, ctx));
-            mapped.push({...address, country: countryId, state: stateId, city: cityId});
-        }
-        return mapped;
-    });
-}
-
 /**
  * PUT /api/company
  *
@@ -361,12 +308,8 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
 
     const newCompanyId = new ObjectId();
     const crudOptions = {session, logger, languageCode, auditUserId: actionUserCtx.userId};
-    // The dialog offers the creator's places; the new company gets its own copies (D104).
-    const ownAddresses = await copyPlacesToNewCompany(
-        await validateAndMapAddresses(addresses, company._id, {languageCode, session, logger}),
-        newCompanyId,
-        crudOptions,
-    );
+    // Places are platform lists (D160): the new company's addresses name the same rows the dialog offered.
+    const ownAddresses = await validateAndMapAddresses(addresses, {languageCode, session, logger});
     // The logo was uploaded in the creator's company; a company's logo is its own Media row (publicMediaPlugin).
     const logo = fileIds?.[0] ?? null;
     if (logo) {
@@ -547,7 +490,7 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     // Not sent: the addresses stay as they are.
     if (sanitizedWriteFields.addresses && addresses !== undefined) {
         if( addresses.length > 0 ){
-            existingCompany.addresses = await validateAndMapAddresses(addresses, company._id, {languageCode, session, logger});
+            existingCompany.addresses = await validateAndMapAddresses(addresses, {languageCode, session, logger});
         }
         else if( addresses.length === 0 ){
             existingCompany.addresses = [];

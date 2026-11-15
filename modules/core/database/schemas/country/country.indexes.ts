@@ -1,12 +1,9 @@
 import {Schema} from "mongoose";
 
 export function applyCountryIndexes(CountrySchema: Schema): void {
-    CountrySchema.index({company: 1, createdAt: -1});
+    // A platform list (D160): every row belongs to the platform company, so no index leads with `company`.
     CountrySchema.index({createdAt: -1});
-    CountrySchema.index({company: 1, name: 1});
     CountrySchema.index({name: 1});
-    CountrySchema.index({company: 1, code: 1});
-    CountrySchema.index({code: 1});
-    CountrySchema.index({company: 1, phoneCode: 1});
+    CountrySchema.index({code: 1}, {unique: true, partialFilterExpression: {deletedAt: null}});
     CountrySchema.index({phoneCode: 1});
 }

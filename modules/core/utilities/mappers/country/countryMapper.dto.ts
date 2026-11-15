@@ -3,6 +3,7 @@ import {Country} from "armonia/src/modules/core/api/auxiliary/private/country/co
 import {
     mapLifeCycleToDTO,
     mapOwnershipToDTO,
+    mapRequestableToDTO,
     mapSoftDeleteToDTO
 } from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
@@ -14,6 +15,7 @@ export function countryToDTO(country: ICountry): Country {
         phoneCode: country.phoneCode,
         ...mapSoftDeleteToDTO(country),
         ...mapOwnershipToDTO(country),
+        ...mapRequestableToDTO(country),
         ...mapLifeCycleToDTO(country)
     };
 }
