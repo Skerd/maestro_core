@@ -5,6 +5,7 @@ import {EMAIL, SERVER} from "@coreModule/environment";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import type {ISmtpServer} from "@coreModule/database/schemas/smtpServer/smtpServer";
 import {smtpServerService} from "@coreModule/database/schemas/smtpServer/smtpServer.service";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {DecryptString, EncryptString} from "@coreModule/utilities/security/encryption";
 import type {SmtpAuthType, SmtpEncryptionType} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.constants";
 import {
@@ -116,7 +117,8 @@ async function loadActiveServers(companyId: ObjectId | string): Promise<ISmtpSer
         return cached.servers;
     }
 
-    const servers = await smtpServerService.findActiveInSequence(new ObjectId(key));
+    // Read in the owner's tenant: the platform's servers are used on every company's behalf (D161).
+    const servers = await withTenant(key, () => smtpServerService.findActiveInSequence(new ObjectId(key)));
 
     companyServerCache.set(key, {
         servers,
@@ -215,26 +217,98 @@ export async function resolveCompanyIdForEmail(
     return defaultCompany?._id?.toString();
 }
 
+/** How a message reaches its servers. */
+export type MailDeliveryRoute = {
+    /**
+     * Send through the company's own mail servers (a module may let its companies keep some, e.g. for campaigns, D161),
+     * falling back to the platform's when it has none. Every other mail goes through the platform's servers.
+     */
+    ownServers?: boolean;
+};
+
+type CompanyIdentity = {name?: string; email?: string};
+type CachedValue<T> = {expiresAt: number; value: T};
+
+const identityCache = new Map<string, CachedValue<CompanyIdentity | null>>();
+let platformCompanyCache: CachedValue<string | undefined> | null = null;
+
+/** The platform company's id (its servers send every company's mail), cached like the servers. */
+async function platformCompanyKey(): Promise<string | undefined> {
+    if (platformCompanyCache && platformCompanyCache.expiresAt > Date.now()) return platformCompanyCache.value;
+    // Loaded at call time, like resolveCompanyIdForEmail's services: the Company model imports this module.
+    const {findPlatformCompanyId} = await import("@coreModule/utilities/security/platformAccess");
+    const value = (await findPlatformCompanyId())?.toString();
+    platformCompanyCache = {expiresAt: Date.now() + CACHE_TTL_MS, value};
+    return value;
+}
+
+/** The name and email a company's mail is sent as and answered to. */
+async function companyIdentity(companyKey: string): Promise<CompanyIdentity | null> {
+    const cached = identityCache.get(companyKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    const {companyService} = await import("@coreModule/database/schemas/company/company.service");
+    const company = await companyService.findById(companyKey, {}, undefined, "name email");
+    const value = company ? {name: company.name, email: company.email} : null;
+    identityCache.set(companyKey, {expiresAt: Date.now() + CACHE_TTL_MS, value});
+    return value;
+}
+
 /**
- * Sends mail using company SMTP servers in sequence order, then falls back to .env EMAIL_* settings.
+ * A company's mail sent through the platform's servers: from the platform server's address under the company's name,
+ * answered to the company (the caller's own reply-to or from address, else the company's email).
+ */
+function onBehalfOf(mail: MailDeliverySendOptions, identity: CompanyIdentity | null): MailDeliverySendOptions {
+    const {fromEmail, ...rest} = mail;
+    return {
+        ...rest,
+        fromName: mail.fromName ?? identity?.name,
+        replyTo: mail.replyTo ?? fromEmail ?? identity?.email,
+    };
+}
+
+/**
+ * Which servers send a company's mail and as whom (D161): mail servers are the platform's, so every company's mail goes
+ * through the platform company's servers, written as the company (`onBehalfOf`). A `route.ownServers` message (a
+ * module's campaigns) uses the company's own servers as they are, and the platform's when the company has none.
+ */
+async function resolveSender(
+    companyKey: string,
+    route: MailDeliveryRoute,
+): Promise<{servers: ISmtpServer[]; prepare: (mail: MailDeliverySendOptions) => MailDeliverySendOptions}> {
+    if (route.ownServers) {
+        const own = await loadActiveServers(companyKey);
+        if (own.length > 0) return {servers: own, prepare: (mail) => mail};
+    }
+    const platformKey = await platformCompanyKey();
+    const servers = platformKey ? await loadActiveServers(platformKey) : [];
+    if (!platformKey || platformKey === companyKey) return {servers, prepare: (mail) => mail};
+    const identity = await companyIdentity(companyKey);
+    return {servers, prepare: (mail) => onBehalfOf(mail, identity)};
+}
+
+/**
+ * Sends a company's mail through the platform's SMTP servers in sequence order (its own servers for a `route.ownServers`
+ * message), then falls back to .env EMAIL_* settings. See {@link resolveSender} for who it is sent as.
  *
  * Resolves with the transport's message id, so a caller that must match later replies or bounces can store it.
  * The id is absent when nothing was sent: email is turned off (`EMAIL_ENABLED=false`), or no server took the mail.
  */
 export async function sendMail(
     companyId: ObjectId | string | undefined | null,
-    mailOptions: MailDeliverySendOptions,
+    message: MailDeliverySendOptions,
+    route: MailDeliveryRoute = {},
 ): Promise<{messageId?: string}> {
     if (!EMAIL.ENABLED) {
         return {};
     }
 
     if (!companyId) {
-        return sendViaEnvFallback(mailOptions);
+        return sendViaEnvFallback(message);
     }
 
     const companyKey = companyId.toString();
-    const servers = await loadActiveServers(companyId);
+    const {servers, prepare} = await resolveSender(companyKey, route);
+    const mailOptions = prepare(message);
 
     for (const server of servers) {
         try {
@@ -271,7 +345,7 @@ export type PooledMailSession = {
 };
 
 /**
- * A reusable SMTP session for sending many messages to one company's servers.
+ * A reusable SMTP session for sending many messages of one company (through the servers {@link resolveSender} picks).
  *
  * {@link sendMail} builds a transport **and calls `verify()` for every single
  * message**. That is the right trade for transactional mail — fire and forget,
@@ -288,9 +362,12 @@ export type PooledMailSession = {
  */
 export async function createPooledMailSession(
     companyId: ObjectId | string | undefined | null,
+    route: MailDeliveryRoute = {},
 ): Promise<PooledMailSession> {
     const companyKey = companyId?.toString();
-    const servers = companyKey ? await loadActiveServers(companyKey) : [];
+    const {servers, prepare} = companyKey
+        ? await resolveSender(companyKey, route)
+        : {servers: [] as ISmtpServer[], prepare: (mail: MailDeliverySendOptions) => mail};
 
     // Built lazily and reused: a server that never gets used costs no socket,
     // and one that does is verified exactly once.
@@ -316,10 +393,11 @@ export async function createPooledMailSession(
     }
 
     return {
-        async send(mailOptions: MailDeliverySendOptions): Promise<{messageId?: string}> {
+        async send(message: MailDeliverySendOptions): Promise<{messageId?: string}> {
             if (!EMAIL.ENABLED) {
                 return {};
             }
+            const mailOptions = prepare(message);
 
             for (const server of servers) {
                 try {

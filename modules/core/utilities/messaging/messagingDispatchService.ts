@@ -5,6 +5,8 @@
  * Called by the notification domain service when notification channels include "sms" or "whatsapp".
  */
 
+import {findPlatformCompanyId} from "@coreModule/utilities/security/platformAccess";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import axios from "axios";
 import {ObjectId} from "mongodb";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
@@ -18,6 +20,7 @@ export interface SendMessageParams {
     to: string;       // E.164 phone number
     body: string;
     channel: "sms" | "whatsapp";
+    /** The company the message is for; it goes out through the platform's provider either way (D161). */
     companyId: string | ObjectId;
 }
 
@@ -31,11 +34,18 @@ type MessagingProviderTestSource = Pick<
     "accountSid" | "authTokenEncrypted" | "fromPhone" | "fromWhatsapp" | "name"
 >;
 
-async function getActiveProvider(companyId: string | ObjectId) {
-    return messagingProviderService.findOne(
-        {company: new ObjectId(String(companyId)), active: true},
+/**
+ * The provider that sends a company's messages: messaging providers are the platform's (D161), so it is the platform
+ * company's active one, whichever company the message is for.
+ */
+async function getActiveProvider() {
+    const platformId = await findPlatformCompanyId();
+    if (!platformId) return null;
+    // Read in the platform's tenant, whichever company's request or job sends the message.
+    return withTenant(platformId, () => messagingProviderService.findOne(
+        {company: platformId, active: true},
         {logger: undefined as any, languageCode: "en-US"},
-    );
+    ));
 }
 
 function resolveTwilioErrorDetail(err: unknown): string {
@@ -97,10 +107,10 @@ export async function testMessagingProviderConnection(
 }
 
 export async function sendMessagingNotification(params: SendMessageParams): Promise<SendMessageResult | null> {
-    const {to, body, channel, companyId} = params;
+    const {to, body, channel} = params;
     if (!to || !body) return null;
 
-    const provider = await getActiveProvider(companyId);
+    const provider = await getActiveProvider();
     if (!provider) return null;
 
     const authToken = provider.authTokenEncrypted

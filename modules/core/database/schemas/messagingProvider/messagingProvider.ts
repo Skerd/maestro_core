@@ -1,6 +1,7 @@
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
+import platformOnlyPlugin from "@coreModule/database/plugins/platformOnlyPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
@@ -129,6 +130,8 @@ const MessagingProviderSchema = new Schema<IMessagingProvider>(
 );
 
 ownershipPlugin(MessagingProviderSchema);
+// The platform's (D161): its provider sends every company's SMS and WhatsApp messages.
+platformOnlyPlugin(MessagingProviderSchema);
 auditPlugin(MessagingProviderSchema);
 softDeletePlugin(MessagingProviderSchema);
 lifeCyclePlugin(MessagingProviderSchema);

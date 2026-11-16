@@ -42,6 +42,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/permissions/accessibleRoles.form.validator";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {platformListAccess} from "@coreModule/api/platformListRoute";
+import {platformOnlyAccess} from "@coreModule/database/plugins/platformOnlyPlugin";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {AccessFormType} from "armonia/src/modules/core/api/user/private/permissions/access.form.type";
 import {AccessFormResponseType} from "armonia/src/modules/core/api/user/private/permissions/access.form.response.type";
@@ -443,7 +444,7 @@ async function AccessResource(
     }
 
     logger.finish(`Finished checking if user can access resource!`);
-    return platformListAccess(requestedResource, returnThis, params.company);
+    return platformOnlyAccess(requestedResource, platformListAccess(requestedResource, returnThis, params.company), params.company, actionUserCtx.modules);
 }
 
 /**
@@ -532,7 +533,7 @@ async function AccessAllResources(params: AuthenticatedMWType & AccessAllFormTyp
             logger.debug?.(e);
         }
 
-        return platformListAccess(model, returnThis, params.company);
+        return platformOnlyAccess(model, platformListAccess(model, returnThis, params.company), params.company, actionUserCtx.modules);
     }
 
     for( let collectedData of Object.values(COLLECTED_DATA) ) {

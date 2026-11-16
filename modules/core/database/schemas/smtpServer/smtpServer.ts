@@ -1,6 +1,7 @@
 import {Document, model, Schema, SchemaTypes} from "mongoose";
 import {normalizeSchemaPermissions} from "@coreModule/database/utilities";
 import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
+import platformOnlyPlugin from "@coreModule/database/plugins/platformOnlyPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import lifeCyclePlugin from "@coreModule/database/plugins/lifeCyclePlugin";
@@ -173,6 +174,9 @@ const SmtpServerSchema = new Schema<ISmtpServer>(
 );
 
 ownershipPlugin(SmtpServerSchema);
+// The platform's (D161): its servers send every company's mail; a module may let its companies keep their own
+// (`moduleBootstrap.platformOnlyUses`).
+platformOnlyPlugin(SmtpServerSchema);
 auditPlugin(SmtpServerSchema);
 softDeletePlugin(SmtpServerSchema);
 lifeCyclePlugin(SmtpServerSchema);

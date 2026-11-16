@@ -3,6 +3,7 @@ import {ObjectId} from "mongodb";
 import {Document, Model, RefAllowlist} from "mongoose";
 import {ZodObject, type ZodType} from "zod";
 import type {ValidationContext} from "armonia/src/modules/core/helpers/zodBuilder";
+import {apiValidationException, DEFAULT_EXCEPTION_LANGUAGE} from "armonia/src/modules/core/helpers/exceptions";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {getRegisteredActions} from "@coreModule/api/actionDecorator";
@@ -14,6 +15,7 @@ import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/midd
 import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/dslFilterMW";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
+import {isPlatformOnly, mayUsePlatformOnly} from "@coreModule/database/plugins/platformOnlyPlugin";
 import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collections";
 import {BaseCrudService, type CreateInput} from "@coreModule/database/services/baseCrudService";
 import {assertCanDelete} from "@coreModule/database/relationsRegistry";
@@ -429,6 +431,7 @@ export function createCrudRouter<
     router.post(
         "/select",
         authMW("private"),
+        ...platformOnlyGuard(model),
         rateLimiter({windowMs: 60000, max: readLimit}),
         validateFormZod((lang, form) => selectSchema(lang ?? "", form)),
         schemaSanitizer({model: collectionName, requiredModes: ["read"]}),
@@ -495,6 +498,7 @@ export function createCrudRouter<
     router.post(
         "",
         authMW("private"),
+        ...platformOnlyGuard(model),
         rateLimiter({windowMs: 60000, max: readLimit}),
         validateFormZod((lang, form) => listSchema(lang ?? "", form)),
         schemaSanitizer({model: collectionName, requiredModes: ["read"]}),
@@ -534,6 +538,7 @@ export function createCrudRouter<
     router.post(
         "/single",
         authMW("private"),
+        ...platformOnlyGuard(model),
         rateLimiter({windowMs: 60000, max: readLimit}),
         validateFormZod(validateSingleForm),
         schemaSanitizer({model: collectionName, requiredModes: ["read"]}),
@@ -562,6 +567,7 @@ export function createCrudRouter<
     router.put(
         "",
         authMW("private"),
+        ...platformOnlyGuard(model),
         rateLimiter({windowMs: 60000, max: writeLimit}),
         transactionHandler(),
         ...(config.createMiddleware ?? []) as RequestHandler[],
@@ -609,6 +615,7 @@ export function createCrudRouter<
     router.patch(
         "",
         authMW("private"),
+        ...platformOnlyGuard(model),
         rateLimiter({windowMs: 60000, max: writeLimit}),
         transactionHandler(),
         ...(config.editMiddleware ?? []) as RequestHandler[],
@@ -671,6 +678,7 @@ export function createCrudRouter<
     router.delete(
         "",
         authMW("private"),
+        ...platformOnlyGuard(model),
         rateLimiter({windowMs: 60000, max: deleteLimit}),
         validateFormZod(validateDeleteForm),
         transactionHandler(),
@@ -729,6 +737,7 @@ export function createCrudRouter<
     router.patch(
         "/restore",
         authMW("private"),
+        ...platformOnlyGuard(model),
         rateLimiter({windowMs: 60000, max: deleteLimit}),
         validateFormZod(validateRestoreForm),
         transactionHandler(),
@@ -764,6 +773,19 @@ export function createCrudRouter<
 }
 
 /**
+ * A platform-only model's guard (platformOnlyPlugin, D161), run right after `authMW` on every route and action of its
+ * router: a session in a company that may not use the model gets `platform_company_required`. Empty for other models.
+ */
+function platformOnlyGuard(model: Model<any>): RequestHandler[] {
+    if (!isPlatformOnly(model)) return [];
+    return [(req, _res, next) => {
+        const {company, actionUserCtx, languageCode} = req.body ?? {};
+        if (mayUsePlatformOnly(model, company, actionUserCtx?.modules)) return next();
+        next(apiValidationException("platform_company_required", "", null, languageCode ?? DEFAULT_EXCEPTION_LANGUAGE));
+    }];
+}
+
+/**
  * Mounts each `@action` of `ActionsClass` as POST `/<methodName>` on `router`. A signed-in (not public) action
  * is a permission of `model` (D14): it is registered for the roles UI and checked right after `authMW`.
  */
@@ -774,6 +796,7 @@ export function mountActions(router: Router, ActionsClass: new () => any, model:
         if (options.auth !== false) {
             const auth = options.auth ?? "private";
             mw.push(authMW(auth as any, {portalBuyer: options.portalBuyer}));
+            mw.push(...platformOnlyGuard(model));
             // A public action has no signed-in caller to hold a permission; a self-service one needs none.
             if (auth !== "public" && !options.selfService) {
                 const permission = options.permission ?? methodName;

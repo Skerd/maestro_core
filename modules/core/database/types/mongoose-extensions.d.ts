@@ -38,6 +38,8 @@ declare module "mongoose" {
         accessMode?: AccessMode;
         // set by requestablePlugin: the model's rows may be requested by companies other than the platform (D160)
         requestable?: boolean;
+        // set by platformOnlyPlugin: only the platform company (and companies with a registered module) may use the model (D161)
+        platformOnly?: boolean;
     }
 
 

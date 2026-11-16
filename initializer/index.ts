@@ -31,6 +31,7 @@ import "@coreModule/database/schemas/cronExecution/cronExecution";
 import MessagingProvider from "@coreModule/database/schemas/messagingProvider/messagingProvider";
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {registerModelModules} from "@coreModule/utilities/modules/modelModules";
+import {registerPlatformOnlyUse} from "@coreModule/database/plugins/platformOnlyPlugin";
 import {createUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {createCompanies} from "@coreModule/database/schemas/company/company.defaults";
 import {
@@ -45,6 +46,11 @@ type ModuleBootstrap = {
     models?: Model<any>[];
     dropModuleCollections?: () => Promise<void>;
     defaultRoles?: DefaultRoleDefinition[];
+    /**
+     * Platform-only models (platformOnlyPlugin, D161), by model name, that this module's companies may keep their own
+     * rows of (e.g. `["SmtpServer"]` for mail servers of their own). Registered under the module's folder name.
+     */
+    platformOnlyUses?: string[];
 };
 
 const coreModels: Model<any>[] = [
@@ -107,6 +113,9 @@ export async function loadOptionalModuleBootstraps(parentLogger?: serverLogger):
             registerModelModules(moduleEntry.name, bootstrap.models ?? []);
             if (Array.isArray(bootstrap.defaultRoles) && bootstrap.defaultRoles.length > 0) {
                 registerDefaultRoles(bootstrap.defaultRoles, moduleEntry.name);
+            }
+            for (const model of bootstrap.platformOnlyUses ?? []) {
+                registerPlatformOnlyUse({model, module: moduleEntry.name});
             }
             logger.debug(`Loaded moduleBootstrap for [${moduleEntry.name}]`);
         } catch (error: any) {
