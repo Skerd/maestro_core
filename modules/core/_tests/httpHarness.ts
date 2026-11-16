@@ -19,6 +19,7 @@ import {ServerError} from "armonia/src/modules/core/types";
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
 import {companyTimeZone} from "@coreModule/utilities/time/companyTimeZone";
+import {recordRouterMounted} from "@coreModule/utilities/endpoints/recordRegistry";
 
 /** `timeZone` is the caller's company `timezone` (D116); omitted, the instance zone applies as in authMW. */
 export type TestCaller = {userId: string; companyId: string; isAdmin?: boolean; permissions?: string[]; modules?: string[]; timeZone?: string};
@@ -77,6 +78,8 @@ export function appFor(routes: {basePath: string; router: Router; module?: strin
         const tag = (_req: unknown, _res: unknown, next: () => void) =>
             module ? requestContext.run({...requestContext.getStore(), routeModule: module}, () => next()) : next();
         app.use(basePath, stripServerKeys, tag, router);
+        // Like routeRegistry: the router's records can be shared in chat under its module (D162).
+        if (module) recordRouterMounted(router, module);
     }
     app.use((error: unknown, _req: any, res: any, _next: any) => {
         if (error instanceof ServerError) return res.status(error.status).json(error);

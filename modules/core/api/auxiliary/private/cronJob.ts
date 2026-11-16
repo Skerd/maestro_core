@@ -23,6 +23,8 @@ export const {router} = createCrudRouter({
     toDTO: cronJobToDTO,
     toDTOArray: cronJobsToDTO,
     toSelect: cronJobsToSelect,
+    // The label reads the name and the code (TD-B234).
+    selectProjection: "_id name code",
     actions: CronJobActions,
     entityName: "CronJob",
     defaultSort: {priority: -1, nextRunAt: 1},

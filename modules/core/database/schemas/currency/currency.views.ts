@@ -10,6 +10,7 @@ import {requestSheetGroup} from "../shared/requestSheetGroup";
 export const currencySheetView: ViewConfig = {
     model: "currencies",
     viewType: "sheet",
+    sheetWidget: "#CurrencySheetView",
     accessModel: "currencies",
     apiUrl: "/api/finance/currency",
     header: {

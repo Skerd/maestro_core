@@ -83,6 +83,10 @@ export async function messageToDTO(message: IMessage | any, currentUserId: strin
                 .map((u) => mapSnippet<SimpleUser>()(u, SimpleUserSnippet))
                 .filter((u): u is SimpleUser => u != null)
             : undefined,
+        // A deleted message shares nothing any more, like its text.
+        records: !isDeleted && message.records && message.records.length > 0
+            ? message.records.map((ref: {kind: string; record: ObjectId}) => ({collection: ref.kind, id: toIdString(ref.record)}))
+            : undefined,
         delivery: message.delivery && message.delivery.length > 0 ? message.delivery.map((delivery) => {
             return (
                 {

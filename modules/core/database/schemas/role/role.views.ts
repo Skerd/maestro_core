@@ -7,6 +7,7 @@ const API_URL = "/api/company/roles";
 export const roleSheetView: ViewConfig = {
     model: "roles",
     viewType: "sheet",
+    sheetWidget: "#RoleSheetView",
     accessModel: "roles",
     apiUrl: API_URL,
     header: {

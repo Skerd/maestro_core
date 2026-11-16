@@ -62,6 +62,7 @@ import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/midd
 import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/dslFilterMW";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {mountActions, selectIdsOf} from "@coreModule/api/crudRouterFactory";
+import {registerRecordResource} from "@coreModule/utilities/endpoints/recordRegistry";
 import {UserActions} from "@coreModule/database/schemas/user/user.actions";
 import type {ActionMessage, SelectResponse, TableResponse} from "armonia/src/modules/core/types/shared.types";
 
@@ -185,6 +186,8 @@ router.post(
     validateFormZod(companyUsersSelectFormSchema),
     asyncHandler(getUsersSelect)
 );
+// The company's people can be shared in chat like any record, through this same select (D162).
+registerRecordResource(router, {collection: "users", model: User, selectSchema: companyUsersSelectFormSchema, runSelect: getUsersSelect});
 /**
  * Returns active company users as options for dropdowns/selects.
  *

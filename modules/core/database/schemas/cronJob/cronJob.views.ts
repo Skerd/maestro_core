@@ -14,6 +14,7 @@ import {lifecycleSheetGroup} from "@coreModule/database/schemas/shared/lifecycle
 export const cronJobSheetView: ViewConfig = {
     model: "cronjobs",
     viewType: "sheet",
+    sheetWidget: "#CronJobSheetView",
     accessModel: "cronjobs",
     apiUrl: "/api/auxiliary/cron-jobs",
     header: {

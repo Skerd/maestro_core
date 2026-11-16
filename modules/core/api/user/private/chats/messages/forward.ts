@@ -1,4 +1,5 @@
 import {Router} from "express";
+import {messagePopulate} from "@coreModule/utilities/mappers/message/messagePopulate";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
@@ -27,6 +28,8 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {WebSocketMessage, WebSocketMessageCodes} from "armonia/src/modules/core/websocket/types";
 import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
+import {recordRefKey} from "armonia/src/modules/core/helpers/chatTokens";
+import {recordRefsToStore, refsOfStored, storedRecordRefs, visibleRecordRefs} from "@coreModule/domain/chat/chatRecords";
 
 const router = Router();
 
@@ -47,6 +50,7 @@ const router = Router();
  * @remarks
  * - Rate limited: 60 requests per minute
  * - Requires write access to Message.forwardedText via SchemaGuard
+ * - Carries the original's shared records the forwarder can see, plus the new text's (checked as the writer, D162)
  * - Creates one message per target channel (audited)
  * - Emits `NEW_MESSAGE` WebSocket events per target channel
  */
@@ -118,6 +122,16 @@ async function forwardMessage(params: TransactionRequired & ForwardMessageFormTy
         throw apiValidationException("channel_not_yours", null, null, languageCode);
     }
 
+    // Shared records (D162): the new text's, checked as its writer, and the original's that the forwarder can see. A
+    // website visitor chat gets none of the original's (the new text may share none there either).
+    const intoPublicChat = targetedChannels.some((channel) => (channel as IChannel).isPublicChat);
+    const ownRecords = await recordRefsToStore(params, text ?? "", {isPublicChat: intoPublicChat});
+    const carriedRecords = await visibleRecordRefs(params, refsOfStored(originalMessage.records));
+    const recordsFor = (channel: IChannel) => {
+        const refs = new Map([...(channel.isPublicChat ? [] : carriedRecords), ...ownRecords].map((ref) => [recordRefKey(ref), ref]));
+        return refs.size > 0 ? {records: storedRecordRefs([...refs.values()])} : {};
+    };
+
     // Create forwarded messages in each target channel
     const forwardedMessages: MessageTypeWithParticipants[] = [];
     let messageIds: ObjectId[] = [];
@@ -134,6 +148,7 @@ async function forwardMessage(params: TransactionRequired & ForwardMessageFormTy
                 forwardedText: originalMessage.text,
                 text: EncryptString(text ?? ""),
                 mediaIds: originalMessage.mediaIds || [],
+                ...recordsFor(targetChannel as IChannel),
                 type: "message",
                 status: "active",
                 company: company._id
@@ -143,7 +158,7 @@ async function forwardMessage(params: TransactionRequired & ForwardMessageFormTy
         messageIds.push(forwardedMessage._id);
     }
 
-    const populate = SchemaGuard.generatePopulate(COLLECTED_DATA["messages"].readFields, Message.schema);
+    const populate = messagePopulate(COLLECTED_DATA["messages"].readFields);
 
     logger.debug(`Fetching messages...`);
     const messages = await messageService.find(

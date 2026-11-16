@@ -1,4 +1,5 @@
 import {Router} from "express";
+import {messagePopulate} from "@coreModule/utilities/mappers/message/messagePopulate";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
@@ -87,7 +88,7 @@ async function getPinSingle(params: GetPinSingleType): Promise<GetMessagePinSing
         actionUserCtx,
         languageCode
     );
-    const populate = SchemaGuard.generatePopulate(sanitizedFields, Message.schema);
+    const populate = messagePopulate(sanitizedFields);
     const modifiedMessage = await messageService.findByIdOrThrow(
         new ObjectId(messageId),
         {logger, languageCode},
@@ -193,7 +194,7 @@ async function pinMessage(params: TransactionRequired & PinMessageFormType & Aut
     // until here, we did everything needed to pin the message.
     try{
         let sanitizedFields = SchemaGuard.sanitizeFields(Message, {pinned: {keys: {date: {}, user: {keys: {name: {}, surname: {}, fullName: {}, photo: {}}}}}}, "read", actionUserCtx, languageCode);
-        let populate = SchemaGuard.generatePopulate(sanitizedFields, Message.schema);
+        let populate = messagePopulate(sanitizedFields);
         let modifiedMessage = await messageService.findByIdOrThrow(
             message._id,
             { session, logger, languageCode },

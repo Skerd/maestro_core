@@ -5,6 +5,7 @@ import {COMPANY_TIMEZONE_MAX} from "armonia/src/modules/core/api/company/private
 export const companySheetView: ViewConfig = {
     model: "companies",
     viewType: "sheet",
+    sheetWidget: "#CompanySheetView",
     accessModel: "companies",
     apiUrl: "/api/company",
     header: {

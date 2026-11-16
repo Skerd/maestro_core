@@ -6,6 +6,7 @@ import {requestSheetGroup} from "../shared/requestSheetGroup";
 export const citySheetView: ViewConfig = {
     model: "cities",
     viewType: "sheet",
+    sheetWidget: "#CitySheetView",
     accessModel: "cities",
     apiUrl: "/api/auxiliary/city",
     header: {

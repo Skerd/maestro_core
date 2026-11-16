@@ -10,6 +10,7 @@ import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 export const blogPostSheetView: ViewConfig = {
     model: "blogPosts",
     viewType: "sheet",
+    sheetWidget: "#BlogPostSheetView",
     accessModel: "blogPosts",
     apiUrl: "/api/auxiliary/blogPost",
     header: {

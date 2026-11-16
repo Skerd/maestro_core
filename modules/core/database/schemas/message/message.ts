@@ -40,6 +40,11 @@ export interface IMessage extends Document, IOwnershipPluginFields {
     }
     // mentions
     mentionedUsers?: IUser[];
+    /**
+     * Records the text's `@{collection:id}` tokens share (D162): `kind` is the access-model name (`products`), `record`
+     * the id. Mixed kinds, so no `ref`: the writer's access is checked when the message is written (`chatRecords.ts`).
+     */
+    records?: {kind: string; record: ObjectId}[];
     // delivery
     delivery: {
         user: IUser;
@@ -240,6 +245,33 @@ export const MessageSchema = new mongoose.Schema<IMessage>(
                 ref: "User",
                 refAllowlist: SimpleUserSnippet
             }]
+        },
+        // shared records (D162); written only by the message routes
+        records: {
+            type: [{
+                _id: false,
+                kind: {
+                    type: SchemaTypes.String,
+                    required: true,
+                    permissions: {
+                        self: {write: "no-permission"},
+                        others: {write: "no-permission"}
+                    }
+                },
+                record: {
+                    type: SchemaTypes.ObjectId,
+                    required: true,
+                    permissions: {
+                        self: {write: "no-permission"},
+                        others: {write: "no-permission"}
+                    }
+                }
+            }],
+            default: undefined,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"}
+            }
         },
         // delivery
         delivery: [{

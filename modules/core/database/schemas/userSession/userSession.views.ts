@@ -4,6 +4,7 @@ import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 export const userSessionSheetView: ViewConfig = {
     model: "usersessions",
     viewType: "sheet",
+    sheetWidget: "#UserSessionSheetView",
     accessModel: "userSessions",
     apiUrl: "/api/user/userSession",
     header: {

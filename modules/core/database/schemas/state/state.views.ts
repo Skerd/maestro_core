@@ -9,6 +9,7 @@ import {requestSheetGroup} from "../shared/requestSheetGroup";
 export const stateSheetView: ViewConfig = {
     model: "states",
     viewType: "sheet",
+    sheetWidget: "#StateSheetView",
     accessModel: "states",
     apiUrl: "/api/auxiliary/state",
     header: {

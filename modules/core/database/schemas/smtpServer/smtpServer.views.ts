@@ -10,6 +10,7 @@ import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 export const smtpServerSheetView: ViewConfig = {
     model: "smtpServers",
     viewType: "sheet",
+    sheetWidget: "#SmtpServerSheetView",
     accessModel: "smtpServers",
     apiUrl: "/api/auxiliary/smtpServer",
     header: {

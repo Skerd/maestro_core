@@ -9,6 +9,7 @@ import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 export const messagingProviderSheetView: ViewConfig = {
     model: "messagingProviders",
     viewType: "sheet",
+    sheetWidget: "#MessagingProviderSheetView",
     accessModel: "messagingProviders",
     apiUrl: "/api/auxiliary/messagingProvider",
     header: {

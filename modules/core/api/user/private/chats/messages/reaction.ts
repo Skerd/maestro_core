@@ -1,4 +1,5 @@
 import {Router} from "express";
+import {messagePopulate} from "@coreModule/utilities/mappers/message/messagePopulate";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
@@ -89,7 +90,7 @@ async function getReactionsSingle(params: GetReactionsSingleType): Promise<GetMe
         actionUserCtx,
         languageCode
     );
-    const populate = SchemaGuard.generatePopulate(sanitizedFields, Message.schema);
+    const populate = messagePopulate(sanitizedFields);
     const doc = await messageService.findByIdOrThrow(
         new ObjectId(messageId),
         {logger, languageCode},
@@ -203,7 +204,7 @@ async function addMessageReaction(params: TransactionRequired & AddReactionFormT
 
     try{
         let sanitizedFields = SchemaGuard.sanitizeFields(Message, {reactions: {keys: {emoji: {}, date: {}, user: {keys: {name: {}, surname: {}, fullName: {}, photo: {}}}}}}, "read", actionUserCtx, languageCode);
-        let populate = SchemaGuard.generatePopulate(sanitizedFields, Message.schema);
+        let populate = messagePopulate(sanitizedFields);
         let modifiedMessage = await messageService.findOneOrThrow(
             {
                 _id: message._id,

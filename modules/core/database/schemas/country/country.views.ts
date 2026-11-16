@@ -10,6 +10,7 @@ import {requestSheetGroup} from "../shared/requestSheetGroup";
 export const countrySheetView: ViewConfig = {
     model: "countries",
     viewType: "sheet",
+    sheetWidget: "#CountrySheetView",
     accessModel: "countries",
     apiUrl: "/api/auxiliary/country",
     header: {

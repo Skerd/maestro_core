@@ -13,6 +13,7 @@ import path from 'path';
 import fs from 'fs';
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 import {isModuleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
+import {recordRouterMounted} from "@coreModule/utilities/endpoints/recordRegistry";
 
 /**
  * Route Metadata Interface
@@ -226,6 +227,8 @@ export class RouteRegistry {
                 modules.forEach((module, index) => {
                     // stripServerKeys first: no client value may reach a server-owned body key (SEC-03).
                     app.use(routePath, stripServerKeys, tagRouteModule, module.router);
+                    // Its records can now be shared in chat, gated on this module (D162).
+                    recordRouterMounted(module.router, moduleName);
                     if (modules.length > 1) {
                         this.logger?.debug(`Applied route: ${routePath} (router ${index + 1}/${modules.length})`);
                     } else {

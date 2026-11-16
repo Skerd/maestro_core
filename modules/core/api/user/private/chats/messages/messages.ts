@@ -1,4 +1,5 @@
 import {Router} from "express";
+import {messagePopulate} from "@coreModule/utilities/mappers/message/messagePopulate";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
@@ -59,6 +60,8 @@ import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketSe
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {dispatchAiChannelMessage} from "@coreModule/domain/ai/notifyAssistantOffline";
 import {channelMessageReadFilter, isChannelMember} from "@coreModule/utilities/endpoints/messageChannelReadAccess";
+import {parseMentionIds} from "armonia/src/modules/core/helpers/chatTokens";
+import {recordRefsToStore, storedRecordRefs} from "@coreModule/domain/chat/chatRecords";
 
 /**
  * Chat messages API – private endpoints for listing and managing messages.
@@ -72,7 +75,7 @@ import {channelMessageReadFilter, isChannelMember} from "@coreModule/utilities/e
  * **Routes (registration order):**
  * - `POST ""` – Paginated list of messages.
  * - `POST "/single"` – One message by id (channel access + visibility rules).
- * - `PUT ""` – Create a new message (text/media/reply/mentions).
+ * - `PUT ""` – Create a new message (text/media/reply/mentions/shared records).
  * - `DELETE ""` – Delete or hide messages (soft delete + per-user hide).
  * - `PATCH ""` – Edit an own message.
  *
@@ -80,22 +83,6 @@ import {channelMessageReadFilter, isChannelMember} from "@coreModule/utilities/e
  */
 
 const router = Router();
-
-/**
- * Parses `@` mentions from message text: `@` followed by a 24-character hex MongoDB ObjectId string.
- *
- * @param text - Message body
- * @returns Unique mentioned user id strings (hex), in arbitrary order
- */
-function parseMentions(text: string): string[] {
-    const mentionRegex: RegExp = /@([a-fA-F0-9]{24})(?![a-fA-F0-9])/g;
-    const mentions: Set<string> = new Set();
-    let match: RegExpExecArray | null;
-    while ((match = mentionRegex.exec(text)) !== null) {
-        mentions.add(match[1]);
-    }
-    return Array.from(mentions);
-}
 
 /**
  * Ensures a last-read row exists for the user/channel and updates its timestamp.
@@ -187,7 +174,7 @@ async function getMessages(params: GetMessagesType & MessagesFormType): Promise<
     logger.debug(`Earliest message filter: ${earliestMessage || "none"}`);
     logger.debug(`Oldest message filter: ${oldestMessage || "none"}`);
 
-    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Message.schema);
+    const populate = messagePopulate(sanitizedReadFields);
 
     logger.debug(`Validating channel access...`);
     const selectedChannel = await channelService.findOneOrThrow(
@@ -380,7 +367,7 @@ async function getMessageSingle(params: GetMessageSingleType & GetMessageSingleF
         }
     }
 
-    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Message.schema);
+    const populate = messagePopulate(sanitizedReadFields);
     const populatedMessage = await messageService.findByIdOrThrow(
         new ObjectId(messageId),
         {logger, languageCode},
@@ -400,7 +387,7 @@ async function getMessageSingle(params: GetMessageSingleType & GetMessageSingleF
 /**
  * PUT /api/user/chats/messages
  *
- * Creates a new message in a channel. Supports text, media, mentions, and replies.
+ * Creates a new message in a channel. Supports text, media, mentions, shared records (D162), and replies.
  * Message text is encrypted before storage; channel lastAction and last read are updated.
  *
  * @route PUT /api/user/chats/messages
@@ -463,13 +450,15 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
     );
 
     let mentionedUsers: IUser[] = undefined;
-    let mentionedUserIds = parseMentions(text).map((id) => new ObjectId(id));
+    let mentionedUserIds = parseMentionIds(text).map((id) => new ObjectId(id));
     if (mentionedUserIds.length > 0) {
         let channelUsersIds = selectedChannel.users.map((u) => u._id.toString());
         mentionedUserIds = mentionedUserIds.filter((id) => channelUsersIds.includes(id.toString()));
         mentionedUsers = await userService.find({ _id: { $in: mentionedUserIds } }, { session, logger, languageCode });
         logger.debug(`Found ${mentionedUserIds.length} valid mentioned user(s) in channel`);
     }
+
+    const records = storedRecordRefs(await recordRefsToStore(params, text, selectedChannel as IChannel));
 
     let replyToMessage: any;
     if( !!replyTo ){
@@ -493,6 +482,7 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
             status: "active",
             replyTo: replyToMessage,
             mentionedUsers: mentionedUsers,
+            ...(records.length > 0 ? {records} : {}),
             company: selectedChannel.company,
             mediaIds
         },
@@ -519,7 +509,7 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
         auditUserId: actionUserCtx.userId
     });
 
-    const populate = SchemaGuard.generatePopulate(sanitizedReadFields, Message.schema);
+    const populate = messagePopulate(sanitizedReadFields);
 
     logger.debug(`Fetching messages...`);
     const populatedMessage = await messageService.findByIdOrThrow(
@@ -848,7 +838,8 @@ async function deleteMessage(params: DeleteMessageType): Promise<DeleteMessageFo
  * @remarks
  * - Not rate limited (unlike list/single/create)
  * - Requires read permission for Message.text via SchemaGuard (`sanitizeFields`)
- * - Re-parses @mentions (24-char hex ObjectId strings) scoped to channel members; encrypts text; sets status to `edited`
+ * - Re-parses @mentions (24-char hex ObjectId strings) scoped to channel members, and the shared records (checked as the
+ *   writer, D162); encrypts text; sets status to `edited`
  * - Emits `MESSAGE_EDITED` WebSocket event to other channel members
  */
 router.patch(
@@ -899,7 +890,7 @@ async function editMessage(params: TransactionRequiredParams & EditMessageFormTy
     );
 
     let mentionedUsers: IUser[] = undefined;
-    let mentionedUserIds = parseMentions(text).map((id) => new ObjectId(id));
+    let mentionedUserIds = parseMentionIds(text).map((id) => new ObjectId(id));
     if (mentionedUserIds.length > 0) {
         let channelUsersIds = messageChannel.users.map((u) => u._id.toString());
         mentionedUserIds = mentionedUserIds.filter((id) => channelUsersIds.includes(id.toString()));
@@ -916,6 +907,8 @@ async function editMessage(params: TransactionRequiredParams & EditMessageFormTy
     }
 
 
+    const records = storedRecordRefs(await recordRefsToStore(params, text, messageChannel as IChannel));
+
     logger.debug(`Updating message text atomically...`);
     const updateResult = await messageService.updateOne(
         {
@@ -927,7 +920,8 @@ async function editMessage(params: TransactionRequiredParams & EditMessageFormTy
         {
             text: EncryptString(text),
             status: "edited",
-            mentionedUsers
+            mentionedUsers,
+            records
         },
         { session, logger, languageCode, auditUserId: actionUserCtx.userId }
     );

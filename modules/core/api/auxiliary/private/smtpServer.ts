@@ -21,6 +21,8 @@ export const {router} = createCrudRouter({
     toDTO: smtpServerToDTO,
     toDTOArray: smtpServersToDTO,
     toSelect: smtpServersToSelect,
+    // The label reads the name, host and port (TD-B234).
+    selectProjection: "_id name host port",
     defaultSort: {sequence: 1, name: 1},
     entityName: "SmtpServer",
     actions: SmtpServerActions,

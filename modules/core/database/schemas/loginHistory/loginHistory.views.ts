@@ -4,6 +4,7 @@ import {lifecycleSheetGroup} from "../shared/lifecycleSheetGroup";
 export const loginHistorySheetView: ViewConfig = {
     model: "loginhistories",
     viewType: "sheet",
+    sheetWidget: "#LoginHistorySheetView",
     accessModel: "loginHistories",
     apiUrl: "/api/user/loginHistory",
     header: {

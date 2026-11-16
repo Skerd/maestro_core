@@ -41,6 +41,7 @@ import type {
     TableResponse,
 } from "armonia/src/modules/core/types/shared.types";
 import {withoutSensitiveFields} from "@coreModule/utilities/security/sensitiveFields";
+import {registerRecordResource} from "@coreModule/utilities/endpoints/recordRegistry";
 
 // ── Param helpers ─────────────────────────────────────────────────────────────
 
@@ -428,6 +429,64 @@ export function createCrudRouter<
 
     // ── POST /select ──────────────────────────────────────────────────────────
 
+    /* One handler for the route and for chat (D162): the record registry runs it with the same checks the route's
+       middleware runs, so a record shared in a message is listed and labelled exactly as this select would. */
+    const runSelect = async (params: SelectRouteParams): Promise<SelectResponse> => {
+        if (config.overrideSelectHandler) {
+            return config.overrideSelectHandler(params);
+        }
+
+        const {logger, languageCode, actionUserCtx, company, dslFilterQuery} = params;
+        // Canonical search key is body `name` (validateSelectForm + ApiSelect). Apply it to
+        // `selectSearchField` on the document — do not read params[selectSearchField], or
+        // entities with title/sku/orderNumber never filter when the client posts `name`.
+        const name: string | undefined = params.name;
+
+        logger.start(`Fetching ${entityName} for select...`);
+
+        const selectSanitizeFields = Object.fromEntries(
+            selectProjection
+                .split(/\s+/)
+                .filter((f) => f && f !== "_id" && !f.startsWith("-"))
+                .map((f) => [f, {}]),
+        );
+        SchemaGuard.sanitizeFields(model, selectSanitizeFields, "read", actionUserCtx, languageCode);
+
+        const filter: Record<string, unknown> = {
+            company: company._id,
+            ...(await extraSelectFilter(params)),
+        };
+        // `ids` asks for the labels of stored values (a disabled select, a value past page 1): only those records,
+        // whatever the search or the client's filters, still inside the company and the route's own filter (TD-F70/F71).
+        const ids = selectIdsOf(params);
+        if (ids.length > 0) {
+            filter._id = {$in: ids};
+        } else {
+            if (name !== undefined && name !== "") {
+                filter[selectSearchField] = {$regex: escapeRegex(String(name).trim()), $options: "i"};
+            }
+            if (dslFilterQuery && Object.keys(dslFilterQuery as object).length > 0) {
+                filter.$and = [...((filter.$and as unknown[]) ?? []), dslFilterQuery];
+            }
+        }
+
+        const [docs, total] = await Promise.all([
+            service.find(
+                filter,
+                {logger, languageCode},
+                undefined,
+                selectProjection,
+                selectSort,
+                params.limit,
+                (params.page - 1) * params.limit,
+            ),
+            service.count(filter, {logger, languageCode}),
+        ]);
+
+        logger.finish(`Finished fetching ${entityName} for select!`);
+        return {data: toSelect(docs as T[]), total} as SelectResponse;
+    };
+
     router.post(
         "/select",
         authMW("private"),
@@ -436,62 +495,9 @@ export function createCrudRouter<
         validateFormZod((lang, form) => selectSchema(lang ?? "", form)),
         schemaSanitizer({model: collectionName, requiredModes: ["read"]}),
         dslFilterMW({model: collectionName, fieldName: "filters"}),
-        asyncHandler(async (params: SelectRouteParams) => {
-            if (config.overrideSelectHandler) {
-                return config.overrideSelectHandler(params);
-            }
-
-            const {logger, languageCode, actionUserCtx, company, dslFilterQuery} = params;
-            // Canonical search key is body `name` (validateSelectForm + ApiSelect). Apply it to
-            // `selectSearchField` on the document — do not read params[selectSearchField], or
-            // entities with title/sku/orderNumber never filter when the client posts `name`.
-            const name: string | undefined = params.name;
-
-            logger.start(`Fetching ${entityName} for select...`);
-
-            const selectSanitizeFields = Object.fromEntries(
-                selectProjection
-                    .split(/\s+/)
-                    .filter((f) => f && f !== "_id" && !f.startsWith("-"))
-                    .map((f) => [f, {}]),
-            );
-            SchemaGuard.sanitizeFields(model, selectSanitizeFields, "read", actionUserCtx, languageCode);
-
-            const filter: Record<string, unknown> = {
-                company: company._id,
-                ...(await extraSelectFilter(params)),
-            };
-            // `ids` asks for the labels of stored values (a disabled select, a value past page 1): only those records,
-            // whatever the search or the client's filters, still inside the company and the route's own filter (TD-F70/F71).
-            const ids = selectIdsOf(params);
-            if (ids.length > 0) {
-                filter._id = {$in: ids};
-            } else {
-                if (name !== undefined && name !== "") {
-                    filter[selectSearchField] = {$regex: escapeRegex(String(name).trim()), $options: "i"};
-                }
-                if (dslFilterQuery && Object.keys(dslFilterQuery as object).length > 0) {
-                    filter.$and = [...((filter.$and as unknown[]) ?? []), dslFilterQuery];
-                }
-            }
-
-            const [docs, total] = await Promise.all([
-                service.find(
-                    filter,
-                    {logger, languageCode},
-                    undefined,
-                    selectProjection,
-                    selectSort,
-                    params.limit,
-                    (params.page - 1) * params.limit,
-                ),
-                service.count(filter, {logger, languageCode}),
-            ]);
-
-            logger.finish(`Finished fetching ${entityName} for select!`);
-            return {data: toSelect(docs as T[]), total} as SelectResponse;
-        }),
+        asyncHandler(runSelect),
     );
+    registerRecordResource(router, {collection: collectionName, model, selectSchema, runSelect});
 
     // ── POST / (list) ─────────────────────────────────────────────────────────
 
