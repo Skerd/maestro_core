@@ -173,7 +173,7 @@ describe("a requestable platform list (requestablePlugin, D160)", () => {
         expect(await listIds(shopAdmin)).toContain(kosovo);
     });
 
-    it("takes the platform's plain delete of a waiting entry as a rejection, and a restore puts it back in the queue", async () => {
+    it("takes the platform's plain delete of a waiting entry as a rejection, which cannot be restored", async () => {
         const kosovo = (await requestKosovo()).body._id as string;
 
         vi.mocked(emitNotificationEvent).mockClear();
@@ -181,10 +181,11 @@ describe("a requestable platform list (requestablePlugin, D160)", () => {
         expect(await Country.collection.findOne({_id: new ObjectId(kosovo)})).toMatchObject({requestStatus: "rejected", deletedAt: expect.any(Date)});
         expect(notified().map(({code}) => code)).toEqual(["ENTRY_REQUEST_REJECTED"]);
 
-        expect((await request(app).patch("/api/auxiliary/country/restore").set(callerHeader(platformAdmin)).send({_id: kosovo})).status).toBe(200);
-        const restored = await Country.collection.findOne({_id: new ObjectId(kosovo)});
-        expect(restored).toMatchObject({requestStatus: "requested", deletedAt: null});
-        expect(restored?.decidedAt).toBeUndefined();
+        const restore = await request(app).patch("/api/auxiliary/country/restore").set(callerHeader(platformAdmin)).send({_id: kosovo});
+        expect([restore.status, restore.body.error_code]).toEqual([409, "entry_request_closed"]);
+        // Rolled back: still rejected and deleted, so the company requests the entry again instead.
+        expect(await Country.collection.findOne({_id: new ObjectId(kosovo)})).toMatchObject({requestStatus: "rejected", deletedAt: expect.any(Date)});
+        expect((await requestKosovo()).status).toBe(200);
     });
 
     it("is reported read-only with the requestable flag in the access map outside the platform company, writable inside", () => {

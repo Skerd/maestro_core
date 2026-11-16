@@ -143,13 +143,10 @@ export function platformListRouteOptions<T extends RequestableEntry, TCreate ext
         },
         afterRestore: async (params, doc) => {
             assertPlatformCompany(params);
-            // A rejected or withdrawn entry that comes back waits for a decision again.
+            // A rejected or withdrawn request is closed: its requester was told, or took it back. Restoring it would undo
+            // that decision; the company requests the entry again instead (its code is free). Refused, so the restore rolls back.
             if (requestable && (doc.requestStatus === "rejected" || doc.requestStatus === "withdrawn")) {
-                const {session, logger, languageCode, actionUserCtx} = params;
-                await service.updateByIdOrThrow(doc._id, {
-                    $set: {requestStatus: "requested"},
-                    $unset: {decidedAt: "", decidedBy: "", decisionNotes: ""},
-                }, {session, logger, languageCode, auditUserId: actionUserCtx.userId});
+                throw apiValidationException("entry_request_closed", "", null, params.languageCode);
             }
         },
         ...(requestable ? {
