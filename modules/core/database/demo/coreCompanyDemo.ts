@@ -10,6 +10,7 @@ import {createMessages} from "@coreModule/database/schemas/message/message.defau
 import {createNotifications} from "@coreModule/database/schemas/notification/notification.defaults";
 import {createMedia} from "@coreModule/database/schemas/media/media.defaults";
 import {createUserAddresses} from "@coreModule/database/schemas/userAddress/userAddress.defaults";
+import {CORE_DEMO_CUSTOMER_PASSWORD, coreDemoCustomerSeeds, createDemoSignupUsers} from "@coreModule/database/demo/demoSignupUsers";
 import User from "@coreModule/database/schemas/user/user";
 import Country from "@coreModule/database/schemas/country/country";
 import State from "@coreModule/database/schemas/state/state";
@@ -37,6 +38,7 @@ export async function seedCoreDemoData(
     await createMessages(logger, company);
     await createNotifications(logger, company);
     await createMedia(logger, company);
+    await createDemoSignupUsers(logger, company, coreDemoCustomerSeeds, CORE_DEMO_CUSTOMER_PASSWORD);
     // A person's address book lives in the platform company (D163), so echo's is seeded there.
     if (company.isPlatformOwner) await seedDemoAddressBook(logger, company);
 

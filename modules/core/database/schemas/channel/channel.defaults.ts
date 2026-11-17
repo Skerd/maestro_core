@@ -5,7 +5,8 @@ import {ICompany} from "@coreModule/database/schemas/company/company";
 import {defaultSysUsers} from "@coreModule/database/schemas/user/user.defaults";
 import type {HydratedDocument} from "mongoose";
 
-export const CORE_DEMO_CHANNEL_NAME = "core-demo-seed:ops-chat";
+/** The demo group chat's name, also its seed key per company (TD-B240: it read `core-demo-seed:ops-chat`). */
+export const CORE_DEMO_CHANNEL_NAME = "Ops team";
 
 /**
  * One group channel for the demo staff so chat, messages and notifications

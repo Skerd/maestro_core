@@ -631,6 +631,8 @@ CompanySchema.methods.createBot = async function (session?: ClientSession | null
     if( possibleBot ){
         return;
     }
+    // Loaded here: the time zone helper reads companies through the company service, which loads this schema.
+    const {companyTimeZone} = await import("@coreModule/utilities/time/companyTimeZone");
     const botId = new ObjectId();
     const createdBotUser = new User({
         _id: botId,
@@ -646,9 +648,8 @@ CompanySchema.methods.createBot = async function (session?: ClientSession | null
         fullName: `${this.name.replaceAll(" ", "")} AI Bot`,
         email: `bot_${this.name.replaceAll(" ", "")}`,
         verifiedEmail: true,
-        timezone: "Europe/Berlin",
-        birthday: "2000-01-01",
-        phoneNumber: "+000000000000",
+        // The company's zone; a bot has no birthday or phone (TD-B240).
+        timezone: companyTimeZone(this),
         companies: [this._id],
         roles: [
             {
