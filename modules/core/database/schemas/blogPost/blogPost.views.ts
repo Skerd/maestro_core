@@ -202,12 +202,12 @@ const blogPostCreateFormNodes: ViewConfig["nodes"] = [
                         {
                             render: "#Field",
                             field: {
-                                name: "slug",
+                                name: "title",
                                 widget: "#Input",
-                                label: "form.slugLabel",
-                                placeholder: "form.slugPlaceholder",
+                                label: "form.titleLabel",
+                                placeholder: "form.titlePlaceholder",
                                 required: true,
-                                widgetProps: {maxLength: BLOG_POST_SLUG_MAX},
+                                widgetProps: {maxLength: BLOG_POST_TITLE_MAX},
                             },
                         },
                     ],
@@ -219,12 +219,12 @@ const blogPostCreateFormNodes: ViewConfig["nodes"] = [
                     {
                         render: "#Field",
                         field: {
-                            name: "title",
+                            name: "slug",
                             widget: "#Input",
-                            label: "form.titleLabel",
-                            placeholder: "form.titlePlaceholder",
+                            label: "form.slugLabel",
+                            placeholder: "form.slugPlaceholder",
                             required: true,
-                            widgetProps: {maxLength: BLOG_POST_TITLE_MAX},
+                            widgetProps: {maxLength: BLOG_POST_SLUG_MAX},
                         },
                     },
                     {
@@ -323,14 +323,14 @@ const blogPostEditFormNodes: ViewConfig["nodes"] = [
                     {
                         render: "#Field",
                         field: {
-                            name: "slug",
+                            name: "title",
                             widget: "#Input",
-                            label: "form.slugLabel",
-                            placeholder: "form.slugPlaceholder",
+                            label: "form.titleLabel",
+                            placeholder: "form.titlePlaceholder",
                             required: true,
-                            widgetProps: {maxLength: BLOG_POST_SLUG_MAX},
+                            widgetProps: {maxLength: BLOG_POST_TITLE_MAX},
                         },
-                        permissions: {read: "slug", write: "slug"},
+                        permissions: {read: "title", write: "title"},
                     },
                 ],
             },
@@ -341,14 +341,14 @@ const blogPostEditFormNodes: ViewConfig["nodes"] = [
                     {
                         render: "#Field",
                         field: {
-                            name: "title",
+                            name: "slug",
                             widget: "#Input",
-                            label: "form.titleLabel",
-                            placeholder: "form.titlePlaceholder",
+                            label: "form.slugLabel",
+                            placeholder: "form.slugPlaceholder",
                             required: true,
-                            widgetProps: {maxLength: BLOG_POST_TITLE_MAX},
+                            widgetProps: {maxLength: BLOG_POST_SLUG_MAX},
                         },
-                        permissions: {read: "title", write: "title"},
+                        permissions: {read: "slug", write: "slug"},
                     },
                     {
                         render: "#Field",
