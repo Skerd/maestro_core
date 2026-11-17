@@ -202,6 +202,13 @@ export interface CrudRouterConfig<
     selectProjection?: string;
 
     /**
+     * References the select route populates for `toSelect`, when a label names a linked record (e.g. a dental time
+     * off labelled by its dentist, TD-B242). Keep each `select` to the fields the label reads.
+     * @default none
+     */
+    selectPopulate?: {path: string; select: string; populate?: {path: string; select: string}}[];
+
+    /**
      * Extra Mongoose projection fields appended on list / single / create-refetch /
      * update-refetch when SchemaGuard already produced a select string.
      * Use for DTO flags that are `read: "no-permission"` on the schema (so they
@@ -474,7 +481,7 @@ export function createCrudRouter<
             service.find(
                 filter,
                 {logger, languageCode},
-                undefined,
+                config.selectPopulate,
                 selectProjection,
                 selectSort,
                 params.limit,
