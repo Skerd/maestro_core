@@ -18,6 +18,20 @@ export const defaultExtraCities: readonly {name: string; countryCode: string; st
     {name: "Dhërmi", countryCode: "AL", stateCode: "12"},
 ];
 
+/**
+ * Rows of the `country-state-city` dataset that name an administrative area, not a city (TD-B241): Albania lists its
+ * municipalities ("Bashkia Durrës") and districts ("Rrethi i Tiranës", "Durrës District") next to the cities they are
+ * named after, so a picker offered each city two or three times.
+ */
+const NOT_A_CITY: Readonly<Record<string, RegExp>> = {
+    AL: /^(Bashkia|Rrethi) | District$/,
+};
+
+/** Whether the dataset's `name` in the country `countryCode` is seeded as a city. */
+export function isSeededCity(countryCode: string, name: string): boolean {
+    return !NOT_A_CITY[countryCode]?.test(name);
+}
+
 export async function createCities(parentLogger: serverLogger, company: ICompany) {
     const logger = getLogger("mongoDbInitialization-createCities", parentLogger);
     logger.start("Creating cities...");
@@ -51,6 +65,7 @@ export async function createCities(parentLogger: serverLogger, company: ICompany
             for (const state of states) {
                 const cities = CityList.getCitiesOfState(country.code, state.code ?? "");
                 for (const city of cities) {
+                    if (!isSeededCity(country.code, city.name)) continue;
                     const key = `${state._id}|${city.name}`;
                     if (existingKeySet.has(key)) continue;
 

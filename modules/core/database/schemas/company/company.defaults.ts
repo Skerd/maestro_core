@@ -311,10 +311,11 @@ function applyCompanyProfile(company: any, seed: any, includeModules: boolean): 
  * Sets the company's street address from the platform's country and city lists (D160). The city is what the portal's
  * "where" search matches.
  */
-async function applyDemoAddress(company: any, address: DemoAddress | undefined): Promise<void> {
+/** Points the company's address at the seeded country and city, and the city's state (TD-B241: it had none). */
+export async function applyDemoAddress(company: any, address: DemoAddress | undefined): Promise<void> {
     if (!address) return;
     const country = await Country.findOne({code: address.countryCode}).select("_id");
-    const city = country ? await City.findOne({country: country._id, name: address.cityName}).select("_id") : null;
+    const city = country ? await City.findOne({country: country._id, name: address.cityName}).select("_id state") : null;
     if (!country || !city) return;
     const current = company.addresses?.[0];
     company.addresses = [{
@@ -322,6 +323,7 @@ async function applyDemoAddress(company: any, address: DemoAddress | undefined):
         street: address.street,
         postalCode: address.postalCode,
         country: country._id,
+        ...(city.state ? {state: city.state} : {}),
         city: city._id,
         latitude: address.geoLocation.latitude,
         longitude: address.geoLocation.longitude,
