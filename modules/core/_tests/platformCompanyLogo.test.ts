@@ -19,7 +19,7 @@ vi.mock("@coreModule/utilities/middlewares/rateLimiter", () => ({
     rateLimiter: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-import {appFor, callerHeader, type TestCaller} from "@coreModule/_tests/httpHarness";
+import {allPermissionTags, appFor, callerHeader, type TestCaller} from "@coreModule/_tests/httpHarness";
 import Company from "@coreModule/database/schemas/company/company";
 import Media from "@coreModule/database/schemas/media/media";
 import {router} from "@coreModule/api/platform/private/companies";
@@ -62,5 +62,17 @@ describe("the platform admin on a company with a logo (TD-B188)", {timeout: 6000
         const hide = await request(app).put(`/api/platform/companies/portalVisibility/${shop.toString()}`).set(callerHeader(admin)).send({hiddenFromPortal: true});
         expect([hide.status, hide.body.error_code]).toEqual([200, undefined]);
         expect((await stored())?.hiddenFromPortal).toBe(true);
+    });
+});
+
+// The platform's company list populated each logo from the platform's tenant, found nothing and dropped the id, so
+// every card showed initials (core QA 2026-11-17, TD-B236).
+describe("the platform's company list", {timeout: 60000}, () => {
+    it("keeps the id of a logo stored in the company's own tenant", async () => {
+        const reader: TestCaller = {...admin, permissions: allPermissionTags([Company])};
+        const res = await request(app).post("/api/platform/companies").set(callerHeader(reader)).send({offset: 0, limit: 10});
+        expect([res.status, res.body.error_code]).toEqual([200, undefined]);
+        const store = (res.body.data as {name: string; logo?: string}[]).find((row) => row.name === "Store");
+        expect(store?.logo).toBe(logo.toString());
     });
 });

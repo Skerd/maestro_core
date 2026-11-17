@@ -104,9 +104,12 @@ async function listCompanies(params: ListCompaniesType): Promise<TableResponse<C
     const readFields = SchemaGuard.sanitizeFields(Company, COLLECTED_DATA["companies"]?.readFields || {}, "read", actionUserCtx, languageCode);
     const populate = SchemaGuard.generatePopulate(readFields, Company.schema);
     const select = populate.select && `${populate.select} company ${COMPANY_MODULE_FIELDS}`;
+    // A company's logo is a Media row in that company's own tenant, so populating it from the platform's request finds
+    // nothing and drops the id. The list only needs the id: the panel loads it as public media.
+    const populateRefs = ([] as Array<{path?: string}>).concat(populate.populate ?? []).filter((ref) => ref.path !== "logo");
 
     const [companies, total] = await Promise.all([
-        companyService.find(filter, opts, populate.populate || [], select, sort, limit, offset),
+        companyService.find(filter, opts, populateRefs, select, sort, limit, offset),
         companyService.count(filter, opts),
     ]);
     return {

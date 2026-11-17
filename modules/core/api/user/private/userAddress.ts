@@ -28,7 +28,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import type {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 
-/** The signed-in person (or the user an admin acts as) owns the book every route reads and writes (D163). */
+/** The signed-in person owns the book every route reads and writes; nobody reads another person's book here (D163). */
 const ownBook = (params: AuthenticatedMWType) => userAddressService.bookClause([params.actionUserCtx.userId]);
 
 /**

@@ -1,11 +1,13 @@
 import {Request, Response, Router} from 'express';
 import {asyncHandler} from '@coreModule/utilities/middlewares/asyncHandler';
 import {getLogger} from '@coreModule/loggers/serverLog';
-import {getMediaInfo, serveMedia} from "@coreModule/utilities/media/serveMedia";
+import {getMediaInfo, serveMedia, type ServeMediaAccessCheck} from "@coreModule/utilities/media/serveMedia";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import authMediaMW from "@coreModule/utilities/middlewares/authMediaMW";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {mediaUploadMW} from "@coreModule/utilities/middlewares/mediaUploadMW";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {ServerError} from "armonia/src/modules/core/types";
 
 const router = Router();
 
@@ -20,6 +22,24 @@ function companyOwnsMedia(
     const mediaCompany = String((media.company as {_id?: unknown})?._id ?? media.company ?? "");
     const sharedWith = (media.sharedWithCompanies ?? []).map(String);
     return Promise.resolve(sessionCompany !== "" && (sessionCompany === mediaCompany || sharedWith.includes(sessionCompany)));
+}
+
+function isPublicMedia(_mediaId: unknown, media: {isPublic?: boolean}): Promise<boolean> {
+    return Promise.resolve(media.isPublic === true);
+}
+
+/**
+ * Serves the session company's own or shared file; when the tenant has no such file, another company's file only if it
+ * is public (e.g. a company's logo in the platform's company list or the company switcher) — the same files the portal
+ * serves to anyone. Any other company's file stays `media_not_found`.
+ */
+async function ownOrPublicMedia<T>(serveOwn: () => Promise<T>, servePublic: () => Promise<T>): Promise<T> {
+    try {
+        return await serveOwn();
+    } catch (error) {
+        if (!(error instanceof ServerError && error.error_code === "media_not_found")) throw error;
+        return asCrossTenant("a signed-in user sees other companies' public media, such as their logos", servePublic);
+    }
 }
 
 /**
@@ -56,28 +76,32 @@ router.post(
 async function serveMediaInfo(_params: AuthenticatedMWType, queryParams: any, req: Request) {
     const logger = getLogger("serve_media_info");
     const languageCode = req.header("language") || "en-US";
-    return getMediaInfo({
+    const info = (accessCheck: ServeMediaAccessCheck, deniedAsNotFound: boolean) => () => getMediaInfo({
         mediaId: queryParams.mediaId,
         logger,
         languageCode,
-        accessCheck: companyOwnsMedia,
+        accessCheck,
         context: {company: _params.company},
+        deniedAsNotFound,
     });
+    return ownOrPublicMedia(info(companyOwnsMedia, false), info(isPublicMedia, true));
 }
 
 async function serveMediaFile(params: AuthenticatedMWType, queryParams: any, req: Request, res: Response) {
     const logger = getLogger("serve_media_file");
     const languageCode = req.header("language") || "en-US";
-    return serveMedia({
+    const serve = (accessCheck: ServeMediaAccessCheck, deniedAsNotFound: boolean) => () => serveMedia({
         mediaId: queryParams.mediaId,
         req,
         res,
         logger,
         languageCode,
         cacheControl: "private",
-        accessCheck: companyOwnsMedia,
+        accessCheck,
         context: {company: params.company},
+        deniedAsNotFound,
     });
+    return ownOrPublicMedia(serve(companyOwnsMedia, false), serve(isPublicMedia, true));
 }
 
 async function uploadBatch(params: any): Promise<{ids: string[]}> {
