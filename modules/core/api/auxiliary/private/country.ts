@@ -19,6 +19,8 @@ export const {router} = createCrudRouter<ICountry, CreateCountryFormType, EditCo
     toDTO:          countryToDTO,
     toDTOArray:     countriesToDTO,
     toSelect:       countriesToSelect,
+    // The code names the country in the reader's language (TD-F122).
+    selectProjection: "_id name code",
     // Places are looked up by name (UX-12); without it the list fell back to newest first and read Z→A.
     defaultSort: {name: 1},
     // A platform list (D160): every company reads the same rows, only the platform company writes them; another

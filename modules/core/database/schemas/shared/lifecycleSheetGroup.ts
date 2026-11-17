@@ -37,6 +37,8 @@ export const lifecycleSheetGroup: ViewNode = {
                 },
                 {
                     render: "#DisplayCard",
+                    // A record the system made (a scheduled action, a seeded row) has no author to show (TD-F115).
+                    dependent: "createdBy",
                     permissions: {read: "createdBy"},
                     field: {
                         name: "createdBy",

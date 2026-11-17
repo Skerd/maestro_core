@@ -80,7 +80,7 @@ export const companySheetView: ViewConfig = {
                                 name: "parentCompany",
                                 widget: "#DisplayCard",
                                 label: "parentCompany",
-                                widgetProps: {icon: "#Building", parent: "parentCompany", valuePath: ["name", "vat"], joinSeparator: " - "},
+                                widgetProps: {icon: "#Building", parent: "parentCompany", valuePath: ["name"]},
                             },
                         },
                     ],
@@ -122,6 +122,7 @@ export const companySheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
+                            dependent: "siteHost",
                             permissions: {read: "siteHost"},
                             field: {name: "siteHost", widget: "#DisplayCard", label: "siteHost", widgetProps: {icon: "#World"}},
                         },

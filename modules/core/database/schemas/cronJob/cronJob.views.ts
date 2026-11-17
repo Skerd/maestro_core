@@ -19,7 +19,7 @@ export const cronJobSheetView: ViewConfig = {
     apiUrl: "/api/auxiliary/cron-jobs",
     header: {
         titleField: "name",
-        subtitleKey: "code",
+        subtitleKey: "scheduledAction",
         showCloseButton: true,
     },
     nodes: [

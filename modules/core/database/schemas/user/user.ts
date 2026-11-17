@@ -220,17 +220,6 @@ export interface IUser extends Document, ILifeCyclePluginFields {
 const UserSchema = new Schema<IUser>(
     {
         //profile info
-        username: {
-            type: SchemaTypes.String,
-            required: true,
-            unique: true,
-            permissions: {
-                self: {
-                    publicRead: true,
-                    publicWrite: true,
-                },
-            },
-        },
         name: {
             type: SchemaTypes.String,
             required: true,
@@ -245,6 +234,18 @@ const UserSchema = new Schema<IUser>(
         surname: {
             type: SchemaTypes.String,
             required: true,
+            permissions: {
+                self: {
+                    publicRead: true,
+                    publicWrite: true,
+                },
+            },
+        },
+        // After the name, so the users table leads with the person (TD-F124).
+        username: {
+            type: SchemaTypes.String,
+            required: true,
+            unique: true,
             permissions: {
                 self: {
                     publicRead: true,
@@ -422,6 +423,11 @@ const UserSchema = new Schema<IUser>(
                 others: {
                     write: "no-permission"
                 }
+            },
+            // Lists leave bots out already, so neither a column nor a filter says anything (TD-F121).
+            dynamicTableConfiguration: {
+                visible: false,
+                filterable: false
             }
         },
         isVisitor: {
@@ -480,6 +486,7 @@ const UserSchema = new Schema<IUser>(
                     },
                     dynamicTableConfiguration: {
                         visible: false,
+                        filterable: false,
                         dtoPath: "unsuccessfulLogins"
                     }
                 },
@@ -493,6 +500,7 @@ const UserSchema = new Schema<IUser>(
                     },
                     dynamicTableConfiguration: {
                         visible: false,
+                        filterable: false,
                         dtoPath: "lockedOutUntil"
                     }
                 },
@@ -673,7 +681,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         date: {
@@ -687,7 +696,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         lockedUntil: {
@@ -699,7 +709,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         }
                     }
@@ -717,7 +728,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         code: {
@@ -744,7 +756,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         date: {
@@ -758,7 +771,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         lockedUntil: {
@@ -770,7 +784,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         }
                     }
@@ -803,7 +818,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         attempts: {
@@ -817,7 +833,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         date: {
@@ -829,7 +846,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         lockedUntil: {
@@ -841,7 +859,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         }
                     }
@@ -857,7 +876,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         code: {
@@ -882,7 +902,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         date: {
@@ -894,7 +915,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         lockedUntil: {
@@ -906,7 +928,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         invitedBy: {
@@ -921,6 +944,7 @@ const UserSchema = new Schema<IUser>(
                             },
                             dynamicTableConfiguration: {
                                 visible: false,
+                                filterable: false,
                                 refDisplayKey: ["name", "surname"]
                             }
                         },
@@ -933,7 +957,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         invitationExpiresAt: {
@@ -946,7 +971,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         accepted: {
@@ -958,7 +984,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         acceptedAt: {
@@ -970,7 +997,8 @@ const UserSchema = new Schema<IUser>(
                                 others: {}
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         welcomeMessage: {
@@ -984,7 +1012,8 @@ const UserSchema = new Schema<IUser>(
                                 }
                             },
                             dynamicTableConfiguration: {
-                                visible: false
+                                visible: false,
+                                filterable: false
                             }
                         },
                         company: {

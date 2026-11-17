@@ -15,7 +15,7 @@ export const smtpServerSheetView: ViewConfig = {
     apiUrl: "/api/auxiliary/smtpServer",
     header: {
         titleField: "name",
-        subtitleKey: "host",
+        subtitleKey: "mailServer",
         showCloseButton: true,
     },
     nodes: [

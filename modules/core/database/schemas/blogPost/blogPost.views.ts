@@ -18,6 +18,7 @@ export const blogPostSheetView: ViewConfig = {
         subtitleKey: "blogPost",
         showCloseButton: true,
     },
+    // The title heads the sheet and "published" is its badge; the slug stays on the edit form (TD-F125).
     nodes: [
         {
             render: "#SheetGroup",
@@ -50,16 +51,7 @@ export const blogPostSheetView: ViewConfig = {
                         },
                         {
                             render: "#DisplayCard",
-                            permissions: {read: "published"},
-                            field: {
-                                name: "published",
-                                widget: "#DisplayCard",
-                                label: "published",
-                                widgetProps: {icon: "#IconLabel", format: "boolean", type: "boolean"},
-                            },
-                        },
-                        {
-                            render: "#DisplayCard",
+                            dependent: "publishedAt",
                             permissions: {read: "publishedAt"},
                             field: {
                                 name: "publishedAt",
@@ -76,38 +68,7 @@ export const blogPostSheetView: ViewConfig = {
                     children: [
                         {
                             render: "#DisplayCard",
-                            permissions: {read: "slug"},
-                            field: {
-                                name: "slug",
-                                widget: "#DisplayCard",
-                                label: "slug",
-                                widgetProps: {icon: "#Hash"},
-                            },
-                        },
-                    ],
-                },
-                {
-                    render: "#SheetGrid",
-                    props: {columns: 1},
-                    children: [
-                        {
-                            render: "#DisplayCard",
-                            permissions: {read: "title"},
-                            field: {
-                                name: "title",
-                                widget: "#DisplayCard",
-                                label: "title",
-                                widgetProps: {icon: "#IconLabel"},
-                            },
-                        },
-                    ],
-                },
-                {
-                    render: "#SheetGrid",
-                    props: {columns: 1},
-                    children: [
-                        {
-                            render: "#DisplayCard",
+                            dependent: "excerpt",
                             permissions: {read: "excerpt"},
                             field: {
                                 name: "excerpt",
@@ -147,6 +108,7 @@ export const blogPostSheetView: ViewConfig = {
         {
             render: "#SheetGroup",
             permissions: {readAny: ["mainImage", "imageGallery"]},
+            dependentAny: ["mainImage", "imageGallery"],
             props: {title: "gallery"},
             children: [
                 {

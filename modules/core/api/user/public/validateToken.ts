@@ -19,6 +19,7 @@ import {
     ValidateTokenFormResponseType
 } from "armonia/src/modules/core/api/user/public/validateToken/validateToken.form.response.type";
 import {personErasureModules} from "@coreModule/utilities/erasure/personErasure";
+import {companyService} from "@coreModule/database/schemas/company/company.service";
 
 const router = Router();
 
@@ -26,6 +27,12 @@ const router = Router();
 function companyLocation(company: {addresses?: {latitude?: number; longitude?: number}[]}): {location?: {latitude: number; longitude: number}} {
     const pinned = company.addresses?.find((address) => typeof address.latitude === "number" && typeof address.longitude === "number");
     return pinned?.latitude != null && pinned.longitude != null ? {location: {latitude: pinned.latitude, longitude: pinned.longitude}} : {};
+}
+
+/** The country of the company's first address with one, so a new address form starts in it (TD-F114). */
+function companyCountry(company: {addresses?: {country?: unknown}[]}): {country?: string} {
+    const country = company.addresses?.find((address) => address.country != null)?.country;
+    return country != null ? {country: String(country)} : {};
 }
 
 /**
@@ -55,12 +62,14 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
     const {logger, userInfo, company, companyTimeZone, actionUserCtx} = params;
     try {
         logger.start("Validating token...");
+        // authMW loads the company without its addresses, where its map location and country come from (TD-F114).
+        const place = await companyService.findById(company._id, {}, undefined, "addresses.latitude addresses.longitude addresses.country");
         logger.finish(`Finished validating token!`);
 
         return {
             id: userInfo._id.toString(),
             username: userInfo.username,
-            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company), timezone: companyTimeZone, ...companyLocation(company)},
+            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company), timezone: companyTimeZone, ...companyLocation(place ?? {}), ...companyCountry(place ?? {})},
             isPlatformAdmin: isPlatformCompany(company) && actionUserCtx.isAdmin,
             canErasePeople: actionUserCtx.isAdmin === true && (await personErasureModules()).some((name) => (actionUserCtx.modules ?? []).includes(name)),
             email: userInfo.username,

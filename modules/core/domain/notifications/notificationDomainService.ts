@@ -28,7 +28,7 @@ import {userService} from "@coreModule/database/schemas/user/user.service";
 import {NotificationDeliveryChannel} from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
 import type {IUser} from "@coreModule/database/schemas/user/user";
 import {notificationText, receiverLanguage} from "@coreModule/domain/notifications/notificationTexts";
-import {UAParser} from "ua-parser-js";
+import {browserAndSystem} from "@coreModule/utilities/helpers/userAgent";
 
 const notificationLogger = getLogger("notification_domain");
 
@@ -37,8 +37,8 @@ const notificationLogger = getLogger("notification_domain");
  * ("Chrome on macOS"); without both the notice says only that someone signed in. The IP stays in `content`.
  */
 function signInDevice(userAgent: string): {variant: "device"; browser: string; os: string} | Record<string, never> {
-    const {browser, os} = new UAParser(userAgent).getResult();
-    return browser.name && os.name ? {variant: "device", browser: browser.name, os: os.name} : {};
+    const {browser, os} = browserAndSystem(userAgent);
+    return browser && os ? {variant: "device", browser, os} : {};
 }
 
 export interface CreateNotificationInput {

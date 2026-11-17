@@ -3,6 +3,7 @@ import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
 import {IUserSession} from "@coreModule/database/schemas/userSession/userSession";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
+import {browserAndSystem} from "@coreModule/utilities/helpers/userAgent";
 import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
 
 export function userSessionToDTO(model: IUserSession): UserSession {
@@ -12,6 +13,7 @@ export function userSessionToDTO(model: IUserSession): UserSession {
         sessionId: model.sessionId,
         deviceId: model.deviceId,
         userAgent: model.userAgent,
+        ...browserAndSystem(model.userAgent),
         ipAddress: model.ipAddress,
         geolocation: model.geolocation ? model.geolocation.map((g) => {
             return {

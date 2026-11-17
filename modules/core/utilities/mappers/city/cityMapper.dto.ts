@@ -5,6 +5,7 @@ import {ICity} from "@coreModule/database/schemas/city/city";
 import {StateSimpleSnippet} from "@coreModule/database/schemas/state/state.snippets";
 import {CountrySimpleSnippet} from "@coreModule/database/schemas/country/country.snippets";
 import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
+import {datasetCityLocation} from "@coreModule/utilities/helpers/cityLocation";
 import {
     mapLifeCycleToDTO,
     mapOwnershipToDTO,
@@ -13,11 +14,15 @@ import {
 } from "@coreModule/utilities/mappers/plugin/pluginMappers.dto";
 
 export function cityToDTO(city: ICity): City {
+    const state = mapSnippet<StateSimple>()(city.state, StateSimpleSnippet);
+    const country = mapSnippet<CountrySimple>()(city.country, CountrySimpleSnippet)!;
+    const location = datasetCityLocation(country?.code, state?.code, city.name);
     return {
         _id: city._id.toString(),
         name: city.name,
-        state: mapSnippet<StateSimple>()(city.state, StateSimpleSnippet),
-        country: mapSnippet<CountrySimple>()(city.country, CountrySimpleSnippet)!,
+        state,
+        country,
+        ...(location ? {location} : {}),
         ...mapSoftDeleteToDTO(city),
         ...mapOwnershipToDTO(city),
         ...mapRequestableToDTO(city),
