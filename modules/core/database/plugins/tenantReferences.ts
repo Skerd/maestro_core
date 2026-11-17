@@ -3,6 +3,7 @@ import {apiValidationException, DEFAULT_EXCEPTION_LANGUAGE} from "armonia/src/mo
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {preBulkWrite} from "@coreModule/database/plugins/bulkWriteHooks";
+import {isRequestable, UNUSABLE_REQUEST_STATUSES} from "@coreModule/database/plugins/requestablePlugin";
 
 /*
  * Stored references stay inside the tenant (D104, SEC-05). The tenant scope (D16) limits what a query reads; it does not
@@ -21,6 +22,11 @@ import {preBulkWrite} from "@coreModule/database/plugins/bulkWriteHooks";
  *   references it sets. Covers save/create, insertMany, update queries, update pipelines (literal ids only) and the
  *   model's `bulkWrite` (Mongoose 6 runs no middleware for it, `bulkWriteHooks.ts`).
  * - `allowForeignReferences` (tenantScope.ts) lets a named block store named fields that point at another company.
+ * - A reference to a requestable platform list row (requestablePlugin, D160) that the platform has not approved is
+ *   refused with `reference_not_approved`, unless the write is the platform's: the session acts in the row's company.
+ *   The pickers hide such rows; this keeps a hand-written call from storing them (TD-B233). It judges the session, not
+ *   the record, since some records live in the platform company for everyone (UserAddress, D163). Models without the
+ *   tenant scope get this check alone (`checkRequestableReferences`); `allowForeignReferences` does not lift it.
  */
 
 const logger = getLogger("tenantReferences");
@@ -91,11 +97,16 @@ function allowed(model: string, ref: RefPath): boolean {
     return allowance?.fields.includes(`${model}.${ref.path}`) ?? false;
 }
 
-/** The reference paths this write must check: their target is tenant-owned and no allowance names them. */
-function checkedRefs(schema: Schema, model: Model<unknown>): RefPath[] {
+/**
+ * The reference paths this write must check: their target is requestable, or (`tenantRefs`) tenant-owned and no
+ * allowance names them.
+ */
+function checkedRefs(schema: Schema, model: Model<unknown>, tenantRefs: boolean): RefPath[] {
     return refPathsOf(schema).filter((ref) => {
         const target = model.db.models[ref.target] as Model<unknown> | undefined;
-        return !!target && tenantOwned.has(target.schema) && !allowed(model.modelName, ref);
+        if (!target) return false;
+        if (isRequestable(target)) return true;
+        return tenantRefs && tenantOwned.has(target.schema) && !allowed(model.modelName, ref);
     });
 }
 
@@ -282,8 +293,8 @@ function referenceGroups(refs: RefPath[], owner: Owner, writes: [string, unknown
 function recordGroups(refs: RefPath[], owner: Owner, record: unknown, modelName: string): ReferenceGroup[] {
     const plain: unknown = record instanceof Document ? record.toObject({depopulate: true}) : record;
     if (!isRecord(plain)) return [];
+    // A record without a company is judged by no company (tenant references pass), the session still by its own.
     const company = owner.scope.length === 0 ? idOf(plain[owner.field]) : undefined;
-    if (owner.scope.length === 0 && !company) return [];
     return referenceGroups(refs, owner, Object.entries(plain), async () => (company ? [company] : []), modelName);
 }
 
@@ -295,15 +306,21 @@ function savedWrites(refs: RefPath[], doc: Document): {refs: RefPath[]; writes: 
     return {refs: saved, writes: fields.map((field) => [field, doc.get(field)])};
 }
 
-/** Refuses the write when a reference names a tenant-owned row outside the company it must belong to. */
+/**
+ * Refuses the write when a reference names a tenant-owned row outside the company it must belong to, or a requestable
+ * row the platform has not approved.
+ */
 async function assertReferencesInTenant(model: Model<unknown>, groups: ReferenceGroup[], session: ClientSession | null | undefined): Promise<void> {
-    const byTarget = new Map<string, {model: Model<unknown>; sharedWith?: string; uses: Map<string, {ref: RefPath; group: number}[]>}>();
+    type Target = {model: Model<unknown>; tenantOwned: boolean; requestable: boolean; sharedWith?: string; uses: Map<string, {ref: RefPath; group: number}[]>};
+    const byTarget = new Map<string, Target>();
     groups.forEach((group, index) => {
         for (const [ref, ids] of group.ids) {
             const target = model.db.models[ref.target] as Model<unknown> | undefined;
             const ownership = target ? tenantOwned.get(target.schema) : undefined;
-            if (!target || !ownership) continue;
-            const entry = byTarget.get(ref.target) ?? {model: target, sharedWith: ownership.sharedWith, uses: new Map()};
+            const requestable = !!target && isRequestable(target);
+            if (!target || (!ownership && !requestable)) continue;
+            const entry = byTarget.get(ref.target)
+                ?? {model: target, tenantOwned: !!ownership, requestable, sharedWith: ownership?.sharedWith, uses: new Map()};
             for (const id of ids) {
                 const uses = entry.uses.get(id) ?? [];
                 if (!uses.some((use) => use.ref === ref && use.group === index)) uses.push({ref, group: index});
@@ -315,26 +332,35 @@ async function assertReferencesInTenant(model: Model<unknown>, groups: Reference
     if (byTarget.size === 0) return;
 
     const companies = new Map<number, string[]>();
-    for (const {uses} of byTarget.values()) {
+    for (const {tenantOwned: owned, uses} of byTarget.values()) {
+        if (!owned) continue;
         for (const {group} of [...uses.values()].flat()) {
             if (!companies.has(group)) companies.set(group, await groups[group].companies());
         }
     }
-    for (const {model: target, sharedWith, uses} of byTarget.values()) {
-        const projection: Record<string, 1> = {company: 1, ...(sharedWith ? {[sharedWith]: 1} : {})};
+    for (const {model: target, tenantOwned: owned, requestable, sharedWith, uses} of byTarget.values()) {
+        const projection: Record<string, 1> = {company: 1, ...(sharedWith ? {[sharedWith]: 1} : {}), ...(requestable ? {requestStatus: 1} : {})};
         const rows = await target.collection
             .find({_id: {$in: [...uses.keys()].map((id) => new Types.ObjectId(id))}}, {projection, session: session ?? undefined})
             .toArray();
         for (const row of rows) {
             const rowOwner = idOf(row.company);
+            const rowUses = uses.get(idOf(row._id) ?? "") ?? [];
+            const store = requestContext.getStore();
+            // A write outside any company's session is not the platform's either.
+            if (requestable && UNUSABLE_REQUEST_STATUSES.includes(row.requestStatus) && (!rowOwner || store?.tenantCompanyId !== rowOwner)) {
+                const field = rowUses[0]?.ref.path ?? "";
+                logger.err(`Refused ${model.modelName}.${field}: ${target.modelName} ${idOf(row._id)} is ${String(row.requestStatus)} (${store?.routeModule ?? "no module"})`);
+                throw apiValidationException("reference_not_approved", field, [`${model.modelName}.${field}`], store?.languageCode ?? DEFAULT_EXCEPTION_LANGUAGE, [field]);
+            }
+            if (!owned) continue;
             const sharedValue: unknown = sharedWith ? row[sharedWith] : undefined;
             const shared = Array.isArray(sharedValue) ? sharedValue.map(idOf) : [];
             // No company resolved (nothing matched) judges nothing.
-            const foreign = (uses.get(idOf(row._id) ?? "") ?? [])
+            const foreign = rowUses
                 .find(({group}) => !(companies.get(group) ?? []).every((company) => company === rowOwner || shared.includes(company)));
             if (!foreign) continue;
             const field = foreign.ref.path;
-            const store = requestContext.getStore();
             logger.err(`Refused ${model.modelName}.${field}: ${target.modelName} ${idOf(row._id)} belongs to another company (${store?.routeModule ?? "no module"})`);
             throw apiValidationException("reference_outside_tenant", field, [`${model.modelName}.${field}`], store?.languageCode ?? DEFAULT_EXCEPTION_LANGUAGE, [field]);
         }
@@ -371,25 +397,36 @@ const UPDATE_QUERIES: MongooseQueryMiddleware[] = ["findOneAndReplace", "findOne
  * User (each membership's roles belong to that membership's company).
  */
 export function checkTenantReferences(schema: Schema, ownerPath = "company"): void {
+    addReferenceChecks(schema, ownerPath, true);
+}
+
+/**
+ * Adds only the requestable-row check (TD-B233) to a model without the tenant scope (ownershipPlugin
+ * `tenantScoped: false`, e.g. UserAddress, the platform lists themselves).
+ */
+export function checkRequestableReferences(schema: Schema): void {
+    addReferenceChecks(schema, "company", false);
+}
+
+function addReferenceChecks(schema: Schema, ownerPath: string, tenantRefs: boolean): void {
     const ownerSegments = ownerPath.split(".");
     const owner: Owner = {scope: ownerSegments.slice(0, -1), field: ownerSegments[ownerSegments.length - 1]};
     // Only ownershipPlugin's tenant-scoped models have their update filters limited to the tenant (D16).
-    const scoped = ownerPath === "company";
+    const scoped = tenantRefs && ownerPath === "company";
 
     schema.pre("save", async function (this: Document) {
         const model = this.constructor as Model<unknown>;
-        const refs = checkedRefs(schema, model);
+        const refs = checkedRefs(schema, model, tenantRefs);
         if (refs.length === 0) return;
         const saved = savedWrites(refs, this);
         if (saved.writes.length === 0) return;
         const company = owner.scope.length === 0 ? idOf(this.get(owner.field)) : undefined;
-        if (owner.scope.length === 0 && !company) return;
         const groups = referenceGroups(saved.refs, owner, saved.writes, async () => (company ? [company] : []), model.modelName);
         await assertReferencesInTenant(model, groups, this.$session());
     });
 
     schema.pre(UPDATE_QUERIES, async function (this: Query<unknown, unknown>) {
-        const refs = checkedRefs(schema, this.model);
+        const refs = checkedRefs(schema, this.model, tenantRefs);
         if (refs.length === 0) return;
         const update = this.getUpdate();
         refuseComputedReferences(this.model.modelName, refs, update);
@@ -400,7 +437,7 @@ export function checkTenantReferences(schema: Schema, ownerPath = "company"): vo
     });
 
     schema.pre("insertMany", function (this: Model<unknown>, next: (error?: Error) => void, docs: unknown, ...rest: unknown[]) {
-        const refs = checkedRefs(schema, this);
+        const refs = checkedRefs(schema, this, tenantRefs);
         if (refs.length === 0) return next();
         // Mongoose passes insertMany's options after the documents.
         const options = rest[0];
@@ -417,7 +454,7 @@ export function checkTenantReferences(schema: Schema, ownerPath = "company"): vo
     // ownershipPlugin's bulkWrite hook (registered first) has already limited a tenant-scoped model's filters (TD-B114);
     // otherwise (cross-tenant, Company, User) an update's companies come from what its filter matches.
     preBulkWrite(schema, async (model, ops, {session}) => {
-        const refs = checkedRefs(schema, model);
+        const refs = checkedRefs(schema, model, tenantRefs);
         if (refs.length === 0) return;
         const groups: ReferenceGroup[] = [];
         for (const op of ops) {

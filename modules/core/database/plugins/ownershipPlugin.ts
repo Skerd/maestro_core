@@ -2,7 +2,7 @@ import {Aggregate, Document, MongooseQueryMiddleware, PipelineStage, Query, Sche
 import {apiValidationException, DEFAULT_EXCEPTION_LANGUAGE} from "armonia/src/modules/core/helpers/exceptions";
 import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
-import {checkTenantReferences, markTenantOwned} from "@coreModule/database/plugins/tenantReferences";
+import {checkRequestableReferences, checkTenantReferences, markTenantOwned} from "@coreModule/database/plugins/tenantReferences";
 import {preBulkWrite} from "@coreModule/database/plugins/bulkWriteHooks";
 
 export interface OwnershipPluginOptions {
@@ -73,6 +73,8 @@ export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions 
         applyTenantScope(schema, options.sharedWith);
         markTenantOwned(schema, options.sharedWith);
         checkTenantReferences(schema);
+    } else {
+        checkRequestableReferences(schema);
     }
 };
 

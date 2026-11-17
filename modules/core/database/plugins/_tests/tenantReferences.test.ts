@@ -334,3 +334,48 @@ describe("records without the tenant scope (TD-B109)", () => {
         await expect(User.updateOne({_id: userId}, {$push: {roles: {company: companyA, roles: [roleA], rolesCount: 1}}})).resolves.toBeTruthy();
     });
 });
+
+/* TD-B233: a requestable platform list entry the platform has not approved is used by no write but the platform's. */
+const placeSchema = new Schema<{company: ObjectId; country?: unknown}>({country: {type: Schema.Types.ObjectId, ref: "Country"}});
+ownershipPlugin(placeSchema);
+const Place = mongoose.model("TenantRefPlace", placeSchema);
+/** Like UserAddress: no tenant scope, every row stored in the platform company (D163). */
+const bookSchema = new Schema<{company: ObjectId; country?: unknown}>({country: {type: Schema.Types.ObjectId, ref: "Country"}});
+ownershipPlugin(bookSchema, {tenantScoped: false});
+const BookEntry = mongoose.model("TenantRefBookEntry", bookSchema);
+
+describe("requested platform list entries (TD-B233)", () => {
+    const platform = new ObjectId();
+    const notApproved = {error_code: "reference_not_approved", content: ["TenantRefPlace.country"]};
+    const asPlatform = <T>(fn: () => PromiseLike<T>) =>
+        requestContext.run({routeModule: "pilot", tenantCompanyId: platform.toString()}, async () => await fn());
+    let approved: ObjectId, requested: ObjectId, rejected: ObjectId;
+
+    beforeEach(async () => {
+        await Promise.all([Country.collection.deleteMany({}), Place.collection.deleteMany({}), BookEntry.collection.deleteMany({})]);
+        const {insertedIds} = await Country.collection.insertMany([
+            {company: platform, code: "AL", requestStatus: "approved"},
+            {company: platform, code: "XK", requestStatus: "requested", requestedByCompany: companyA},
+            {company: platform, code: "ZZ", requestStatus: "rejected", requestedByCompany: companyA},
+        ]);
+        [approved, requested, rejected] = [insertedIds[0], insertedIds[1], insertedIds[2]];
+    });
+
+    it("refuses the requester's own pending or turned-down entry and accepts an approved one", async () => {
+        await expect(asA(() => Place.create({company: companyA, country: approved}))).resolves.toBeTruthy();
+        await expect(asA(() => Place.create({company: companyA, country: requested}))).rejects.toMatchObject(notApproved);
+        await expect(asA(() => Place.create({company: companyA, country: rejected}))).rejects.toMatchObject(notApproved);
+        await expect(asA(() => Place.updateMany({}, {$set: {country: requested}}))).rejects.toMatchObject(notApproved);
+    });
+
+    it("judges the session, not the record: a record stored in the platform company is refused in another company's session", async () => {
+        await expect(asA(() => BookEntry.create({company: platform, country: requested})))
+            .rejects.toMatchObject({error_code: "reference_not_approved", content: ["TenantRefBookEntry.country"]});
+        await expect(asPlatform(() => BookEntry.create({company: platform, country: requested}))).resolves.toBeTruthy();
+        await expect(BookEntry.create({company: platform, country: requested})).rejects.toMatchObject({error_code: "reference_not_approved"});
+    });
+
+    it("lets the platform use an entry it has not decided yet", async () => {
+        await expect(asPlatform(() => Place.create({company: platform, country: requested}))).resolves.toBeTruthy();
+    });
+});
