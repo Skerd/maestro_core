@@ -24,18 +24,26 @@ import request from "supertest";
 import {allPermissionTags, appFor, callerHeader, type TestCaller} from "@coreModule/_tests/httpHarness";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import * as countryRoute from "@coreModule/api/auxiliary/private/country";
+import * as stateRoute from "@coreModule/api/auxiliary/private/state";
+import * as cityRoute from "@coreModule/api/auxiliary/private/city";
 import * as currencyRoute from "@coreModule/api/finance/private/currency";
 import Company from "@coreModule/database/schemas/company/company";
 import Country from "@coreModule/database/schemas/country/country";
 import Currency from "@coreModule/database/schemas/currency/currency";
 import State from "@coreModule/database/schemas/state/state";
+import City from "@coreModule/database/schemas/city/city";
 
 const platform = new ObjectId(ids.platform);
 const shop = new ObjectId(ids.shop);
 const userId = new ObjectId();
-const app = appFor([{...countryRoute, basePath: "/api/auxiliary/country"}, {...currencyRoute, basePath: "/api/finance/currency"}]);
+const app = appFor([
+    {...countryRoute, basePath: "/api/auxiliary/country"},
+    {...stateRoute, basePath: "/api/auxiliary/state"},
+    {...cityRoute, basePath: "/api/auxiliary/city"},
+    {...currencyRoute, basePath: "/api/finance/currency"},
+]);
 // Both callers hold every permission: the shop is refused by the platform rule, not by its role (D160).
-const permissions = allPermissionTags([Country, Currency]);
+const permissions = allPermissionTags([Country, State, City, Currency]);
 const platformAdmin: TestCaller = {userId: userId.toString(), companyId: platform.toString(), isAdmin: true, permissions};
 const shopAdmin: TestCaller = {userId: userId.toString(), companyId: shop.toString(), isAdmin: true, permissions};
 const call = (caller: TestCaller, method: "post" | "put" | "patch" | "delete", path: string, body: object = {}) =>
@@ -95,5 +103,33 @@ describe("the platform lists (D160)", () => {
 
         const removal = await call(platformAdmin, "delete", "/api/auxiliary/country", {_id: albania.toString()});
         expect([removal.status, removal.body.error_code]).toEqual([400, "cannot_delete_has_relations"]);
+    });
+});
+
+// TD-F117: the lists fell back to newest first, so the seeded places read Z→A (Zürich, Zug, Vaud…).
+describe("the place lists open sorted by name (UX-12)", () => {
+    const names = (body: {data: {name: string}[]}) => body.data.map((row) => row.name);
+
+    it("lists countries, states and cities A→Z whatever order they were stored in", async () => {
+        const [switzerland, albania] = await Promise.all([seedCountry("Switzerland", "CH"), seedCountry("Albania", "AL")]);
+        await seedCountry("Kosovo", "XK");
+        await asCrossTenant("test fixtures", async () => {
+            for (const [name, code] of [["Vlorë County", "12"], ["Berat District", "BR"], ["Tirana District", "TR"]]) {
+                await State.collection.insertOne({name, code, country: albania, company: platform, deletedAt: null});
+            }
+            for (const name of ["Vorë", "Durrës", "Tirana"]) {
+                await City.collection.insertOne({name, country: albania, company: platform, deletedAt: null});
+            }
+            await City.collection.insertOne({name: "Zürich", country: switzerland, company: platform, deletedAt: null});
+        });
+
+        const countries = await call(shopAdmin, "post", "/api/auxiliary/country", {offset: 0, limit: 20});
+        expect(names(countries.body)).toEqual(["Albania", "Kosovo", "Switzerland"]);
+
+        const states = await call(shopAdmin, "post", "/api/auxiliary/state", {offset: 0, limit: 20});
+        expect(names(states.body)).toEqual(["Berat District", "Tirana District", "Vlorë County"]);
+
+        const cities = await call(shopAdmin, "post", "/api/auxiliary/city", {offset: 0, limit: 20});
+        expect(names(cities.body)).toEqual(["Durrës", "Tirana", "Vorë", "Zürich"]);
     });
 });

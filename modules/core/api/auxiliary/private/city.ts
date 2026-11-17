@@ -25,6 +25,8 @@ export const {router} = createCrudRouter<ICity, CreateCityFormType, EditCityForm
     toDTO:           cityToDTO,
     toDTOArray:      citiesToDTO,
     toSelect:        citiesToSelect,
+    // Places are looked up by name (UX-12); without it the list fell back to newest first and read Z→A.
+    defaultSort: {name: 1},
     // A platform list (D160): every company reads the same rows, only the platform company writes them; another
     // company's create is a request the platform approves (requestablePlugin).
     ...platformListRouteOptions<ICity, CreateCityFormType>({
