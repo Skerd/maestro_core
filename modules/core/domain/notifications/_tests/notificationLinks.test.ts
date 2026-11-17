@@ -27,6 +27,12 @@ describe("notification links", () => {
         expect(notificationLink("MESSAGE_MENTIONED", {channelId: "c1"}, "en-US")).toBe("/company/chats?channelId=c1");
     });
 
+    it("opens an account notice's tab only when the handler found the receiver can open it (TD-F133)", () => {
+        expect(notificationLink("USER_LOGGED_IN_NEW_DEVICE", {accountTab: "security"}, "sq-AL")).toBe("/account/security");
+        expect(notificationLink("TELEGRAM_UNLINKED", {accountTab: "apps"}, "en-US")).toBe("/account/apps");
+        expect(notificationLink("MFA_DISABLED", {}, "en-US")).toBeNull();
+    });
+
     it("gives a customer's notice no panel link", () => {
         expect(notificationLink("PRODUCT_ORDER_REFUNDED", {orderId: "o1"}, "en-US")).toBeNull();
         expect(notificationLink("PRODUCT_ORDER_SHIPPED", {orderId: "o1"}, "en-US")).toBeNull();

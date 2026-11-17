@@ -29,6 +29,14 @@ import {NotificationDeliveryChannel} from "armonia/src/modules/core/api/user/pri
 import type {IUser} from "@coreModule/database/schemas/user/user";
 import {notificationText, receiverLanguage} from "@coreModule/domain/notifications/notificationTexts";
 import {browserAndSystem} from "@coreModule/utilities/helpers/userAgent";
+import SchemaGuard from "@coreModule/database/security/schemaGuard";
+import {schemaToFieldAllowlist} from "@coreModule/database/filter/schemaToFieldAllowlist";
+import User from "@coreModule/database/schemas/user/user";
+import UserSession from "@coreModule/database/schemas/userSession/userSession";
+import LoginHistory from "@coreModule/database/schemas/loginHistory/loginHistory";
+import type {Model} from "mongoose";
+import type {UnSanitizedFields} from "armonia/src/modules/core/types";
+import type {UserContext} from "@coreModule/utilities/types/types";
 
 const notificationLogger = getLogger("notification_domain");
 
@@ -39,6 +47,32 @@ const notificationLogger = getLogger("notification_domain");
 function signInDevice(userAgent: string): {variant: "device"; browser: string; os: string} | Record<string, never> {
     const {browser, os} = browserAndSystem(userAgent);
     return browser && os ? {variant: "device", browser, os} : {};
+}
+
+/** Whether `ctx` may read any of `fields` on its own `model` records, as the panel's access map decides it. */
+function readsOwn<T>(model: Model<T>, fields: UnSanitizedFields, ctx: UserContext): boolean {
+    try {
+        SchemaGuard.sanitizeFields(model, fields, "read", ctx);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * The account tab a security notice links to (`/account/{accountTab}`, TD-F133), set only when the receiver can open
+ * it in the company: Security lists their sessions and sign-ins, Apps holds the Telegram card. A Web Client starts
+ * with neither, and a link would land them on Forbidden, so their notice opens nothing.
+ */
+async function accountTabFor(receiverId: string, companyId: string, tab: "security" | "apps"): Promise<{accountTab?: string}> {
+    const receiver = await userService.findById(receiverId, {}, undefined, "roles");
+    if (!receiver) return {};
+    const {isAdmin, permissions} = await receiver.getCompanyAccess(new ObjectId(companyId));
+    const ctx: UserContext = {userId: receiverId, orgId: companyId, isAdmin, permissions, isSelf: true};
+    const opens = tab === "security"
+        ? readsOwn(UserSession, schemaToFieldAllowlist(UserSession.schema), ctx) || readsOwn(LoginHistory, schemaToFieldAllowlist(LoginHistory.schema), ctx)
+        : readsOwn(User, {telegram: {}}, ctx);
+    return opens ? {accountTab: tab} : {};
 }
 
 export interface CreateNotificationInput {
@@ -283,7 +317,7 @@ export function registerNotificationEventHandlers(): void {
                         code: NotificationEventCodes.USER_LOGGED_IN,
                         description: "browser" in device ? `New sign-in to your account from ${device.browser} on ${device.os}` : "New sign-in to your account",
                         params: device,
-                        content: { requestIp: ip, userAgent, source },
+                        content: { requestIp: ip, userAgent, source, ...await accountTabFor(receiverId, companyId, "security") },
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.SECURITY
                     },
@@ -315,7 +349,8 @@ export function registerNotificationEventHandlers(): void {
                         content: {
                             requestIp: payload.requestIp,
                             userAgent: payload.userAgent,
-                            source: payload.source
+                            source: payload.source,
+                            ...await accountTabFor(receiverId, companyId, "security"),
                         },
                         importance: NotificationImportance.HIGH,
                         category: NotificationCategory.SECURITY
@@ -341,7 +376,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.MFA_DISABLED,
                         description: "Multi-factor authentication was disabled on your account",
-                        content: {},
+                        content: await accountTabFor(receiverId, companyId, "security"),
                         importance: NotificationImportance.HIGH,
                         category: NotificationCategory.SECURITY
                     },
@@ -366,7 +401,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.MFA_ENABLED,
                         description: "Multi-factor authentication was enabled on your account",
-                        content: {},
+                        content: await accountTabFor(receiverId, companyId, "security"),
                         importance: NotificationImportance.HIGH,
                         category: NotificationCategory.SECURITY
                     },
@@ -391,7 +426,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.TELEGRAM_LINKED,
                         description: "Telegram was linked to your account",
-                        content: {},
+                        content: await accountTabFor(receiverId, companyId, "apps"),
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.SECURITY
                     },
@@ -416,7 +451,7 @@ export function registerNotificationEventHandlers(): void {
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.TELEGRAM_UNLINKED,
                         description: "Telegram was unlinked from your account",
-                        content: {},
+                        content: await accountTabFor(receiverId, companyId, "apps"),
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.SECURITY
                     },

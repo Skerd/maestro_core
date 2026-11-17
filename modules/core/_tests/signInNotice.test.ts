@@ -15,6 +15,8 @@ import Company from "@coreModule/database/schemas/company/company";
 import Role from "@coreModule/database/schemas/role/role";
 import User from "@coreModule/database/schemas/user/user";
 import Notification from "@coreModule/database/schemas/notification/notification";
+import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
+import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {registerNotificationEventHandlers} from "@coreModule/domain/notifications/notificationDomainService";
 import {notificationText} from "@coreModule/domain/notifications/notificationTexts";
 import {router as loginRouter} from "@coreModule/api/user/public/login";
@@ -79,5 +81,42 @@ describe("sign-in notices", () => {
         await signIn("curl/8.7.1");
 
         expect((await notices(2))[1]).toEqual(["USER_LOGGED_IN", "New sign-in to your account"]);
+    });
+});
+
+const contents = async (count: number) => {
+    await vi.waitFor(async () => expect(await Notification.collection.countDocuments({receiver: userId})).toBe(count));
+    const rows = await Notification.collection.find({receiver: userId}).sort({_id: 1}).toArray();
+    return rows.map((row) => row.content?.accountTab);
+};
+
+const grant = async (tag: string) => {
+    const {insertedId} = await RolePermission.collection.insertOne({tag, name: tag, group: "Core", module: "core", alwaysActive: false});
+    await Role.collection.updateOne({_id: role}, {$push: {permissions: insertedId}});
+};
+
+const unlinkTelegram = () => emitNotificationEvent(NotificationEventCodes.TELEGRAM_UNLINKED, {
+    receiverIds: [userId.toString()], payload: {companyId: company.toString(), languageCode: "en-US"},
+});
+
+// TD-F133: the account notices opened nothing. They open their tab now, but only for a receiver who can open it there:
+// a Web Client has no read of their sessions or Telegram, and a link would land them on Forbidden.
+describe("account notice links", () => {
+    it("open Security once the receiver may read their own sessions", async () => {
+        await signIn(chromeOnMac);
+        expect(await contents(1)).toEqual([undefined]);
+
+        await grant("usersessions[read:self:createdAt]");
+        await signIn(chromeOnMac);
+        expect(await contents(2)).toEqual([undefined, "security"]);
+    });
+
+    it("open Apps once the receiver may see their Telegram link", async () => {
+        unlinkTelegram();
+        expect(await contents(1)).toEqual([undefined]);
+
+        await grant("users[read:self:telegram]");
+        unlinkTelegram();
+        expect(await contents(2)).toEqual([undefined, "apps"]);
     });
 });
