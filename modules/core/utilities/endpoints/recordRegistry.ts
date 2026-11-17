@@ -45,10 +45,17 @@ export function registerRecordResource(router: Router, resource: RecordResource)
     byRouter.set(router, resource);
 }
 
+/**
+ * Security records (sign-ins, sessions: a person's IP addresses and devices) are never shared into a chat; they stay on
+ * the Security page (the architect, 2026-11-17, TD-F130).
+ */
+const NEVER_CHAT_RECORDS = new Set(["loginhistories", "usersessions"]);
+
 /** Called by `routeRegistry` as it mounts `router` for `moduleName`; a router that registered no resource is ignored. */
 export function recordRouterMounted(router: Router, moduleName: string): void {
     const resource = byRouter.get(router);
-    if (resource) byCollection.set(resource.collection.toLowerCase(), {...resource, moduleName});
+    if (!resource || NEVER_CHAT_RECORDS.has(resource.collection.toLowerCase())) return;
+    byCollection.set(resource.collection.toLowerCase(), {...resource, moduleName});
 }
 
 /** The mounted resource of `collection` (case-insensitive), if any. */
