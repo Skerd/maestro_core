@@ -28,8 +28,18 @@ import {userService} from "@coreModule/database/schemas/user/user.service";
 import {NotificationDeliveryChannel} from "armonia/src/modules/core/api/user/private/notifications/notifications.enum";
 import type {IUser} from "@coreModule/database/schemas/user/user";
 import {notificationText, receiverLanguage} from "@coreModule/domain/notifications/notificationTexts";
+import {UAParser} from "ua-parser-js";
 
 const notificationLogger = getLogger("notification_domain");
+
+/**
+ * The browser and system a sign-in came from, for the sign-in notices (TD-B237): the `device` variant names them
+ * ("Chrome on macOS"); without both the notice says only that someone signed in. The IP stays in `content`.
+ */
+function signInDevice(userAgent: string): {variant: "device"; browser: string; os: string} | Record<string, never> {
+    const {browser, os} = new UAParser(userAgent).getResult();
+    return browser.name && os.name ? {variant: "device", browser: browser.name, os: os.name} : {};
+}
 
 export interface CreateNotificationInput {
     receiver: ObjectId;
@@ -261,6 +271,7 @@ export function registerNotificationEventHandlers(): void {
         const ip = (payload.requestIp as string) ?? "";
         const userAgent = (payload.userAgent as string) ?? "";
         const source = (payload.source as string) ?? "";
+        const device = signInDevice(userAgent);
         const opts = createNotifOpts(event);
 
         for (const receiverId of receiverIds) {
@@ -270,8 +281,8 @@ export function registerNotificationEventHandlers(): void {
                         receiver: new ObjectId(receiverId),
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.USER_LOGGED_IN,
-                        description: `New sign-in to your account from ${source} (${ip})`,
-                        params: {source, ip},
+                        description: "browser" in device ? `New sign-in to your account from ${device.browser} on ${device.os}` : "New sign-in to your account",
+                        params: device,
                         content: { requestIp: ip, userAgent, source },
                         importance: NotificationImportance.MEDIUM,
                         category: NotificationCategory.SECURITY
@@ -287,6 +298,7 @@ export function registerNotificationEventHandlers(): void {
     notificationEventBus.on(NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE, async (event: NotificationEvent) => {
         const { receiverIds, payload } = event;
         const companyId = payload.companyId as string;
+        const device = signInDevice((payload.userAgent as string) ?? "");
         const opts = createNotifOpts(event);
 
         for (const receiverId of receiverIds) {
@@ -296,7 +308,10 @@ export function registerNotificationEventHandlers(): void {
                         receiver: new ObjectId(receiverId),
                         company: new ObjectId(companyId),
                         code: NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE,
-                        description: "Your account was used to sign in from a new device",
+                        description: "browser" in device
+                            ? `Your account was used to sign in from a new device: ${device.browser} on ${device.os}`
+                            : "Your account was used to sign in from a new device",
+                        params: device,
                         content: {
                             requestIp: payload.requestIp,
                             userAgent: payload.userAgent,

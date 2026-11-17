@@ -251,7 +251,8 @@ async function Login(
         const { token, refreshToken } = await user.generateJWTToken(company._id, requestSource, userSessionRow._id.toString(), languageCode);
         setMediaAuthCookie(response, token);
 
-        emitNotificationEvent(NotificationEventCodes.USER_LOGGED_IN, {
+        // One notice per sign-in (TD-B237): a new device gets the louder one instead of both.
+        emitNotificationEvent(isNewDevice ? NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE : NotificationEventCodes.USER_LOGGED_IN, {
             receiverIds: [user._id.toString()],
             payload: {
                 companyId: company._id.toString(),
@@ -262,19 +263,6 @@ async function Login(
             },
             session
         });
-        if (isNewDevice) {
-            emitNotificationEvent(NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE, {
-                receiverIds: [user._id.toString()],
-                payload: {
-                    companyId: company._id.toString(),
-                    requestIp: requestIp ?? "",
-                    userAgent: userAgent ?? "",
-                    source: requestSource,
-                    languageCode
-                },
-                session
-            });
-        }
 
         logger.finish(`Successfully authenticated user [${username}]!`);
 
@@ -446,7 +434,8 @@ async function LoginThirdParty(
         const { token, refreshToken } = await user.generateJWTToken(company._id, requestSource, userSessionRow._id.toString(), languageCode);
         setMediaAuthCookie(response, token);
 
-        emitNotificationEvent(NotificationEventCodes.USER_LOGGED_IN, {
+        // One notice per sign-in (TD-B237): a new device gets the louder one instead of both.
+        emitNotificationEvent(isNewDevice ? NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE : NotificationEventCodes.USER_LOGGED_IN, {
             receiverIds: [user._id.toString()],
             payload: {
                 companyId: company._id.toString(),
@@ -457,19 +446,6 @@ async function LoginThirdParty(
             },
             session
         });
-        if (isNewDevice) {
-            emitNotificationEvent(NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE, {
-                receiverIds: [user._id.toString()],
-                payload: {
-                    companyId: company._id.toString(),
-                    requestIp: requestIp ?? "",
-                    userAgent: userAgent ?? "",
-                    source: requestSource,
-                    languageCode
-                },
-                session
-            });
-        }
 
         logger.finish(`Successfully authenticated user [${userInfo.email}] via ${platform}!`);
 
