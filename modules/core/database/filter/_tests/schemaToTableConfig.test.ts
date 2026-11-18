@@ -2,6 +2,7 @@ import {describe, expect, it} from "vitest";
 import {model, Schema, SchemaTypes, type Document} from "mongoose";
 import {ARRAY_OPERATORS, COLUMN_TYPE, DATE_OPERATORS, EXISTENCE_OPERATORS, NUMBER_OPERATORS} from "armonia/src/modules/core/database/filter/typeOperators";
 import {buildTableColumnsFromSchema} from "../schemaToTableConfig";
+import {ownershipPlugin} from "@coreModule/database/plugins/ownershipPlugin";
 
 /** Probe documents: only the schema metadata matters to the table builder. */
 type ProbeDocument = Document & Record<string, unknown>;
@@ -197,5 +198,13 @@ describe("buildTableColumnsFromSchema", () => {
             operators: [...DATE_OPERATORS, "startsWith"],
             localDay: true,
         });
+    });
+    it("keeps the owner's Created By column available but hidden by default (D164)", () => {
+        const OwnedSchema = new Schema<ProbeDocument>({name: {type: SchemaTypes.String}});
+        ownershipPlugin(OwnedSchema);
+        const OwnedModel = model<ProbeDocument>("SchemaToTableConfigOwnedProbe", OwnedSchema);
+        const createdBy = buildTableColumnsFromSchema(OwnedModel, new Set(["name", "createdBy"])).find((column) => column.id === "createdBy");
+        expect(createdBy).toBeDefined();
+        expect(createdBy!.visible).toBe(false);
     });
 });

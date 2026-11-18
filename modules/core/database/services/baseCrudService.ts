@@ -6,7 +6,7 @@
  */
 
 import {ClientSession, Document, Error as MongooseError, FilterQuery, Model, PopulateOptions, QueryOptions, UpdateQuery} from 'mongoose';
-import {Decimal128, ObjectId} from 'mongodb';
+import {type CollationOptions, Decimal128, ObjectId} from 'mongodb';
 import {performance} from 'perf_hooks';
 import {serverLogger} from '@coreModule/loggers/serverLog';
 import {timeFunction} from '@coreModule/utilities/timing/functionTimer';
@@ -33,7 +33,15 @@ export interface CrudOptions {
     hard?: boolean;
     /** For models with softDeletePlugin: include soft-deleted documents in find queries */
     withDeleted?: boolean;
+    /** Collation for `find` (matching and sort), e.g. {@link NATURAL_SORT_COLLATION}. */
+    collation?: CollationOptions;
 }
+
+/**
+ * Orders text by the numbers in it, so "Floor 2" sorts before "Floor 10" (D165). A query with it cannot use a
+ * plain index for string sorts or string matches, so it suits lists that stay small per company.
+ */
+export const NATURAL_SORT_COLLATION: CollationOptions = {locale: "en", numericOrdering: true};
 
 /**
  * Pagination options
@@ -484,6 +492,10 @@ export class BaseCrudService<T extends Document, TModel extends Model<T>> {
 
             if (sort) {
                 mongooseQuery = mongooseQuery.sort(sort);
+            }
+
+            if (options.collation) {
+                mongooseQuery = mongooseQuery.collation(options.collation);
             }
             
             if (offset !== undefined && offset > 0) {

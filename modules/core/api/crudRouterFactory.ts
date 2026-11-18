@@ -17,7 +17,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {isPlatformOnly, mayUsePlatformOnly} from "@coreModule/database/plugins/platformOnlyPlugin";
 import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collections";
-import {BaseCrudService, type CreateInput} from "@coreModule/database/services/baseCrudService";
+import {BaseCrudService, type CreateInput, NATURAL_SORT_COLLATION} from "@coreModule/database/services/baseCrudService";
 import {assertCanDelete} from "@coreModule/database/relationsRegistry";
 import {escapeRegex} from "@coreModule/utilities/helpers";
 import {DeletedDataReadFields, SanitizedFields, UnSanitizedFields} from "armonia/src/modules/core/types";
@@ -337,6 +337,13 @@ export interface CrudRouterConfig<
      */
     selectSort?: Record<string, 1 | -1>;
 
+    /**
+     * Order text by the numbers in it ("Floor 2" before "Floor 10") in the list and select routes, whichever column
+     * they sort by (D165). The queries then run with {@link NATURAL_SORT_COLLATION}, which a plain index cannot serve,
+     * so turn it on only for lists that stay small per company.
+     */
+    naturalSort?: boolean;
+
     /** Per-route rate limits (requests per minute). */
     rateLimits?: {
         /** Applied to select, list, and single routes. @default 60 */
@@ -407,6 +414,7 @@ export function createCrudRouter<
     const defaultSort  = config.defaultSort  ?? {_id: -1};
     const selectSort   = config.selectSort   ?? {[selectSearchField]: 1};
     const selectProjection = config.selectProjection ?? `_id ${selectSearchField}`;
+    const queryCollation = config.naturalSort ? {collation: NATURAL_SORT_COLLATION} : {};
 
     function documentSelect(populateSelect: string | undefined): string {
         const extra = config.extraDocumentSelect;
@@ -480,7 +488,7 @@ export function createCrudRouter<
         const [docs, total] = await Promise.all([
             service.find(
                 filter,
-                {logger, languageCode},
+                {logger, languageCode, ...queryCollation},
                 config.selectPopulate,
                 selectProjection,
                 selectSort,
@@ -534,7 +542,7 @@ export function createCrudRouter<
             }
 
             const [docs, total] = await Promise.all([
-                service.find(filter, {logger, languageCode}, populate.populate, documentSelect(populate.select), !!sortBy && !!sortOrder ? {[sortBy]: sortOrder === "asc" ? 1 : -1} : defaultSort, limit, offset ?? 0),
+                service.find(filter, {logger, languageCode, ...queryCollation}, populate.populate, documentSelect(populate.select), !!sortBy && !!sortOrder ? {[sortBy]: sortOrder === "asc" ? 1 : -1} : defaultSort, limit, offset ?? 0),
                 service.count(filter, {logger, languageCode}),
             ]);
 

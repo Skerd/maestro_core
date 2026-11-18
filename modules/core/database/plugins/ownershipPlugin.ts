@@ -46,8 +46,9 @@ export const ownershipPlugin = (schema: Schema, options: OwnershipPluginOptions 
                     write: "no-permission"
                 }
             },
+            // Audit, not what a list is read for: available in the column picker, hidden by default (UX-12, D164).
             dynamicTableConfiguration: {
-                visible: true,
+                visible: false,
                 refDisplayKey: ["name", "surname"],
                 avatarPath: "photo"
             }
