@@ -161,7 +161,9 @@ function send(client: Client, code: string, payload: unknown): void {
     client.socket.send(JSON.stringify({code, payload}));
 }
 
-async function waitFor<T>(read: () => T | undefined, timeoutMs = 1000): Promise<T> {
+// A deadline, not a delay: it returns as soon as the value is there. One second was too tight on a busy machine, and
+// a missed frame left its socket open and timed out the tests after it (TD-T17).
+async function waitFor<T>(read: () => T | undefined, timeoutMs = 10_000): Promise<T> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
         const value = read();
