@@ -1,4 +1,5 @@
 import {Router} from "express";
+import {companyStaffFilter} from "@coreModule/domain/roles/companyStaff";
 import {ObjectId} from "mongodb";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
@@ -464,6 +465,15 @@ async function createUserChannel(params: CreateUserChannelType & CreateChannelFo
     if (foundUsers.length !== userIds.length) {
         logger.debug(`Validation failed: found ${foundUsers.length} users, expected ${userIds.length}`);
         throw apiValidationException("one_of_the_users_not_found", null, null, languageCode);
+    }
+    // The internal chat is between staff only: a web user writes to the company through its website chat (D168).
+    const staffCount = await userService.count({
+        _id: {$in: usersObjectIds},
+        companies: company._id,
+        ...await companyStaffFilter(company._id, {session, logger, languageCode}),
+    }, {session, logger, languageCode});
+    if (staffCount !== foundUsers.length) {
+        throw apiValidationException("chat_members_staff_only", null, null, languageCode);
     }
     logger.debug(`All ${foundUsers.length} user(s) validated successfully`);
 

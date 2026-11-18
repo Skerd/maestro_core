@@ -63,6 +63,7 @@ import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/ds
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {mountActions, selectIdsOf} from "@coreModule/api/crudRouterFactory";
 import {registerRecordResource} from "@coreModule/utilities/endpoints/recordRegistry";
+import {companyStaffFilter} from "@coreModule/domain/roles/companyStaff";
 import {UserActions} from "@coreModule/database/schemas/user/user.actions";
 import type {ActionMessage, SelectResponse, TableResponse} from "armonia/src/modules/core/types/shared.types";
 
@@ -408,7 +409,8 @@ router.post(
 );
 
 /**
- * Lightweight list of active company users for simple UIs: id, name, surname, fullName, photo.
+ * Lightweight list of the company's staff for the chat pickers (new chat, add members): id, name, surname, photo.
+ * Web users are left out: the internal chat is between staff, a web user writes through the website chat (D168).
  *
  * @param params - company, offset, limit, optional name, notUser, auth context.
  * @returns Paginated list of SimpleUser.
@@ -421,10 +423,10 @@ async function getCompanyUsersSimple(params: AuthenticatedMWType & SimpleUsersFo
     const sanitizedFields = SchemaGuard.sanitizeFields(User, {name: {}, surname: {}, photo: {}}, "read", actionUserCtx, languageCode);
     const populate = SchemaGuard.generatePopulate(sanitizedFields, User.schema);
 
+    const opts = { logger, languageCode };
     const filter: FilterQuery<IUser> = {
         companies: company._id,
-        "roles.company": company._id,
-        "roles.active": "active"
+        ...await companyStaffFilter(company._id, opts),
     };
     if( !!notUser ){
         filter["_id"] = {
@@ -437,8 +439,6 @@ async function getCompanyUsersSimple(params: AuthenticatedMWType & SimpleUsersFo
             { fullName: { $regex: escaped, $options: "i" } },
         ];
     }
-
-    const opts = { logger, languageCode };
 
     const [users, count] = await Promise.all([
         userService.find(
