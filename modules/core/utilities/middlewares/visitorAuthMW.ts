@@ -22,6 +22,7 @@
 import {NotAuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {resolveVisitorSession} from "@coreModule/domain/publicChat/visitorSession";
+import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {IChannel} from "@coreModule/database/schemas/channel/channel";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import {IUser} from "@coreModule/database/schemas/user/user";
@@ -57,6 +58,8 @@ export default () => async (req: any, _res: any, next: any) => {
         }
 
         const context = await resolveVisitorSession({token, languageCode});
+        // The rest of the request works on the chat's company's data (D16): a public request has no tenant of its own.
+        setRequestTenant(context.visitorCompany._id, languageCode);
         req.body.visitorUser = context.visitorUser;
         req.body.visitorChannel = context.visitorChannel;
         req.body.visitorCompany = context.visitorCompany;

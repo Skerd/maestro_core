@@ -29,7 +29,6 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
-import {isPortalApexOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 import {resolveVisitorContext} from "@coreModule/utilities/middlewares/visitorAuthMW";
 import {generateVisitorToken} from "@coreModule/utilities/security/visitorToken";
 import {channelService} from "@coreModule/database/schemas/channel/channel.service";
@@ -183,10 +182,8 @@ async function startPublicChatSession(
     const {origin, languageCode, logger, requestIp, userAgent, visitorToken, entryUrl, referrer, context} = params;
     logger.start("Opening public chat session...");
 
-    // No visitor chat on the portal apex: it speaks for many companies at once.
-    if (isPortalApexOrigin(origin)) {
-        throw apiValidationException("public_chat_not_enabled", "company", null, languageCode);
-    }
+    // On the portal apex the visitor chats with the platform owner, whose site the apex is: `resolveCompanyByOrigin`
+    // resolves the apex to it (the chat client never names a company in `x-site-company`).
     const company = await resolveCompanyByOrigin(origin, languageCode);
     assertPublicChatEnabled(company, languageCode);
 
@@ -566,12 +563,12 @@ async function loadMessages(params: {
         {
             channel: channel._id,
             type: "message",
-            status: {$ne: "deleted"},
+            // Deleted messages come back as markers, as the internal chat shows them.
             ...(since ? {createdAt: {$gt: since}} : {}),
         },
         {logger, languageCode},
-        ["sender"],
-        "sender text status deletedAt type createdAt",
+        ["sender", "mentionedUsers"],
+        "sender text status deletedAt type createdAt mentionedUsers reactions",
         {createdAt: since ? 1 : -1},
         limit,
     );

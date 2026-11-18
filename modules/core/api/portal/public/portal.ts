@@ -100,7 +100,9 @@ async function portalSite(company: ICompany, scope: PortalScope, languageCode: s
                 slug: portalSlug({_id: company._id, siteSlug: company.siteSlug}),
                 ...(description ? {description} : {}),
                 cities: scope.companyId ? cities : [],
-                chatEnabled: Boolean(scope.companyId && company.publicAiChat?.enabled),
+                // The apex is the platform owner's own site: its website chat shows there like any company's on its
+                // site (the public chat routes resolve the apex to the platform owner).
+                chatEnabled: Boolean(company.publicAiChat?.enabled),
             },
             cities,
             sections: offered.map((section) => section.key),

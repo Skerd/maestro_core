@@ -535,8 +535,10 @@ async function putMessage(params: PutMessageType): Promise<MessageTypeWithPartic
         };
         pushWebsocketMessage(websocketMessage);
 
-        const mentionReceiverIds = mentionedUserIds
-            .map((id) => id.toString())
+        // A website visitor or a bot has no panel to read a notification in: only staff are told.
+        const mentionReceiverIds = (mentionedUsers ?? [])
+            .filter((mentioned) => !mentioned.isVisitor && !mentioned.isBot)
+            .map((mentioned) => mentioned._id.toString())
             .filter((id) => id !== actionUserInfo._id.toString());
         if (mentionReceiverIds.length > 0) {
             emitNotificationEvent(
