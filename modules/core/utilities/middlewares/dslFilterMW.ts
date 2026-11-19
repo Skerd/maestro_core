@@ -5,6 +5,7 @@ import type {SanitizedFields} from "armonia/src/modules/core/types";
 import {getModelCollectedData} from "@coreModule/database/collections";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {buildMongoQuery} from "@coreModule/database/filter/filterQueryBuilder";
+import {resolveReferenceContains} from "@coreModule/database/filter/referenceSearch";
 import {filterTableConfigBySanitizedFields} from "@coreModule/database/filter/schemaToTableConfig";
 import {createFieldRegistry} from "armonia/src/modules/core/database/filter/fieldRegistry.types";
 import {tableConfigToFilterConfig} from "armonia/src/modules/core/database/filter/pathUtils";
@@ -29,6 +30,7 @@ export type DslFilterMWOptions = {
  *
  * Uses getModelCollectedData(model).tableConfiguration. Converts a filter DSL from req.body.filter
  * into a MongoDB FilterQuery using field-level permissions. Attaches the result to req.body.dslFilterQuery.
+ * `contains` on a reference (search by the linked record's name, D170) is resolved to ids first.
  *
  * Requires schemaSanitizer (or equivalent) to run first and attach req.body.sanitizedReadFields.
  * Only processes when filter has rules or groups; otherwise dslFilterQuery is undefined.
@@ -56,7 +58,7 @@ export type DslFilterMWOptions = {
 export function dslFilterMW(options: DslFilterMWOptions) {
     const { model: modelName, fieldName = "filter" } = options;
 
-    return (req: Request, _res: Response, next: NextFunction) => {
+    return async (req: Request, _res: Response, next: NextFunction) => {
         const body = req.body ?? {};
         const sanitizedFields = body.sanitizedReadFields as SanitizedFields | undefined;
         const filter = body[fieldName] as FilterGroup | undefined;
@@ -75,7 +77,7 @@ export function dslFilterMW(options: DslFilterMWOptions) {
             );
         }
 
-        const { tableConfiguration } = getModelCollectedData(modelName);
+        const { tableConfiguration, model } = getModelCollectedData(modelName);
 
         if (!tableConfiguration) {
             const languageCode = body.languageCode ?? CONSTANTS.DEFAULT_LANGUAGE;
@@ -86,10 +88,24 @@ export function dslFilterMW(options: DslFilterMWOptions) {
 
         const tableConfig = filterTableConfigBySanitizedFields(tableConfiguration, sanitizedFields);
         const filterRegistry = createFieldRegistry(tableConfigToFilterConfig(tableConfig));
-        const dslQuery = buildMongoQuery(filter, filterRegistry);
+        try {
+            const referenceMatches = model
+                ? await resolveReferenceContains({
+                    filter,
+                    registry: filterRegistry,
+                    model,
+                    tableConfig,
+                    userCtx: body.actionUserCtx,
+                    languageCode: body.languageCode ?? CONSTANTS.DEFAULT_LANGUAGE,
+                })
+                : undefined;
+            const dslQuery = buildMongoQuery(filter, filterRegistry, {referenceMatches});
 
-        req.body.dslFilterQuery =
-            dslQuery && Object.keys(dslQuery as object).length > 0 ? (dslQuery as DslFilterQuery) : undefined;
+            req.body.dslFilterQuery =
+                dslQuery && Object.keys(dslQuery as object).length > 0 ? (dslQuery as DslFilterQuery) : undefined;
+        } catch (error) {
+            return next(error);
+        }
 
         next();
     };

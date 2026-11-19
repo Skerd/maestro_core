@@ -16,6 +16,7 @@ import {
     STRING_OPERATORS
 } from "armonia/src/modules/core/database/filter/typeOperators";
 import {REF_SELECT_REGISTRY} from "armonia/src/modules/core/database/filter/refSelectRegistry";
+import type {FilterOperator} from "armonia/src/modules/core/database/filter/filter.types";
 import {EnumTone, isEnumTone} from "armonia/src/modules/core/api/company/private/users/tableConfig.form.response.type";
 
 /**
@@ -29,6 +30,11 @@ function sanitizeEnumTones(declared: unknown): Record<string, EnumTone> | undefi
         if (isEnumTone(tone)) tones[value] = tone;
     }
     return Object.keys(tones).length > 0 ? tones : undefined;
+}
+
+/** A reference offers `contains` (search by the linked record's name, D170) only when it names the model to look in. */
+function objectIdOperators(ref: string | undefined): FilterOperator[] {
+    return ref ? OBJECT_ID_OPERATORS : OBJECT_ID_OPERATORS.filter((operator) => operator !== "contains");
 }
 
 function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["filterConfig"] {
@@ -120,7 +126,7 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
         return {
             type: COLUMN_TYPE.OBJECT_ID,
             ref,
-            operators: OBJECT_ID_OPERATORS,
+            operators: objectIdOperators(ref),
             ...rest
         };
     }
@@ -139,7 +145,7 @@ function schemaTypeToFilterConfig(schemaType: SchemaType): TableColumnConfig["fi
             return {
                 type: COLUMN_TYPE.OBJECT_ID,
                 ref: arrayRef,
-                operators: OBJECT_ID_OPERATORS,
+                operators: objectIdOperators(arrayRef),
                 ...rest
             };
         }

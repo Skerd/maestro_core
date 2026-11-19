@@ -12,8 +12,8 @@ import type {UserContext} from "@coreModule/utilities/types/types";
  * the caller's company when that model is company-scoped.
  */
 
-/** Tried in order; `name` + `surname` are joined (users, contacts). */
-const LABEL_FIELDS = ["name", "surname", "title", "unitNumber", "label", "abbreviation", "symbol", "code", "reference", "email", "originalName"] as const;
+/** Tried in order; `name` + `surname` are joined (users, contacts). List search matches a linked record on these too (D170). */
+export const REFERENCE_LABEL_FIELDS = ["name", "surname", "title", "unitNumber", "label", "abbreviation", "symbol", "code", "reference", "email", "originalName"] as const;
 
 const MAX_IDS_PER_MODEL = 200;
 const OBJECT_ID_HEX = /^[a-f0-9]{24}$/i;
@@ -98,7 +98,7 @@ export async function resolveAuditReferenceLabels({
             if (!refModel || !collected?.readFields) return;
 
             const readable = SchemaGuard.sanitizeFields(refModel, collected.readFields, "read", userCtx, languageCode);
-            const fields = LABEL_FIELDS.filter((f) => Object.prototype.hasOwnProperty.call(readable, f));
+            const fields = REFERENCE_LABEL_FIELDS.filter((f) => Object.prototype.hasOwnProperty.call(readable, f));
             if (fields.length === 0) return;
 
             const filter: Record<string, unknown> = {_id: {$in: [...ids].slice(0, MAX_IDS_PER_MODEL)}};

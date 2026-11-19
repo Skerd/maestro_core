@@ -39,6 +39,11 @@ export function markTenantOwned(schema: Schema, sharedWith?: string): void {
     tenantOwned.set(schema, {sharedWith});
 }
 
+/** True when the tenant scope (D16) narrows every read of this schema's model to the current company. */
+export function isTenantOwned(schema: Schema): boolean {
+    return tenantOwned.has(schema);
+}
+
 /** Fields a block may point outside the record's company, and why (`allowForeignReferences`). */
 export interface ForeignReferenceAllowance {
     /** Why these fields may name another company's rows, for the log. */

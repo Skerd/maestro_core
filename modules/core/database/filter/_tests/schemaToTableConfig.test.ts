@@ -207,4 +207,21 @@ describe("buildTableColumnsFromSchema", () => {
         expect(createdBy).toBeDefined();
         expect(createdBy!.visible).toBe(false);
     });
+
+    // D170: `contains` on a reference searches the linked record's names, in the model it names.
+    it("offers name search on a reference that names its model", () => {
+        const RefSchema = new Schema<ProbeDocument>({
+            owner: {type: SchemaTypes.ObjectId, ref: "Owner"},
+            tags: {type: [{type: SchemaTypes.ObjectId, ref: "Tag"}]},
+            bare: {type: SchemaTypes.ObjectId},
+        });
+        const RefModel = model<ProbeDocument>("SchemaToTableConfigRefProbe", RefSchema);
+        const byId = Object.fromEntries(
+            buildTableColumnsFromSchema(RefModel, new Set(["owner", "tags", "bare"])).map((column) => [column.id, column]),
+        );
+        expect(byId.owner!.filterConfig!.operators).toContain("contains");
+        expect(byId.tags!.filterConfig!.operators).toContain("contains");
+        expect(byId.bare!.filterConfig!.operators).not.toContain("contains");
+        expect(byId.bare!.filterConfig!.operators).toContain("equals");
+    });
 });

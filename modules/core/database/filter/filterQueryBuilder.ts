@@ -6,7 +6,9 @@
 import type {FilterQuery} from "mongoose";
 import type {FilterGroup, FilterRule} from "armonia/src/modules/core/database/filter/filter.types";
 import type {FieldRegistry} from "armonia/src/modules/core/database/filter/fieldRegistry.types";
+import {COLUMN_TYPE} from "armonia/src/modules/core/database/filter/typeOperators";
 import {OPERATOR_HANDLERS} from "./operators";
+import {referenceMatchKey, type ReferenceMatches} from "./referenceSearch";
 
 const FORBIDDEN_FIELD_PATTERNS = /^(__proto__|constructor|prototype)$/;
 const INVALID_FIELD_PREFIX = /^[$.]/;
@@ -20,6 +22,8 @@ function isValidFieldPath(field: string): boolean {
 
 export interface BuildOptions {
     strict?: boolean;
+    /** Ids for each reference `contains` rule (`resolveReferenceContains`); a rule without an entry is skipped. */
+    referenceMatches?: ReferenceMatches;
 }
 
 /**
@@ -45,6 +49,16 @@ function buildRuleCondition<T>(
     if (allowedOps && !allowedOps.includes(rule.operator)) {
         if (opts.strict) throw new Error(`Operator ${rule.operator} not allowed for field ${rule.field}`);
         return null;
+    }
+
+    // A linked record's name, resolved beforehand: no match is `$in: []`, which matches no row rather than every row.
+    if (rule.operator === "contains" && fieldConfig.type === COLUMN_TYPE.OBJECT_ID) {
+        const ids = typeof rule.value === "string" ? opts.referenceMatches?.get(referenceMatchKey(rule.field, rule.value)) : undefined;
+        if (!ids) {
+            if (opts.strict) throw new Error(`Unresolved reference search on field ${rule.field}`);
+            return null;
+        }
+        return {[rule.field]: {$in: ids}} as FilterQuery<T>;
     }
 
     const handler = OPERATOR_HANDLERS[rule.operator];
