@@ -40,7 +40,7 @@ import {clearInterval} from "node:timers";
 import {MACHINE_TO_MACHINE_SECRET, WEBSOCKET} from "@coreModule/environment";
 import {webSocketCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {WebSocketHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
-import {WebSocketMessageCodes, WebSocketPush} from "armonia/src/modules/core/websocket/types";
+import {WebSocketMessageCodes, WebSocketPush, WebSocketRoomPush} from "armonia/src/modules/core/websocket/types";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 
 /**
@@ -395,6 +395,18 @@ function isWebSocketConnected(): boolean {
  * @param message - Message code, payload and receiving user IDs, serialized as JSON
  */
 export function pushWebsocketMessage<T>(message: WebSocketPush<T>): void {
+    sendMachineFrame(message);
+}
+
+/**
+ * Push a message to everyone in a broadcast room (D172) through the WebSocket server; the server forwards it only to a
+ * room a module registered (`registerBroadcastRooms`). Fire-and-forget, like `pushWebsocketMessage`.
+ */
+export function pushWebsocketRoomMessage<T>(message: WebSocketRoomPush<T>): void {
+    sendMachineFrame(message);
+}
+
+function sendMachineFrame(message: unknown): void {
     const socket = WebSocketServerLocal;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
         return;

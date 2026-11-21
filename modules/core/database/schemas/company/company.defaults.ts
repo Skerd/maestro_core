@@ -112,6 +112,8 @@ export const defaultCompaniesValues: any = {
             "isPlatformOwner": false,
             "isProtected": true,
             "isDefaultForSignUp": false,
+            // Its own site is the public task board (D172).
+            "siteSlug": "tasks",
             "modules": ["core", "finance", "marketplace"],
             "demoAddress": {
                 countryCode: "AL",

@@ -23,6 +23,8 @@ import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModule
 import {STUDIO_SAMPLE_HEADER, wantsStudioSample} from "@coreModule/utilities/modules/modelModules";
 import {companyTimeZone} from "@coreModule/utilities/time/companyTimeZone";
 import {portalBuyerTargetHasModule, type PortalBuyerTarget} from "@coreModule/utilities/security/portalBuyer";
+import {resolveMemberCompany, type MemberCompanyAction} from "@coreModule/utilities/security/memberCompany";
+import {isPortalZoneOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 
 export type NotAuthenticatedMWType = {
     apiCode: string,
@@ -64,6 +66,11 @@ export type AuthMWOptions = {
      * this names (where the buyer's record lives) when the buyer's own company does not have it.
      */
     portalBuyer?: PortalBuyerTarget;
+    /**
+     * A member-company action (D172): a portal-zone request that names `actAs` in its body runs this one action for
+     * that company of the signed-in user, checked by `resolveMemberCompany`; the session stays the portal's.
+     */
+    memberCompany?: MemberCompanyAction;
 };
 
 export default (type: "public" | "private", options: AuthMWOptions = {}) => async (req: any, res: any, next: any) => {
@@ -142,18 +149,27 @@ export default (type: "public" | "private", options: AuthMWOptions = {}) => asyn
         }
 
         const routeModule = requestContext.getStore()?.routeModule;
-        if (routeModule && !studioSample && !isModuleEnabledForCompany(company, routeModule)
+        const member = options.memberCompany && isPortalZoneOrigin(origin) && req.body.actAs != null
+            ? await resolveMemberCompany(user, req.body.actAs, options.memberCompany, routeModule, languageCode)
+            : null;
+        if (member) {
+            // The request now works on the member company's data, with the user's access there (D16, D172).
+            req.body.company = member.company;
+            req.body.companyTimeZone = companyTimeZone(member.company);
+            setRequestTenant(member.company._id, languageCode);
+            logger.info(`Portal session acts for member company ${member.company._id.toString()} (${options.memberCompany?.method})`);
+        } else if (routeModule && !studioSample && !isModuleEnabledForCompany(company, routeModule)
             && !(await portalBuyerTargetHasModule(options.portalBuyer, {body: req.body, params: req.params ?? {}}, origin, routeModule))) {
             throw apiValidationException("module_not_enabled", "module", null, languageCode);
         }
 
         req.body.actionUserCtx = {
             userId: user._id.toString(),
-            orgId: company._id.toString(),
-            isAdmin,
-            permissions,
+            orgId: (member?.company ?? company)._id.toString(),
+            isAdmin: member?.isAdmin ?? isAdmin,
+            permissions: member?.permissions ?? permissions,
             isSelf: true,
-            modules,
+            modules: member?.modules ?? modules,
         };
 
         logger.updateActionInitializer(actionInitializer);

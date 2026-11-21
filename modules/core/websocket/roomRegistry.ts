@@ -1,9 +1,9 @@
 /**
- * Websocket room display-name registry.
+ * Websocket room registry: display names, and the room families the server broadcasts to (D172).
  *
- * Core and feature modules register friendly names for site / system rooms at
- * boot (see {@link module:registerAllRoomContributions}). The WS layer reads
- * names for dashboards and hydration; modules never get imported statically.
+ * Core and feature modules register friendly names for site / system rooms and their broadcast rooms at
+ * boot (see {@link module:registerAllRoomContributions}). The WS layer reads them for dashboards, hydration,
+ * joins and broadcasts; modules never get imported statically.
  *
  * @module roomRegistry
  */
@@ -52,4 +52,32 @@ export function getRegisteredRoomCount(): number {
 /** Tests only. */
 export function clearRoomDisplayNames(): void {
     displayNames.clear();
+}
+
+/**
+ * A family of rooms the server broadcasts to (D172), registered by a module at boot: the room `name`, or
+ * `name_<suffix>` (one room per record, e.g. `liveTask_<id>`). Every other room is presence only. `canJoin` decides
+ * each join; it sees only who the connection is, and fails closed when it throws.
+ */
+export type BroadcastRoomRule = {
+    /** Letters and digits only: `_` separates the family from a room's own suffix. */
+    name: string;
+    canJoin: (member: {userId: string; companyId: string}) => boolean | Promise<boolean>;
+};
+
+const broadcastRooms = new Map<string, BroadcastRoomRule>();
+
+/** Registers a broadcast room family; a later registration of the same name replaces it. */
+export function registerBroadcastRooms(rule: BroadcastRoomRule): void {
+    broadcastRooms.set(rule.name, rule);
+}
+
+/** The broadcast family a room belongs to, or none for a presence room. */
+export function broadcastRoomRule(room: string): BroadcastRoomRule | undefined {
+    return broadcastRooms.get(room) ?? broadcastRooms.get(room.split("_")[0]);
+}
+
+/** Tests only. */
+export function clearBroadcastRooms(): void {
+    broadcastRooms.clear();
 }

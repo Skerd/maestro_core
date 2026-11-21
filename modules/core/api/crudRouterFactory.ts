@@ -816,7 +816,8 @@ export function mountActions(router: Router, ActionsClass: new () => any, model:
         const mw: RequestHandler[] = [];
         if (options.auth !== false) {
             const auth = options.auth ?? "private";
-            mw.push(authMW(auth as any, {portalBuyer: options.portalBuyer}));
+            const memberCompany = options.memberCompany ? {model, method: options.permission ?? methodName} : undefined;
+            mw.push(authMW(auth as any, {portalBuyer: options.portalBuyer, memberCompany}));
             mw.push(...platformOnlyGuard(model));
             // A public action has no signed-in caller to hold a permission; a self-service one needs none.
             if (auth !== "public" && !options.selfService) {

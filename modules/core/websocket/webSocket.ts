@@ -20,9 +20,10 @@
  * - machine: another maestro process, authenticated by `MACHINE_TO_MACHINE_SECRET`.
  *   Its frames are pushes, forwarded to the users they name.
  *
- * Rooms are presence groups. Only `serverHealth` and `serverStats` receive
+ * Rooms are presence groups. `serverHealth` and `serverStats` receive
  * broadcasts, and joining them needs the same permission as the server
- * performance REST endpoints.
+ * performance REST endpoints. A module may register broadcast rooms with
+ * their own join rule (D172, `registerBroadcastRooms`); machines push to them.
  *
  * @module websocket/webSocket
  */
@@ -45,13 +46,13 @@ import {companyService} from "@coreModule/database/schemas/company/company.servi
 import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import ServerPerformance1m from "@coreModule/database/schemas/performance/serverPerformance/serverPerformance1m";
-import {WebSocketMessageCodes, WebSocketPush} from "armonia/src/modules/core/websocket/types";
+import {WebSocketMessageCodes, WebSocketPush, WebSocketRoomPush} from "armonia/src/modules/core/websocket/types";
 import {WebSocketHealth} from "armonia/src/modules/core/api/auxiliary/private/serverHealth/serverHealth.dto";
 import {ServerStatsDto} from "armonia/src/modules/core/api/auxiliary/private/serverStats/serverStats.dto";
 import {applyMessageReceipts} from "@coreModule/domain/messages/applyMessageReceipts";
 import {webSocketCounter} from "@coreModule/utilities/serviceMetrics/serviceCounters";
 import {getStoredRoomMessages} from "@coreModule/utilities/serviceMetrics/wsMessageStore";
-import {getKnownRoomIds, getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
+import {broadcastRoomRule, getKnownRoomIds, getRoomDisplayName} from "@coreModule/websocket/roomRegistry";
 import {tryResolveVisitorSession, VisitorSession} from "@coreModule/domain/publicChat/visitorSession";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
@@ -197,8 +198,8 @@ function sendToUsers(userIds: Iterable<string>, code: string, payload: unknown):
     }
 }
 
-/** Sends one `{code, payload}` frame to every member of `room` and counts it for the room. */
-export function broadcastToRoom(room: Room, code: string, payload: unknown): void {
+/** Sends one `{code, payload}` frame to every member of `room` (a server room, or a registered broadcast room) and counts it. */
+export function broadcastToRoom(room: Room | string, code: string, payload: unknown): void {
     const members = roomMembers.get(room);
     if (!members?.size) {
         return;
@@ -271,7 +272,20 @@ async function canJoinRoom(room: unknown, ws: ClientWebSocket): Promise<boolean>
     if (typeof room !== "string" || !ROOM_ID_PATTERN.test(room)) {
         return false;
     }
-    return !SERVER_PERFORMANCE_ROOMS.has(room) || canReadServerPerformance(ws);
+    if (SERVER_PERFORMANCE_ROOMS.has(room)) {
+        return canReadServerPerformance(ws);
+    }
+    // A module's broadcast room (D172) decides who may hear it; every other room is presence only.
+    const rule = broadcastRoomRule(room);
+    if (!rule) {
+        return true;
+    }
+    try {
+        return await rule.canJoin({userId: String(ws.userId), companyId: String(ws.companyId)});
+    }
+    catch {
+        return false;
+    }
 }
 
 async function onJoinRoomMessage(payload: unknown, logger: serverLogger, ws: ClientWebSocket): Promise<void> {
@@ -454,10 +468,18 @@ function closeRevokedSession(userIds: string[], sessionId: unknown): void {
     }
 }
 
-/** A trusted machine forwards core codes and feature-module codes to the users it names. */
-function onMachineMessage(push: Partial<WebSocketPush<any>>, logger: serverLogger, ws: ClientWebSocket): void {
+/**
+ * A trusted machine forwards core codes and feature-module codes to the users it names, or to everyone in a broadcast
+ * room a module registered (D172); a push to any other room is dropped.
+ */
+function onMachineMessage(push: Partial<WebSocketPush<any> & WebSocketRoomPush<any>>, logger: serverLogger, ws: ClientWebSocket): void {
     if (push.code === WebSocketMessageCodes.MACHINE_TO_MACHINE_PING) {
         logger.debug(`[${ws.machineName}] pinged and is alive`);
+        return;
+    }
+    if (typeof push.room === "string") {
+        if (typeof push.code === "string" && broadcastRoomRule(push.room)) broadcastToRoom(push.room, push.code, push.payload);
+        else logger.warn(`[${ws.machineName}] pushed to room [${push.room}], which is not a broadcast room; dropped`);
         return;
     }
     if (typeof push.code !== "string" || !Array.isArray(push.userIds)) {

@@ -105,6 +105,7 @@ import {
     sweepConnections,
 } from "../webSocket";
 import {userService} from "@coreModule/database/schemas/user/user.service";
+import {clearBroadcastRooms, registerBroadcastRooms} from "@coreModule/websocket/roomRegistry";
 
 type Frame = {code: string; payload: any};
 type Client = {
@@ -373,6 +374,29 @@ describe("websocket server", () => {
         expect(await first.closed).toEqual({code: 1008, reason: "Session revoked"});
         expect((await frame(second, "SESSION_REVOKED")).payload).toEqual({sessionId: "session-token-alice"});
         expect(second.socket.readyState).toBe(WebSocket.OPEN);
+    });
+
+    it("lets machines broadcast only to registered rooms, joined by the module's rule (D172)", async () => {
+        registerBroadcastRooms({name: "liveWidget", canJoin: ({userId}) => userId === ids.alice});
+        try {
+            const machine = await connect("m2m-secret");
+            const alice = await connect("token-alice");
+            const bob = await connect("token-bob");
+            send(alice, "JOIN_ROOM", ["liveWidget_42", "presenceRoom"]);
+            send(bob, "JOIN_ROOM", ["liveWidget_42", "presenceRoom"]);
+            expect((await frame(alice, "JOIN_ROOM")).payload).toMatchObject({joined: ["liveWidget_42", "presenceRoom"], failed: []});
+            expect((await frame(bob, "JOIN_ROOM")).payload).toMatchObject({joined: ["presenceRoom"], failed: ["liveWidget_42"]});
+
+            machine.socket.send(JSON.stringify({code: "WIDGET_CHANGED", payload: {id: "42"}, room: "liveWidget_42"}));
+            expect((await frame(alice, "WIDGET_CHANGED")).payload).toEqual({id: "42"});
+            // A presence room is never a broadcast target, even for a machine.
+            machine.socket.send(JSON.stringify({code: "PRESENCE_PUSH", payload: {}, room: "presenceRoom"}));
+            await pause(30);
+            expect(alice.frames.some((entry) => entry.code === "PRESENCE_PUSH")).toBe(false);
+            expect(bob.frames.some((entry) => entry.code === "WIDGET_CHANGED" || entry.code === "PRESENCE_PUSH")).toBe(false);
+        } finally {
+            clearBroadcastRooms();
+        }
     });
 
     it("closes a connection once its token expires", async () => {

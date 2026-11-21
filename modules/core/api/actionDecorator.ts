@@ -41,6 +41,11 @@ export interface ActionOptions {
      */
     portalBuyer?: PortalBuyerTarget;
     /**
+     * A member-company action (D172): from the portal zone, a signed-in user may run it for one of their companies named
+     * in `actAs`, with their role's permission there (see `AuthMWOptions.memberCompany`). Off unless set.
+     */
+    memberCompany?: boolean;
+    /**
      * The permission scope the action always needs (D65). Omitted, it follows the request (`self`, or `others`
      * when acting as another user). `"others"` is for an action on another user's record named in the body,
      * e.g. unlocking a colleague's account: only that scope's permission exists and is checked.
