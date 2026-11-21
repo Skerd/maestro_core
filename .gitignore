@@ -29,3 +29,6 @@ secrets/*
 /scripts/seed-ecommerce-demo.ts
 /scripts/syncAriaEstatesDemo.ts
 /dist/
+
+# graphify knowledge-graph output and scan cache (local tool output, never shared)
+/graphify-out/
