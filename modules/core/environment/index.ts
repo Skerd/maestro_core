@@ -277,6 +277,18 @@ export const FILE_UPLOAD = {
     CLAMAV_PORT: parseInt(process.env.CLAMAV_PORT, 10),
 }
 
+/**
+ * Upload content moderation (D177). `local` (the default) runs the on-server nudity detector, `off` skips it. The
+ * scores are the detector's probabilities: porn or hentai at or above REFUSE_SCORE refuses the upload, at or above
+ * FLAG_SCORE flags it for review, and "sexy" at or above SUGGESTIVE_FLAG_SCORE flags it too.
+ */
+export const CONTENT_MODERATION = {
+    MODE: (process.env.CONTENT_MODERATION || 'local').trim().toLowerCase(),
+    REFUSE_SCORE: parseFloat(process.env.CONTENT_MODERATION_REFUSE_SCORE || '0.85'),
+    FLAG_SCORE: parseFloat(process.env.CONTENT_MODERATION_FLAG_SCORE || '0.5'),
+    SUGGESTIVE_FLAG_SCORE: parseFloat(process.env.CONTENT_MODERATION_SUGGESTIVE_FLAG_SCORE || '0.95'),
+}
+
 export const CHAT = {
     ENABLE_RECOVERY: process.env.ENABLE_RECOVERY === 'true'
 }

@@ -37,6 +37,12 @@ export const NotificationEventCodes = {
     ENTRY_REQUEST_APPROVED: "ENTRY_REQUEST_APPROVED",
     /** The platform rejected (deleted) the requested entry; to whoever requested it, with the reason. */
     ENTRY_REQUEST_REJECTED: "ENTRY_REQUEST_REJECTED",
+    /** An upload stored files the content check flagged (D177); to the platform's reviewers. */
+    UPLOAD_FLAGGED: "UPLOAD_FLAGGED",
+    /** The platform approved a flagged file; to whoever uploaded it. */
+    UPLOAD_REVIEW_APPROVED: "UPLOAD_REVIEW_APPROVED",
+    /** The platform removed a flagged file (kept, never shown to visitors); to whoever uploaded it. */
+    UPLOAD_REVIEW_REMOVED: "UPLOAD_REVIEW_REMOVED",
 } as const;
 
 export interface NotificationEvent {

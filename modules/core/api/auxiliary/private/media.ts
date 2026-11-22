@@ -1,12 +1,17 @@
 import {Request, Response, Router} from 'express';
 import {asyncHandler} from '@coreModule/utilities/middlewares/asyncHandler';
 import {getLogger} from '@coreModule/loggers/serverLog';
-import {getMediaInfo, serveMedia, type ServeMediaAccessCheck} from "@coreModule/utilities/media/serveMedia";
+import {getMediaInfo, isHeldForReview, serveMedia, type ServeMediaAccessCheck} from "@coreModule/utilities/media/serveMedia";
+import type {IMedia} from "@coreModule/database/schemas/media/media";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import authMediaMW from "@coreModule/utilities/middlewares/authMediaMW";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {mediaUploadMW} from "@coreModule/utilities/middlewares/mediaUploadMW";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import UploadRefusal from "@coreModule/database/schemas/uploadRefusal/uploadRefusal";
+import {REVIEW_UPLOADS_PERMISSION} from "@coreModule/domain/uploadReview/uploadReview";
+import {actionPermissionMW} from "@coreModule/utilities/security/actionPermissions";
+import {assertPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import {ServerError} from "armonia/src/modules/core/types";
 
 const router = Router();
@@ -24,8 +29,9 @@ function companyOwnsMedia(
     return Promise.resolve(sessionCompany !== "" && (sessionCompany === mediaCompany || sharedWith.includes(sessionCompany)));
 }
 
-function isPublicMedia(_mediaId: unknown, media: {isPublic?: boolean}): Promise<boolean> {
-    return Promise.resolve(media.isPublic === true);
+/** Another company's file the portal would serve: public, and not held by the content check (D177). */
+function isPublicMedia(_mediaId: unknown, media: {isPublic?: boolean} & Pick<IMedia, "metadata">): Promise<boolean> {
+    return Promise.resolve(media.isPublic === true && !isHeldForReview(media));
 }
 
 /**
@@ -64,6 +70,19 @@ router.get(
     asyncHandler(serveMediaFile)
 );
 
+/**
+ * @route   GET /api/auxiliary/media/review/:mediaId
+ * @desc    A file under the platform's upload review (D177): any company's, never a health file, blurred or held like
+ *          any flagged file until the reviewer asks for it (`?reveal=1`). Platform company with `reviewUploads` only.
+ */
+router.get(
+    "/review/:mediaId",
+    authMediaMW,
+    actionPermissionMW(UploadRefusal, REVIEW_UPLOADS_PERMISSION),
+    rateLimiter({windowMs: 60000, max: 240}),
+    asyncHandler(serveReviewedFile),
+);
+
 router.post(
     "/upload-batch",
     authMW("private"),
@@ -100,8 +119,31 @@ async function serveMediaFile(params: AuthenticatedMWType, queryParams: any, req
         accessCheck,
         context: {company: params.company},
         deniedAsNotFound,
+        blurHeldForReview: true,
     });
     return ownOrPublicMedia(serve(companyOwnsMedia, false), serve(isPublicMedia, true));
+}
+
+/** A file under review: any company's, never a health file (only its own company may open those, D102). */
+function underReview(_mediaId: unknown, media: Pick<IMedia, "encrypted" | "metadata">): Promise<boolean> {
+    const status = media.metadata?.moderation?.status;
+    return Promise.resolve(media.encrypted !== true && (status === "flagged" || status === "rejected" || status === "approved"));
+}
+
+async function serveReviewedFile(params: AuthenticatedMWType, queryParams: {mediaId: string}, req: Request, res: Response) {
+    assertPlatformCompany(params);
+    const languageCode = req.header("language") || "en-US";
+    return asCrossTenant("the platform reviews any company's flagged upload (D177)", () => serveMedia({
+        mediaId: queryParams.mediaId,
+        req,
+        res,
+        logger: getLogger("upload_review_file"),
+        languageCode,
+        cacheControl: "private",
+        accessCheck: underReview,
+        deniedAsNotFound: true,
+        blurHeldForReview: true,
+    }));
 }
 
 async function uploadBatch(params: any): Promise<{ids: string[]}> {

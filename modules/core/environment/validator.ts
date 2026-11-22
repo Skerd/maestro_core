@@ -375,6 +375,18 @@ export function validateConfiguration(): void {
     if (scannerType !== 'clamav' && scannerType !== 'mock') {
         errors.push({key: 'FILE_SCANNER_TYPE', message: `FILE_SCANNER_TYPE must be "clamav" or "mock", got: ${process.env.FILE_SCANNER_TYPE || '(empty)'}`});
     }
+    // UPLOAD CONTENT MODERATION (D177): unset means local.
+    const moderation = (process.env.CONTENT_MODERATION || 'local').trim().toLowerCase();
+    if (moderation !== 'local' && moderation !== 'off') {
+        errors.push({key: 'CONTENT_MODERATION', message: `CONTENT_MODERATION must be "local" or "off", got: ${process.env.CONTENT_MODERATION}`});
+    }
+    for (const key of ['CONTENT_MODERATION_REFUSE_SCORE', 'CONTENT_MODERATION_FLAG_SCORE', 'CONTENT_MODERATION_SUGGESTIVE_FLAG_SCORE']) {
+        const value = process.env[key];
+        if (value && !(Number(value) >= 0 && Number(value) <= 1)) {
+            errors.push({key, message: `${key} must be a number from 0 to 1, got: ${value}`});
+        }
+    }
+
     if (scannerType === 'clamav') {
         errors.push(...[
             validateString('CLAMAV_HOST', process.env.CLAMAV_HOST, true),

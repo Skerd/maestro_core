@@ -7,6 +7,7 @@ import {Request, Response} from 'express';
 import {ObjectId} from 'mongodb';
 import {Readable} from 'stream';
 import {pipeline} from 'stream/promises';
+import sharp from 'sharp';
 import {mediaService} from '@coreModule/database/schemas/media/media.service';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {apiValidationException} from 'armonia/src/modules/core/helpers/exceptions';
@@ -160,6 +161,15 @@ export type ServeMediaAccessCheck = (
     context: ServeMediaContext
 ) => Promise<boolean>;
 
+/**
+ * A file the content check flagged and the platform has not approved (D177): flagged and waiting, or removed by the
+ * review. Visitors never get it; staff see it blurred until they choose to see it.
+ */
+export function isHeldForReview(media: Pick<IMedia, "metadata">): boolean {
+    const status = media.metadata?.moderation?.status;
+    return status === "flagged" || status === "rejected";
+}
+
 export type ServeMediaOptions = {
     mediaId: string;
     req: Request;
@@ -172,7 +182,28 @@ export type ServeMediaOptions = {
     cacheControl?: 'private' | 'public';
     /** When access is denied, throw media_not_found instead of access_denied (public route). */
     deniedAsNotFound?: boolean;
+    /**
+     * Staff routes (D177): a flagged image is sent as a small blurred copy and a flagged video not at all
+     * (`media_held_for_review`), unless the request asks `?reveal=1`.
+     */
+    blurHeldForReview?: boolean;
 };
+
+/** Long side, in pixels, of the blurred copy a flagged image is sent as: too small to make anything out. */
+const BLURRED_PREVIEW_PX = 32;
+
+/** A flagged image's blurred copy. Not cached: once a reviewer approves it, the same URL sends the image itself. */
+async function sendBlurredPreview(media: IMedia, res: Response, languageCode: string): Promise<void> {
+    const preview = await sharp(await readMediaBytes(media, languageCode))
+        .resize({width: BLURRED_PREVIEW_PX, height: BLURRED_PREVIEW_PX, fit: 'inside'})
+        .blur(1)
+        .jpeg({quality: 70})
+        .toBuffer();
+    setSecurityHeaders(res, 'image/jpeg', media.originalName || media.fileName || 'file', 'private');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Length', String(preview.length));
+    res.end(preview);
+}
 
 async function loadMediaForServe(options: {
     mediaId: string;
@@ -225,6 +256,7 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
         context = {},
         cacheControl = 'public',
         deniedAsNotFound,
+        blurHeldForReview,
     } = options;
 
     logger.start(`Serving media file: ${mediaIdParam}`);
@@ -240,6 +272,16 @@ export async function serveMedia(options: ServeMediaOptions): Promise<void> {
 
     if (!media.fileId) {
         throw apiValidationException("file_not_found", null, null, languageCode);
+    }
+
+    if (blurHeldForReview && isHeldForReview(media) && req.query?.reveal !== '1') {
+        // A video has no blurred copy: it is sent only when the viewer chose to see it.
+        if (media.type !== 'image') {
+            throw apiValidationException("media_held_for_review", null, null, languageCode);
+        }
+        await sendBlurredPreview(media, res, languageCode);
+        logger.finish(`Served the blurred copy of flagged media file: ${mediaIdParam}`);
+        return;
     }
 
     const gridfs = getGridFSStorage(languageCode, 'media', logger);
@@ -372,8 +414,11 @@ async function sendHealthFile(options: {media: IMedia; gridfs: GridFSStorage; fi
     }
 }
 
+/** What reading a stored file needs from its Media record. */
+export type StoredMediaFile = Pick<IMedia, '_id' | 'fileId' | 'encrypted' | 'company'>;
+
 /** A media file's bytes as uploaded; health files (D102) are opened here. For server-side copies and attachments. */
-export async function readMediaBytes(media: IMedia, languageCode: string): Promise<Buffer> {
+export async function readMediaBytes(media: StoredMediaFile, languageCode: string): Promise<Buffer> {
     if (!media.fileId) {
         throw apiValidationException("file_not_found", null, null, languageCode);
     }
@@ -410,6 +455,8 @@ export type MediaInfoDto = {
     fileSize: number;
     type: string;
     extension: string;
+    /** The content check's verdict on an image (D177); `flagged` is shown blurred. */
+    moderation?: string;
 };
 
 /**
@@ -452,5 +499,6 @@ export async function getMediaInfo(options: {
         fileSize,
         type: media.type,
         extension,
+        moderation: media.metadata?.moderation?.status,
     };
 }

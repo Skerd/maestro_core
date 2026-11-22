@@ -12,6 +12,7 @@ const TEST_DEFAULTS: Record<string, string> = {
     CLIENT_HOST: "http://localhost:5173", // links in customer messages
     MAX_FILES_UPLOADED: "100", // upload middleware limits
     MAX_FILE_SIZE: "524288000",
+    CONTENT_MODERATION: "off", // upload tests use a fake detector; the real one has its own test (D177)
     HEALTH_DATA_MASTER_KEY: Buffer.from("vitest-only-health-data-key-0001").toString("base64"), // health data at rest (D102)
     JWT_EXPIRES_IN: "24h", // sign-in issues tokens and a session (portalSignIn)
     REFRESH_TOKEN_EXPIRES_IN: "7d",

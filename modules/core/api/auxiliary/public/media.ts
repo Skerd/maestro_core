@@ -3,7 +3,7 @@ import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {NotAuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {getLogger} from "@coreModule/loggers/serverLog";
-import {serveMedia} from "@coreModule/utilities/media/serveMedia";
+import {isHeldForReview, serveMedia} from "@coreModule/utilities/media/serveMedia";
 import {resolveCompanyByOrigin} from "@coreModule/utilities/marketing/resolveCompanyByOrigin";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {isPortalZoneOrigin} from "@coreModule/utilities/marketing/portalOrigin";
@@ -36,7 +36,7 @@ async function servePublicMediaFile(
             languageCode,
             cacheControl: "public",
             deniedAsNotFound: true,
-            accessCheck: async (_id, media) => media.isPublic === true,
+            accessCheck: async (_id, media) => media.isPublic === true && !isHeldForReview(media),
         }));
     }
 
@@ -52,7 +52,7 @@ async function servePublicMediaFile(
         deniedAsNotFound: true,
         accessCheck: async (_id, media) => {
             const mediaCompany = String((media.company as {_id?: unknown})?._id ?? media.company ?? "");
-            return media.isPublic === true && mediaCompany === String(company._id);
+            return media.isPublic === true && !isHeldForReview(media) && mediaCompany === String(company._id);
         },
     });
 }

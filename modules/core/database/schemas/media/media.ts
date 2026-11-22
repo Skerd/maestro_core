@@ -6,6 +6,7 @@ import ownershipPlugin from "@coreModule/database/plugins/ownershipPlugin";
 import auditPlugin from "@coreModule/database/plugins/auditPlugin";
 import softDeletePlugin from "@coreModule/database/plugins/softDeletePlugin";
 import {IOwnershipPluginFields, ISoftDeletePluginFields} from "@coreModule/database/types/plugin-fields";
+import {MEDIA_MODERATION_STATUSES, MediaModerationStatus} from "armonia/src/modules/core/constants";
 
 export interface IMediaMetadata {
 
@@ -20,6 +21,19 @@ export interface IMediaMetadata {
         height: number;
     };
     durationInSeconds?: number;
+    /**
+     * Content moderation of an image or video (D177). `flagged`: blurred for staff and not sent to visitors until the
+     * platform reviews it, which makes it `approved` or `rejected` (kept, blurred for staff, never sent to visitors);
+     * `not_checked`: the detector could not run on a route that only flags.
+     */
+    moderation?: {
+        status: MediaModerationStatus;
+        scores?: {porn: number; hentai: number; sexy: number; neutral: number; drawing: number};
+        checkedAt?: Date;
+        /** When and by whom the platform decided a flagged file. */
+        reviewedAt?: Date;
+        reviewedBy?: Types.ObjectId;
+    };
 }
 
 export interface IMedia extends Document, IOwnershipPluginFields, ISoftDeletePluginFields {
@@ -200,6 +214,55 @@ const MediaSchema = new Schema<IMedia>(
                         self: {
                             publicRead: true,
                             write: "no-permission"
+                        }
+                    }
+                },
+                moderation: {
+                    status: {
+                        type: String,
+                        enum: MEDIA_MODERATION_STATUSES,
+                        permissions: {
+                            self: {
+                                publicRead: true,
+                                write: "no-permission"
+                            }
+                        }
+                    },
+                    scores: {
+                        type: SchemaTypes.Mixed,
+                        permissions: {
+                            self: {
+                                publicRead: true,
+                                write: "no-permission"
+                            }
+                        }
+                    },
+                    checkedAt: {
+                        type: Date,
+                        permissions: {
+                            self: {
+                                publicRead: true,
+                                write: "no-permission"
+                            }
+                        }
+                    },
+                    reviewedAt: {
+                        type: Date,
+                        permissions: {
+                            self: {
+                                publicRead: true,
+                                write: "no-permission"
+                            }
+                        }
+                    },
+                    reviewedBy: {
+                        type: SchemaTypes.ObjectId,
+                        ref: "User",
+                        permissions: {
+                            self: {
+                                publicRead: true,
+                                write: "no-permission"
+                            }
                         }
                     }
                 }

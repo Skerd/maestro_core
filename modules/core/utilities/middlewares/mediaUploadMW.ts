@@ -22,6 +22,17 @@ import {
 import {FILE_UPLOAD} from "@coreModule/environment";
 import {sealMediaFileStream} from "@coreModule/utilities/security/healthDataCrypto";
 import {quarantineServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
+import {
+    contentModerator,
+    type ModeratedKind,
+    ModerationScores,
+    moderationVerdict,
+    roundedScores,
+    scoreMediaFile
+} from "@coreModule/utilities/security/contentModerator";
+import {UnreadableVideoError} from "@coreModule/utilities/media/videoFrames";
+import {UnreadableDocumentError} from "@coreModule/utilities/media/documentImages";
+import {notifyUploadsFlagged, recordUploadRefusal, type UploaderContext} from "@coreModule/domain/uploadReview/uploadReview";
 
 export type MediaUploaded = {
     fileIds: string[];
@@ -70,6 +81,11 @@ export interface UnifiedMediaUploadOptions {
      * the owning company's key and opened only when an allowed reader downloads them (D102). Default: false.
      */
     healthData?: boolean;
+    /**
+     * Checks images for nudity and sexual content (D177, default: true): a clear case is refused, a borderline one is
+     * stored flagged. On `healthData` routes it only flags, never refuses.
+     */
+    contentModeration?: boolean;
 }
 
 /**
@@ -475,6 +491,52 @@ async function extractMediaDurationFromBuffer(buffer: Buffer, mimeType: string, 
     return undefined;
 }
 
+/**
+ * The content check of an image or a video (D177): its frames are scored (an animation's, or frames spread over a
+ * video) and the worst decides. Refuses the upload (`file_explicit_content`, `video_explicit_content`) when allowed
+ * to, else returns what to store with the file: `passed` or `flagged`. A check that cannot run refuses
+ * (`file_moderation_unavailable`) where refusing is allowed, and records `not_checked` where it is not. Undefined
+ * when moderation is off.
+ */
+async function moderateUpload(
+    bytes: Buffer,
+    kind: ModeratedKind,
+    canRefuse: boolean,
+    fileName: string,
+    languageCode: string,
+    logger: serverLogger,
+    /** Who sent the file, where, and the file as sent, for the refusal log. */
+    uploader: UploaderContext & {mimeType: string; original: Buffer},
+): Promise<IMediaMetadata['moderation']> {
+    const moderator = contentModerator();
+    if (!moderator) return undefined;
+
+    let scores: ModerationScores;
+    try {
+        scores = await scoreMediaFile(moderator, bytes, kind);
+    } catch (error: any) {
+        logger.err(`Content moderation could not run on ${fileName}:`, error);
+        // A document the check cannot read (a locked PDF, an old Office file) is stored, as ordinary as most are.
+        if (error instanceof UnreadableDocumentError) return {status: 'not_checked', checkedAt: new Date()};
+        if (canRefuse) {
+            throw apiValidationException(error instanceof UnreadableVideoError ? "video_unreadable" : "file_moderation_unavailable", null, null, languageCode);
+        }
+        return {status: 'not_checked', checkedAt: new Date()};
+    }
+
+    const verdict = moderationVerdict(scores, canRefuse);
+    const rounded = roundedScores(scores);
+    if (verdict === 'refused') {
+        logger.warn(`Upload ${fileName} refused for explicit content: ${JSON.stringify(rounded)}`);
+        const errorCode = kind === 'video' ? "video_explicit_content" : kind === 'document' ? "document_explicit_content" : "file_explicit_content";
+        // Logged for the platform's upload review: who sent what, where, never the file.
+        await recordUploadRefusal({bytes: uploader.original, fileName, mimeType: uploader.mimeType, errorCode, scores: rounded, uploader, logger});
+        throw apiValidationException(errorCode, null, null, languageCode);
+    }
+    if (verdict === 'flagged') logger.warn(`Upload ${fileName} flagged for review: ${JSON.stringify(rounded)}`);
+    return {status: verdict, scores: rounded, checkedAt: new Date()};
+}
+
 type StoredUpload = {gridfsFileId: string; mediaId: MongooseTypes.ObjectId};
 
 /**
@@ -582,7 +644,8 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         extractImageResolution = true,
         extractMediaDuration = true,
         markPendingReference = false,
-        healthData = false
+        healthData = false,
+        contentModeration = true
     } = options;
 
     // Configure multer with memory storage (we'll stream to GridFS)
@@ -778,6 +841,8 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
             // For backward compatibility, also maintain a flat fileIds array
             const fileIds: string[] = [];
             const userId = req.body.userInfo._id;
+            // Files the content check flagged, announced to the platform's reviewers once all are stored (D177).
+            const flaggedForReview: {mediaId: string; fileName: string}[] = [];
 
             // Process each file
             for (const file of files) {
@@ -878,6 +943,18 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         }
                     }
 
+                    // SECURITY: nudity and sexual content in images and videos (D177). Health files are only flagged.
+                    const uploader = {
+                        companyId: req.body?.user?.company?._id ?? req.body?.company?._id,
+                        userId,
+                        route: req.originalUrl.split('?')[0],
+                        mimeType: file.mimetype,
+                        original: file.buffer,
+                    };
+                    let moderation = contentModeration && (fileType === 'image' || fileType === 'video')
+                        ? await moderateUpload(processedBuffer, fileType, !healthData, file.originalname, languageCode, logger, uploader)
+                        : undefined;
+
                     // SECURITY: Sanitize PDFs by removing JavaScript and embedded objects
                     if (sanitizePdfs && fileType === 'pdf') {
                         try {
@@ -922,6 +999,11 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                                 );
                             }
                         }
+                    }
+
+                    // SECURITY: the pictures inside PDFs and Office files (D177), once the document is cleaned and validated.
+                    if (contentModeration && (fileType === 'pdf' || fileType === 'document')) {
+                        moderation = await moderateUpload(processedBuffer, 'document', !healthData, file.originalname, languageCode, logger, uploader);
                     }
 
                     // Extract video/audio duration
@@ -975,7 +1057,8 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         scannedAt: scanResult?.scanned ? new Date() : undefined,
                         scannerResult: scanResult?.result,
                         ...(resolution && {resolution}),
-                        ...(durationInSeconds && {durationInSeconds})
+                        ...(durationInSeconds && {durationInSeconds}),
+                        ...(moderation && {moderation})
                     };
 
                     // Convert MongoDB ObjectId to Mongoose ObjectId
@@ -1010,6 +1093,10 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                     });
 
                     const mediaId = media._id.toString();
+                    // A health file stays with its company: the platform may not open it (D102).
+                    if (moderation?.status === 'flagged' && !healthData) {
+                        flaggedForReview.push({mediaId, fileName: file.originalname});
+                    }
                     
                     // Add to appropriate field group
                     if (fields && file.fieldname) {
@@ -1094,6 +1181,13 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
 
             // If the route fails without a transaction, asyncHandler hands these to the orphan cleanup (TD-B249).
             req.body._mediaUploadMediaIds = storedUploads.map(upload => upload.mediaId.toString());
+
+            // After the request's transaction commits, when it has one.
+            await notifyUploadsFlagged(flaggedForReview, {
+                companyName: req.body?.company?.name ?? "",
+                languageCode,
+                session,
+            }).catch((error: unknown) => logger.warn(`Flagged uploads not announced for review: ${error instanceof Error ? error.message : String(error)}`));
 
             next();
 

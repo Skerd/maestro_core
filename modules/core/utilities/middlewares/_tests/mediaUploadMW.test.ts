@@ -3,6 +3,29 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from "vitest"
 vi.mock("@coreModule/utilities/middlewares/authMW", async () =>
     (await import("@coreModule/_tests/httpHarness")).authMWStub);
 
+// A fake nudity detector (BE-09): each test sets the scores it answers, or makes it fail (D177).
+const {detector} = vi.hoisted(() => ({
+    detector: {scores: {porn: 0, hentai: 0, sexy: 0, neutral: 1, drawing: 0}, fail: false, frames: 0},
+}));
+vi.mock("@coreModule/utilities/security/contentModerator", async (importOriginal) => ({
+    ...await importOriginal<typeof import("@coreModule/utilities/security/contentModerator")>(),
+    contentModerator: () => ({
+        scoreFrame: async (rgb: Buffer) => {
+            detector.frames++;
+            if (rgb.length !== 224 * 224 * 3) throw new Error(`expected a 224×224 RGB frame, got ${rgb.length} bytes`);
+            if (detector.fail) throw new Error("the detector is down");
+            return {...detector.scores};
+        },
+    }),
+}));
+
+// Notices to the platform's reviewers are checked where they are built (uploadReview.test.ts); here, only that uploads send them.
+vi.mock("@coreModule/domain/uploadReview/uploadReview", async (importOriginal) => ({
+    ...await importOriginal<typeof import("@coreModule/domain/uploadReview/uploadReview")>(),
+    notifyUploadsFlagged: vi.fn(async () => undefined),
+}));
+
+import {createHash} from "crypto";
 import {ObjectId} from "mongodb";
 import mongoose from "mongoose";
 import express, {NextFunction, Request, Response} from "express";
@@ -21,6 +44,9 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import type {ClientSession} from "mongoose";
 import {getGridFSStorage} from "@coreModule/utilities/gridfs/gridfsStorage";
 import {FILE_UPLOAD} from "@coreModule/environment";
+import UploadRefusal from "@coreModule/database/schemas/uploadRefusal/uploadRefusal";
+import {notifyUploadsFlagged} from "@coreModule/domain/uploadReview/uploadReview";
+import {testVideo} from "@coreModule/_tests/testVideo";
 
 // The scanner comes from the developer's .env; these tests use the mock, whatever is configured there.
 FILE_UPLOAD.FILE_SCANNER_TYPE = "mock";
@@ -88,6 +114,7 @@ const app = appFor([
     {basePath: "/upload", router: uploadRouter({fields: {files: 3}})},
     {basePath: "/upload-small", router: uploadRouter({fields: {files: 3}, maxFileSize: 2 * 1024})},
     {basePath: "/upload-images", router: uploadRouter({fields: {files: 3}, fieldMimeTypes: {files: ["image/jpeg", "image/png"]}})},
+    {basePath: "/upload-health", router: uploadRouter({fields: {files: 3}, healthData: true})},
 ]);
 
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -152,6 +179,176 @@ afterAll(async () => {
 
 beforeEach(async () => {
     await Media.collection.deleteMany({});
+    await UploadRefusal.collection.deleteMany({});
+    vi.mocked(notifyUploadsFlagged).mockClear();
+    detector.scores = {porn: 0, hentai: 0, sexy: 0, neutral: 1, drawing: 0};
+    detector.fail = false;
+    detector.frames = 0;
+});
+
+describe("content moderation (D177)", () => {
+    it("refuses an image with a clear explicit score and stores nothing", async () => {
+        detector.scores = {porn: 0.93, hentai: 0.02, sexy: 0.04, neutral: 0.01, drawing: 0};
+        const res = await upload([{data: await png(), name: "photo.png", type: "image/png"}]);
+        expect(res.status).toBe(400);
+        expect(res.body.error_code).toBe("file_explicit_content");
+        expect(await Media.collection.countDocuments()).toBe(0);
+    });
+
+    it("stores a borderline image flagged, with its scores", async () => {
+        detector.scores = {porn: 0.62, hentai: 0.01, sexy: 0.3, neutral: 0.07, drawing: 0};
+        const res = await upload([{data: await png(), name: "photo.png", type: "image/png"}]);
+        expect(res.status).toBe(200);
+        const {media} = await storedFile(res.body.files[0]);
+        expect(media.metadata.moderation).toMatchObject({status: "flagged", scores: {porn: 0.62}});
+    });
+
+    it("records an ordinary image as passed", async () => {
+        const res = await upload([{data: await png(), name: "photo.png", type: "image/png"}]);
+        expect((await storedFile(res.body.files[0])).media.metadata.moderation.status).toBe("passed");
+    });
+
+    it("only flags a health file, even with a clear score", async () => {
+        detector.scores = {porn: 0.97, hentai: 0, sexy: 0.02, neutral: 0.01, drawing: 0};
+        const res = await upload([{data: await png(), name: "intraoral.png", type: "image/png"}], "/upload-health");
+        expect(res.status).toBe(200);
+        expect((await storedFile(res.body.files[0])).media.metadata.moderation.status).toBe("flagged");
+    });
+
+    it("refuses when the detector cannot run, but stores a health file as not checked", async () => {
+        detector.fail = true;
+        const refused = await upload([{data: await png(), name: "photo.png", type: "image/png"}]);
+        expect(refused.body.error_code).toBe("file_moderation_unavailable");
+        const health = await upload([{data: await png(), name: "xray.png", type: "image/png"}], "/upload-health");
+        expect(health.status).toBe(200);
+        expect((await storedFile(health.body.files[0])).media.metadata.moderation.status).toBe("not_checked");
+    });
+
+    it("scores the frames of an animation and a grayscale X-ray as RGB", async () => {
+        const frame = (color: string) => sharp({create: {width: 8, height: 8, channels: 3, background: color}}).png().toBuffer();
+        const gif = await sharp([await frame("#f00"), await frame("#00f")], {join: {animated: true}}).gif().toBuffer();
+        await upload([{data: gif, name: "spinner.gif", type: "image/gif"}]);
+        expect(detector.frames).toBe(2);
+        const xray = await sharp({create: {width: 8, height: 8, channels: 3, background: "#777"}}).toColourspace("b-w").png().toBuffer();
+        const res = await upload([{data: xray, name: "xray.png", type: "image/png"}]);
+        expect(res.status).toBe(200);
+    });
+
+    it("does not check files that are neither images nor videos", async () => {
+        const res = await upload([{data: Buffer.from("hello"), name: "notes.txt", type: "text/plain"}]);
+        expect(detector.frames).toBe(0);
+        expect((await storedFile(res.body.files[0])).media.metadata.moderation).toBeUndefined();
+    });
+});
+
+describe("the platform's upload review (D177)", () => {
+    it("logs a refused upload for review: who, where, scores and fingerprint, never the file", async () => {
+        detector.scores = {porn: 0.93, hentai: 0.02, sexy: 0.04, neutral: 0.01, drawing: 0};
+        const bytes = await png();
+        const res = await upload([{data: bytes, name: "photo.png", type: "image/png"}]);
+        expect(res.body.error_code).toBe("file_explicit_content");
+        const refusals = await UploadRefusal.collection.find({}).toArray();
+        expect(refusals).toEqual([expect.objectContaining({
+            fileName: "photo.png", mimeType: "image/png", route: "/upload", errorCode: "file_explicit_content",
+            company: new ObjectId(caller.companyId), createdBy: new ObjectId(caller.userId),
+            scores: expect.objectContaining({porn: 0.93}),
+        })]);
+        // The fingerprint of the file as it was sent, to recognise it again.
+        expect(refusals[0]).toMatchObject({fileHash: createHash("sha256").update(bytes).digest("hex"), fileSize: bytes.length});
+        expect(await Media.collection.countDocuments()).toBe(0);
+    });
+
+    it("announces the flagged files of an upload once, but never a health file's", async () => {
+        detector.scores = {porn: 0.62, hentai: 0.01, sexy: 0.3, neutral: 0.07, drawing: 0};
+        const res = await upload([
+            {data: await png(), name: "beach.png", type: "image/png"},
+            {data: await png(), name: "pool.png", type: "image/png"},
+        ]);
+        expect(vi.mocked(notifyUploadsFlagged)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(notifyUploadsFlagged).mock.calls[0][0]).toEqual([
+            {mediaId: res.body.files[0], fileName: "beach.png"},
+            {mediaId: res.body.files[1], fileName: "pool.png"},
+        ]);
+
+        vi.mocked(notifyUploadsFlagged).mockClear();
+        await upload([{data: await png(), name: "xray.png", type: "image/png"}], "/upload-health");
+        expect(vi.mocked(notifyUploadsFlagged).mock.calls[0][0]).toEqual([]);
+    });
+});
+
+describe("content moderation of documents (D177)", () => {
+    const photo = () => sharp({create: {width: 300, height: 300, channels: 3, background: "#cc3355"}}).png().toBuffer();
+    const pdfWithPhoto = async () => {
+        const pdf = await PDFDocument.create();
+        pdf.addPage([400, 400]).drawImage(await pdf.embedPng(await photo()), {x: 50, y: 50, width: 300, height: 300});
+        return Buffer.from(await pdf.save());
+    };
+    const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+    it("refuses a PDF whose page looks explicit, and logs it", async () => {
+        detector.scores = {porn: 0.92, hentai: 0, sexy: 0.05, neutral: 0.03, drawing: 0};
+        const res = await upload([{data: await pdfWithPhoto(), name: "brochure.pdf", type: "application/pdf"}]);
+        expect(res.status).toBe(400);
+        expect(res.body.error_code).toBe("document_explicit_content");
+        expect(detector.frames).toBeGreaterThan(0);
+        expect(await UploadRefusal.collection.findOne({})).toMatchObject({fileName: "brochure.pdf", errorCode: "document_explicit_content"});
+        expect(await Media.collection.countDocuments()).toBe(0);
+    });
+
+    it("stores a .docx with a borderline picture flagged, and one without pictures as passed", async () => {
+        detector.scores = {porn: 0.6, hentai: 0, sexy: 0.3, neutral: 0.1, drawing: 0};
+        const flagged = await upload([{data: ooxml({"word/document.xml": "<w:document/>", "word/media/image1.png": await photo()}), name: "offer.docx", type: DOCX}]);
+        expect((await storedFile(flagged.body.files[0])).media.metadata.moderation).toMatchObject({status: "flagged", scores: {porn: 0.6}});
+
+        detector.frames = 0;
+        const plain = await upload([{data: ooxml({"word/document.xml": "<w:document/>"}), name: "letter.docx", type: DOCX}]);
+        expect(detector.frames).toBe(0);
+        expect((await storedFile(plain.body.files[0])).media.metadata.moderation.status).toBe("passed");
+    });
+
+    it("stores a 97-2003 Office file, whose pictures it does not read, as not checked", async () => {
+        const res = await upload([{data: oleFile([{name: "WordDocument", type: 2}]), name: "letter.doc", type: "application/msword"}]);
+        expect(res.status).toBe(200);
+        expect((await storedFile(res.body.files[0])).media.metadata.moderation.status).toBe("not_checked");
+    });
+});
+
+describe("content moderation of videos (D177)", () => {
+    it("refuses a video with a clear explicit score, after scoring frames spread over it", async () => {
+        detector.scores = {porn: 0.91, hentai: 0, sexy: 0.08, neutral: 0.01, drawing: 0};
+        const res = await upload([{data: testVideo(6), name: "clip.mp4", type: "video/mp4"}]);
+        expect(res.status).toBe(400);
+        expect(res.body.error_code).toBe("video_explicit_content");
+        expect(detector.frames).toBe(3);
+        expect(await Media.collection.countDocuments()).toBe(0);
+    });
+
+    it("stores a borderline video flagged, and an ordinary one as passed", async () => {
+        detector.scores = {porn: 0.6, hentai: 0, sexy: 0.35, neutral: 0.05, drawing: 0};
+        const flagged = await upload([{data: testVideo(2), name: "clip.mp4", type: "video/mp4"}]);
+        expect(flagged.status).toBe(200);
+        expect((await storedFile(flagged.body.files[0])).media.metadata.moderation).toMatchObject({status: "flagged", scores: {porn: 0.6}});
+        detector.scores = {porn: 0, hentai: 0, sexy: 0, neutral: 1, drawing: 0};
+        const passed = await upload([{data: testVideo(2), name: "tour.mp4", type: "video/mp4"}]);
+        expect((await storedFile(passed.body.files[0])).media.metadata.moderation.status).toBe("passed");
+    });
+
+    it("refuses a video it cannot read, saying so, but stores a health video as not checked", async () => {
+        const broken = Buffer.concat([Buffer.from("000000186674797069736f6d0000020069736f6d", "hex"), Buffer.alloc(400)]);
+        const refused = await upload([{data: broken, name: "clip.mp4", type: "video/mp4"}]);
+        expect(refused.status).toBe(400);
+        expect(refused.body.error_code).toBe("video_unreadable");
+        const health = await upload([{data: broken, name: "scan.mp4", type: "video/mp4"}], "/upload-health");
+        expect(health.status).toBe(200);
+        expect((await storedFile(health.body.files[0])).media.metadata.moderation.status).toBe("not_checked");
+    });
+
+    it("only flags a health video, even with a clear score", async () => {
+        detector.scores = {porn: 0.95, hentai: 0, sexy: 0.04, neutral: 0.01, drawing: 0};
+        const res = await upload([{data: testVideo(2), name: "intraoral.mp4", type: "video/mp4"}], "/upload-health");
+        expect(res.status).toBe(200);
+        expect((await storedFile(res.body.files[0])).media.metadata.moderation.status).toBe("flagged");
+    });
 });
 
 describe("a refused file reaches the caller", () => {
@@ -298,7 +495,8 @@ describe("the extension decides the type", () => {
 
 describe("files people upload every day", () => {
     it("accepts an iPhone or screen-recording video (an ftyp box of any size)", async () => {
-        const mov = Buffer.concat([Buffer.from("000000146674797071742020", "hex"), Buffer.alloc(200)]);
+        const mov = testVideo(1, "mov");
+        expect(mov.subarray(4, 12).toString("latin1")).toBe("ftypqt  ");
         const res = await upload([{data: mov, name: "IMG_0496.MOV", type: "video/quicktime"}]);
         expect(res.status).toBe(200);
         expect((await storedFile(res.body.files[0])).media.mimeType).toBe("video/quicktime");

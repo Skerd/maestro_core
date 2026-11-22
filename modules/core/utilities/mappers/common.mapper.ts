@@ -93,7 +93,8 @@ export function mapMedia(media: any) {
         extension: media?.metadata?.extension || media?.extension,
         mime: media?.metadata?.mime || media?.mimeType,
         safeCheckedFlag: media?.metadata?.safeCheckedFlag || false,
-        resolution: media?.resolution || undefined
+        resolution: media?.resolution || undefined,
+        moderation: media?.metadata?.moderation?.status,
     };
 }
 
