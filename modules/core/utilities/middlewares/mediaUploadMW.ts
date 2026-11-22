@@ -21,6 +21,7 @@ import {
 } from "armonia/src/modules/core/constants";
 import {FILE_UPLOAD} from "@coreModule/environment";
 import {sealMediaFileStream} from "@coreModule/utilities/security/healthDataCrypto";
+import {quarantineServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
 
 export type MediaUploaded = {
     fileIds: string[];
@@ -638,6 +639,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
 
             // Preserve existing req.body data before multer processes the request
             // Multer will overwrite req.body with form fields, so we need to merge it back
+            const bodyBeforeUpload = req.body;
             const existingBody = { ...req.body };
             let files: Express.Multer.File[] = [];
             let filesByField: Record<string, Express.Multer.File[]> = {};
@@ -704,10 +706,15 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                 });
             }
 
+            // The form's fields and its `data` JSON are client input that arrives after stripServerKeys has run, so
+            // server keys in them are quarantined the same way and never replace what authMW wrote (SEC-03).
+            // Multer replaces the body only for a multipart request; a JSON body was already cleaned.
+            const formFields = req.body === bodyBeforeUpload ? {} : req.body;
+            const clientFields: Record<string, unknown> = {...formFields, ...jsonData};
+            quarantineServerKeys(req, clientFields);
             req.body = {
                 ...existingBody,
-                ...req.body,
-                ...jsonData
+                ...clientFields
             };
 
             // Extract files based on mode
@@ -1084,7 +1091,10 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                 req.body.fileIds = fileIds;
                 logger.finish(`Successfully processed ${fileIds.length} file(s). File IDs: ${fileIds.join(', ')}`);
             }
-            
+
+            // If the route fails without a transaction, asyncHandler hands these to the orphan cleanup (TD-B249).
+            req.body._mediaUploadMediaIds = storedUploads.map(upload => upload.mediaId.toString());
+
             next();
 
         } catch (error: any) {

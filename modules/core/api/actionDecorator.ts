@@ -10,7 +10,7 @@ export interface ActionOptions {
      * Authentication mode passed to authMW. Defaults to "private".
      * Pass false to skip authentication entirely (public action).
      */
-    auth?: string | false;
+    auth?: "public" | "private" | false;
     /**
      * When true, wraps the handler in a MongoDB transaction via transactionHandler().
      * Leave false (default) when the handler manages its own session internally.

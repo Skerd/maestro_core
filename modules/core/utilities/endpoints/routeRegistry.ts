@@ -12,6 +12,7 @@ import {requestContext} from '@coreModule/utilities/endpoints/requestContext';
 import path from 'path';
 import fs from 'fs';
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
+import {failedRequestCleanup} from "@coreModule/utilities/middlewares/failedRequestCleanup";
 import {isModuleCodeFile, withoutModuleExtension} from "@coreModule/utilities/modules/moduleCodeFiles";
 import {recordRouterMounted} from "@coreModule/utilities/endpoints/recordRegistry";
 
@@ -226,7 +227,9 @@ export class RouteRegistry {
             try {
                 modules.forEach((module, index) => {
                     // stripServerKeys first: no client value may reach a server-owned body key (SEC-03).
-                    app.use(routePath, stripServerKeys, tagRouteModule, module.router);
+                    // failedRequestCleanup last: whatever step failed, an open transaction rolls back and uploads
+                    // that did not are handed to the orphan cleanup (TD-B251).
+                    app.use(routePath, stripServerKeys, tagRouteModule, module.router, failedRequestCleanup);
                     // Its records can now be shared in chat, gated on this module (D162).
                     recordRouterMounted(module.router, moduleName);
                     if (modules.length > 1) {

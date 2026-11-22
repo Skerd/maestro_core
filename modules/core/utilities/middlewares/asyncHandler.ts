@@ -54,8 +54,33 @@ async function commitWithRetry(session: ClientSession): Promise<void> {
 }
 
 /**
+ * Rolls back a failed request's open transaction. The request's upload files are deleted from GridFS first: GridFS is
+ * not part of the transaction, while their Media records roll back with it. Then the transaction is aborted and its
+ * after-commit tasks dropped. Used by `asyncHandler` and by `failedRequestCleanup` for a middleware that failed.
+ */
+export async function rollBackRequestTransaction(req: Request, session: ClientSession, logger: serverLogger): Promise<void> {
+    try {
+        const gridFsIds: string[] | undefined = req.body?._mediaUploadGridFsIds;
+        if (gridFsIds?.length) {
+            const gridfs = getGridFSStorage(req.header("language") || "en-US", 'media', logger);
+            for (const id of gridFsIds) {
+                try {
+                    await gridfs.deleteFile(id);
+                } catch (deleteError: any) {
+                    logger.warn(`Failed to clean up GridFS file ${id} on rollback: ${deleteError.message}`);
+                }
+            }
+        }
+        await session.abortTransaction();
+    } catch (abortError: any) {
+        logger.err("Error aborting transaction", abortError);
+    }
+    await flushAfterCommitTasks(session, false, () => undefined);
+}
+
+/**
  * Async Handler Middleware
- * 
+ *
  * Wraps async route handlers with error handling and transaction support.
  * If a transaction session exists (from transactionHandler), it will automatically
  * commit on success or abort on error. A transient transaction error (e.g. a
@@ -114,25 +139,7 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
                     await flushAfterCommitTasks(session, true, error => logger.err("After-commit task failed", error));
                 } catch (commitError: any) {
                     logger.err("Error committing transaction", commitError);
-                    // If the commit fails: clean up GridFS then abort
-                    try {
-                        const gridFsIds = (req.body as any)?._mediaUploadGridFsIds as string[] | undefined;
-                        if (gridFsIds?.length) {
-                            const languageCode = (req as any).header?.("language") || "en-US";
-                            const gridfs = getGridFSStorage(languageCode, 'media', logger);
-                            for (const id of gridFsIds) {
-                                try {
-                                    await gridfs.deleteFile(id);
-                                } catch (delErr: any) {
-                                    logger.warn(`Failed to clean up GridFS file ${id} on commit failure: ${delErr.message}`);
-                                }
-                            }
-                        }
-                        await session.abortTransaction();
-                    } catch (abortError: any) {
-                        logger.err("Error aborting transaction after commit failure", abortError);
-                    }
-                    await flushAfterCommitTasks(session, false, () => undefined);
+                    await rollBackRequestTransaction(req, session, logger);
                     throw hasErrorLabel(commitError, "TransientTransactionError") ? concurrentRequestError(req) : commitError;
                 }
             }
@@ -149,30 +156,12 @@ export function asyncHandler(fn: (params: any, queryParams: any, req: any, res: 
         catch (e: any) {
             logger.fail(e);
 
-            // If a transaction exists and is still active: clean up GridFS uploads then abort
-            // (Media docs roll back; GridFS does not participate in transactions, so we delete explicitly)
             if (session && session.inTransaction()) {
-                try {
-                    const gridFsIds = (req.body as any)?._mediaUploadGridFsIds as string[] | undefined;
-                    if (gridFsIds?.length) {
-                        const languageCode = (req as any).header?.("language") || "en-US";
-                        const gridfs = getGridFSStorage(languageCode, 'media', logger);
-                        for (const id of gridFsIds) {
-                            try {
-                                await gridfs.deleteFile(id);
-                            } catch (delErr: any) {
-                                logger.warn(`Failed to clean up GridFS file ${id} on rollback: ${delErr.message}`);
-                            }
-                        }
-                    }
-                    await session.abortTransaction();
-                } catch (abortError: any) {
-                    logger.err("Error aborting transaction", abortError);
-                }
-                await flushAfterCommitTasks(session, false, () => undefined);
+                await rollBackRequestTransaction(req, session, logger);
             }
 
-            // Pass error to error handler
+            // Pass error to error handler; failedRequestCleanup (after the router) hands a request's uploads that did
+            // not roll back to the orphan cleanup.
             next(e);
         }
         finally {

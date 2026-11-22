@@ -17,6 +17,7 @@ import {getLogger} from "@coreModule/loggers/serverLog";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {ServerError} from "armonia/src/modules/core/types";
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
+import {failedRequestCleanup} from "@coreModule/utilities/middlewares/failedRequestCleanup";
 import {actionPermissionEntries} from "@coreModule/utilities/security/actionPermissions";
 import {companyTimeZone} from "@coreModule/utilities/time/companyTimeZone";
 import {recordRouterMounted} from "@coreModule/utilities/endpoints/recordRegistry";
@@ -77,7 +78,7 @@ export function appFor(routes: {basePath: string; router: Router; module?: strin
     for (const {basePath, router, module} of routes) {
         const tag = (_req: unknown, _res: unknown, next: () => void) =>
             module ? requestContext.run({...requestContext.getStore(), routeModule: module}, () => next()) : next();
-        app.use(basePath, stripServerKeys, tag, router);
+        app.use(basePath, stripServerKeys, tag, router, failedRequestCleanup);
         // Like routeRegistry: the router's records can be shared in chat under its module (D162).
         if (module) recordRouterMounted(router, module);
     }

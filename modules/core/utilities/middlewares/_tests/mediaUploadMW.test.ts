@@ -15,6 +15,10 @@ import {appFor, callerHeader, type TestCaller} from "@coreModule/_tests/httpHarn
 import Media from "@coreModule/database/schemas/media/media";
 import authMW from "@coreModule/utilities/middlewares/authMW";
 import {mediaUploadMW, UnifiedMediaUploadOptions} from "@coreModule/utilities/middlewares/mediaUploadMW";
+import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
+import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
+import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import type {ClientSession} from "mongoose";
 import {getGridFSStorage} from "@coreModule/utilities/gridfs/gridfsStorage";
 import {FILE_UPLOAD} from "@coreModule/environment";
 
@@ -27,17 +31,60 @@ const caller: TestCaller = {userId: new ObjectId().toString(), companyId: new Ob
 function uploadRouter(options: UnifiedMediaUploadOptions) {
     const router = express.Router();
     router.post("/", authMW("private"),
+        // What authMW writes for the signed-in caller.
         (req: Request, _res: Response, next: NextFunction) => {
             req.body.userInfo = {_id: new ObjectId(caller.userId)};
             req.body.user = {company: {_id: new ObjectId(caller.companyId)}};
+            req.body.company = {_id: new ObjectId(caller.companyId)};
             next();
         },
         mediaUploadMW(options),
-        (req: Request, res: Response) => res.json({files: req.body.files}));
+        (req: Request, res: Response) => res.json({
+            files: req.body.files,
+            userId: String(req.body.userInfo?._id),
+            userCompany: String(req.body.user?.company?._id),
+            company: String(req.body.company?._id),
+        }));
+    return router;
+}
+
+/** An action without a transaction whose own work fails after the upload succeeded. */
+const failingAfterUpload = express.Router();
+failingAfterUpload.post("/", authMW("private"),
+    (req: Request, _res: Response, next: NextFunction) => {
+        req.body.userInfo = {_id: new ObjectId(caller.userId)};
+        req.body.user = {company: {_id: new ObjectId(caller.companyId)}};
+        next();
+    },
+    mediaUploadMW({fields: {files: 3}}),
+    asyncHandler(async () => {
+        throw new Error("the record could not be saved");
+    }));
+
+/** A middleware after the upload refuses the request, as validateFormZod does with an invalid form (TD-B251). */
+const refuseForm = (_req: Request, _res: Response, next: NextFunction) =>
+    next(apiValidationException("form_not_correct", null, null, "en-US"));
+let lastSession: ClientSession | undefined;
+function refusingAfterUpload(withTransaction: boolean) {
+    const router = express.Router();
+    router.post("/", authMW("private"),
+        ...(withTransaction ? [transactionHandler()] : []),
+        (req: Request, _res: Response, next: NextFunction) => {
+            req.body.userInfo = {_id: new ObjectId(caller.userId)};
+            req.body.user = {company: {_id: new ObjectId(caller.companyId)}};
+            lastSession = req.body.session;
+            next();
+        },
+        mediaUploadMW({fields: {files: 3}}),
+        refuseForm,
+        asyncHandler(async () => ({never: "reached"})));
     return router;
 }
 
 const app = appFor([
+    {basePath: "/upload-then-refuse", router: refusingAfterUpload(false)},
+    {basePath: "/upload-in-transaction-then-refuse", router: refusingAfterUpload(true)},
+    {basePath: "/upload-then-fail", router: failingAfterUpload},
     {basePath: "/upload", router: uploadRouter({fields: {files: 3}})},
     {basePath: "/upload-small", router: uploadRouter({fields: {files: 3}, maxFileSize: 2 * 1024})},
     {basePath: "/upload-images", router: uploadRouter({fields: {files: 3}, fieldMimeTypes: {files: ["image/jpeg", "image/png"]}})},
@@ -162,6 +209,69 @@ describe("a refused file reaches the caller", () => {
         expect(res.body.error_code).toBe("office_document_validation_failed");
         expect(await Media.collection.countDocuments()).toBe(0);
         expect(await db.collection("media.files").countDocuments()).toBe(filesBefore);
+    });
+});
+
+describe("server-owned request keys (SEC-03)", () => {
+    it("keeps the signed-in user and company when the form claims others", async () => {
+        const other = new ObjectId().toString();
+        const res = await request(app).post("/upload").set(callerHeader(caller))
+            .field("data", JSON.stringify({user: {company: {_id: other}}, userInfo: {_id: other}, _mediaUploadGridFsIds: ["x"]}))
+            .field("company", other)
+            .attach("files", await png(), {filename: "a.png", contentType: "image/png"});
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({userId: caller.userId, userCompany: caller.companyId, company: caller.companyId});
+        const {media} = await storedFile(res.body.files[0]);
+        expect(String(media.company)).toBe(caller.companyId);
+        expect(String(media.createdBy)).toBe(caller.userId);
+    });
+
+    it("keeps them when the form carries no file", async () => {
+        const other = new ObjectId().toString();
+        const res = await request(app).post("/upload").set(callerHeader(caller))
+            .field("data", JSON.stringify({user: {company: {_id: other}, isAdmin: true}, userInfo: {_id: other}}))
+            .field("company", other);
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({userId: caller.userId, userCompany: caller.companyId, company: caller.companyId});
+    });
+});
+
+describe("a route that fails after its upload, without a transaction (TD-B249)", () => {
+    it("hands the uploaded files to the orphan cleanup", async () => {
+        const res = await upload([{data: await png(), name: "photo.png", type: "image/png"}], "/upload-then-fail");
+        expect(res.status).toBe(500);
+        const stored = await Media.collection.find({}).toArray();
+        expect(stored).toHaveLength(1);
+        expect(stored[0].pendingReference).toBe(true);
+    });
+
+    it("cannot be pointed at someone else's file by the client", async () => {
+        const {insertedId} = await Media.collection.insertOne({type: "image", originalName: "theirs.png", company: new ObjectId()});
+        const res = await request(app).post("/upload-then-fail").set(callerHeader(caller))
+            .field("data", JSON.stringify({_mediaUploadMediaIds: [insertedId.toString()]}))
+            .attach("files", await png(), {filename: "mine.png", contentType: "image/png"});
+        expect(res.status).toBe(500);
+        expect((await Media.collection.findOne({_id: insertedId}))?.pendingReference).toBeUndefined();
+    });
+});
+
+describe("a middleware that refuses the request after its upload (TD-B251)", () => {
+    it("hands the uploads to the orphan cleanup when there is no transaction", async () => {
+        const res = await upload([{data: await png(), name: "photo.png", type: "image/png"}], "/upload-then-refuse");
+        expect(res.body.error_code).toBe("form_not_correct");
+        const stored = await Media.collection.find({}).toArray();
+        expect(stored).toHaveLength(1);
+        expect(stored[0].pendingReference).toBe(true);
+    });
+
+    it("rolls back an open transaction, deletes its files and ends the session", async () => {
+        const db = mongoose.connection.db!;
+        const filesBefore = await db.collection("media.files").countDocuments();
+        const res = await upload([{data: await png(), name: "photo.png", type: "image/png"}], "/upload-in-transaction-then-refuse");
+        expect(res.body.error_code).toBe("form_not_correct");
+        expect(await Media.collection.countDocuments()).toBe(0);
+        expect(await db.collection("media.files").countDocuments()).toBe(filesBefore);
+        expect(lastSession?.hasEnded).toBe(true);
     });
 });
 

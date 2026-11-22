@@ -37,6 +37,7 @@ export const SERVER_KEYS: ReadonlySet<string> = new Set([
     "visitorUser",
     "validatedForm",
     "_mediaUploadGridFsIds",
+    "_mediaUploadMediaIds",
 ]);
 
 /**
@@ -51,6 +52,21 @@ export function clientValuesOfServerKeys(req: Request): Record<string, unknown> 
 }
 
 /**
+ * Moves the server keys found in client-sent `fields` out of them, into the request's quarantine. For client input
+ * parsed after {@link stripServerKeys} has run, such as a multipart form's fields (`mediaUploadMW`).
+ */
+export function quarantineServerKeys(req: Request, fields: Record<string, unknown>): void {
+    const held = quarantined.get(req) ?? {};
+    for (const key of Object.keys(fields)) {
+        if (SERVER_KEYS.has(key)) {
+            held[key] = fields[key];
+            delete fields[key];
+        }
+    }
+    quarantined.set(req, held);
+}
+
+/**
  * First step of every route: moves client-sent server keys out of the body so that only middlewares
  * can set them. Routes that keep the raw body for signature checks (webhooks) are left untouched.
  */
@@ -62,14 +78,6 @@ export function stripServerKeys(req: Request, _res: Response, next: NextFunction
     if (shouldPreserveRawBody(req.originalUrl) || body == null || typeof body !== "object" || Array.isArray(body)) {
         return next();
     }
-    const fields = body as Record<string, unknown>;
-    const held: Record<string, unknown> = {};
-    for (const key of Object.keys(fields)) {
-        if (SERVER_KEYS.has(key)) {
-            held[key] = fields[key];
-            delete fields[key];
-        }
-    }
-    quarantined.set(req, held);
+    quarantineServerKeys(req, body as Record<string, unknown>);
     next();
 }
