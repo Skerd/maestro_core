@@ -367,19 +367,18 @@ export function validateConfiguration(): void {
     errors.push(...[
         validateNumber('MAX_FILES_UPLOADED', process.env.MAX_FILES_UPLOADED, true, 1),
         validateNumber('MAX_FILE_SIZE', process.env.MAX_FILE_SIZE, true, 1),
-        validateString('FILE_SCANNER_TYPE', process.env.FILE_SCANNER_TYPE, true),
         validateBoolean('MOCK_SCANNER_SIMULATE_THREATS', process.env.MOCK_SCANNER_SIMULATE_THREATS, true),
     ].filter((e): e is ValidationError => e !== null));
 
-    if (process.env.FILE_SCANNER_TYPE === 'clamav') {
+    // An unknown scanner name would otherwise quietly fall back to the mock, which scans nothing.
+    const scannerType = process.env.FILE_SCANNER_TYPE?.trim().toLowerCase();
+    if (scannerType !== 'clamav' && scannerType !== 'mock') {
+        errors.push({key: 'FILE_SCANNER_TYPE', message: `FILE_SCANNER_TYPE must be "clamav" or "mock", got: ${process.env.FILE_SCANNER_TYPE || '(empty)'}`});
+    }
+    if (scannerType === 'clamav') {
         errors.push(...[
             validateString('CLAMAV_HOST', process.env.CLAMAV_HOST, true),
             validateNumber('CLAMAV_PORT', process.env.CLAMAV_PORT, true, 1, 65535),
-        ].filter((e): e is ValidationError => e !== null));
-    }
-    if (process.env.FILE_SCANNER_TYPE === 'virustotal') {
-        errors.push(...[
-            validateString('VIRUSTOTAL_API_KEY', process.env.VIRUSTOTAL_API_KEY, true),
         ].filter((e): e is ValidationError => e !== null));
     }
 

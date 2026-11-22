@@ -275,7 +275,6 @@ export const FILE_UPLOAD = {
     MOCK_SCANNER_SIMULATE_THREATS: process.env.MOCK_SCANNER_SIMULATE_THREATS === 'true',
     CLAMAV_HOST: process.env.CLAMAV_HOST,
     CLAMAV_PORT: parseInt(process.env.CLAMAV_PORT, 10),
-    VIRUSTOTAL_API_KEY:process.env.VIRUSTOTAL_API_KEY
 }
 
 export const CHAT = {

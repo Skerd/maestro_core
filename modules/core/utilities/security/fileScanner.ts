@@ -1,19 +1,20 @@
 /**
  * File Security Scanner
- * 
- * Pluggable security scanning layer for uploaded files.
- * Supports multiple backends: ClamAV, VirusTotal API, or mock scanner.
+ *
+ * Pluggable malware scanning for uploaded files: ClamAV (clamd over TCP), or a mock for development and tests.
  */
 
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import fs from 'fs';
-import path from 'path';
+import net from 'net';
 import {FILE_UPLOAD} from "@coreModule/environment";
 
 export interface ScanResult {
     safe: boolean;
     scanned: boolean;
     result?: string;
+    /** The signature found, when a scan found a threat. */
+    threat?: string;
     error?: string;
     scanner?: string;
 }
@@ -25,8 +26,9 @@ export interface FileScanner {
 }
 
 /**
- * Mock Scanner - For development/testing
- * Always returns safe (can be configured to simulate threats)
+ * Mock Scanner - For development/testing.
+ * It scans nothing, so a file it lets through is recorded as not scanned (`safeCheckedFlag` stays false).
+ * With `simulateThreats`, a file whose name or content contains "malicious" is refused.
  */
 export class MockFileScanner implements FileScanner {
     private logger: serverLogger;
@@ -47,18 +49,16 @@ export class MockFileScanner implements FileScanner {
 
     async scanFile(filePath: string, buffer?: Buffer): Promise<ScanResult> {
         this.logger.debug(`Mock scanning file: ${filePath}`);
-        
-        // Simulate scanning delay
-        await new Promise(resolve => setTimeout(resolve, 100));
 
         if (this.simulateThreats) {
             // Simulate finding a threat in files with "malicious" in name
-            if (filePath.toLowerCase().includes('malicious') || 
+            if (filePath.toLowerCase().includes('malicious') ||
                 (buffer && buffer.toString().toLowerCase().includes('malicious'))) {
                 return {
                     safe: false,
                     scanned: true,
                     result: 'Mock threat detected',
+                    threat: 'Mock threat',
                     scanner: 'MockScanner'
                 };
             }
@@ -66,15 +66,37 @@ export class MockFileScanner implements FileScanner {
 
         return {
             safe: true,
-            scanned: true,
-            result: 'File passed mock scan',
+            scanned: false,
+            result: 'Not scanned: no malware scanner is configured',
             scanner: 'MockScanner'
         };
     }
 }
 
 /**
- * ClamAV Scanner - Uses ClamAV daemon via TCP socket
+ * Reads clamd's reply to INSTREAM. Only an exact "stream: OK" is clean; "stream: <signature> FOUND" is a threat
+ * (the signature name may contain any text, "OK" included); anything else, such as
+ * "INSTREAM size limit exceeded. ERROR", means the file was not scanned.
+ */
+export function parseClamdReply(reply: string): ScanResult {
+    const line = reply.replace(/\0/g, '').trim();
+    if (line === 'stream: OK') {
+        return {safe: true, scanned: true, result: 'File passed ClamAV scan', scanner: 'ClamAV'};
+    }
+    const found = /^stream: (.+) FOUND$/.exec(line);
+    if (found) {
+        return {safe: false, scanned: true, result: `Threat detected: ${found[1]}`, threat: found[1], scanner: 'ClamAV'};
+    }
+    return {safe: false, scanned: false, error: `Unexpected ClamAV reply: ${line || '(none)'}`, scanner: 'ClamAV'};
+}
+
+const INSTREAM_CHUNK_BYTES = 1024 * 1024;
+/** Long enough for clamd to scan a large file (its own MaxScanTime defaults to 120 s); applies while the socket is idle. */
+export const CLAMAV_SCAN_TIMEOUT_MS = 180_000;
+
+/**
+ * ClamAV Scanner - Uses ClamAV daemon via TCP socket (zINSTREAM). Fails closed: an unreachable daemon, a timeout or
+ * an unexpected reply returns `safe: false`.
  */
 export class ClamAVScanner implements FileScanner {
     private logger: serverLogger;
@@ -85,7 +107,7 @@ export class ClamAVScanner implements FileScanner {
     constructor(
         host: string = 'localhost',
         port: number = 3310,
-        timeout: number = 30000,
+        timeout: number = CLAMAV_SCAN_TIMEOUT_MS,
         logger?: serverLogger
     ) {
         this.logger = logger || getLogger('clamav_scanner');
@@ -99,196 +121,48 @@ export class ClamAVScanner implements FileScanner {
     }
 
     isAvailable(): boolean {
-        try {
-            const net = require('net');
-            return true; // TCP module is available
-        } catch {
-            return false;
-        }
+        return true;
     }
 
     async scanFile(filePath: string, buffer?: Buffer): Promise<ScanResult> {
-        try {
-            const net = require('net');
-            const data = buffer || fs.readFileSync(filePath);
+        const data = buffer ?? await fs.promises.readFile(filePath);
 
-            return new Promise((resolve, reject) => {
-                const socket = new net.Socket();
-                let response = '';
+        return new Promise<ScanResult>(resolve => {
+            let reply = '';
+            let settled = false;
+            const finish = (result: ScanResult) => {
+                if (settled) return;
+                settled = true;
+                socket.destroy();
+                if (!result.scanned) this.logger.err(`ClamAV scan of ${filePath} failed: ${result.error}`);
+                resolve(result);
+            };
+            const fail = (error: string) => finish({safe: false, scanned: false, error, scanner: 'ClamAV'});
 
-                socket.setTimeout(this.timeout);
-                socket.connect(this.port, this.host, () => {
-                    // Send SCAN command with file data
-                    const command = `zINSTREAM\0`;
-                    socket.write(command);
-                    
-                    // Send file size and data
+            const socket = net.createConnection({host: this.host, port: this.port}, () => {
+                socket.write('zINSTREAM\0');
+                for (let offset = 0; offset < data.length; offset += INSTREAM_CHUNK_BYTES) {
+                    const chunk = data.subarray(offset, offset + INSTREAM_CHUNK_BYTES);
                     const size = Buffer.alloc(4);
-                    size.writeUInt32BE(data.length, 0);
+                    size.writeUInt32BE(chunk.length, 0);
                     socket.write(size);
-                    socket.write(data);
-                    
-                    // Send zero-length chunk to signal end
-                    socket.write(Buffer.alloc(4).fill(0));
-                });
-
-                socket.on('data', (chunk: Buffer) => {
-                    response += chunk.toString();
-                });
-
-                socket.on('end', () => {
-                    // Parse ClamAV response
-                    // Format: "stream: OK" or "stream: <virus_name> FOUND"
-                    if (response.includes('OK')) {
-                        resolve({
-                            safe: true,
-                            scanned: true,
-                            result: 'File passed ClamAV scan',
-                            scanner: 'ClamAV'
-                        });
-                    } else if (response.includes('FOUND')) {
-                        const threatName = response.match(/stream: (.+?) FOUND/)?.[1] || 'Unknown threat';
-                        resolve({
-                            safe: false,
-                            scanned: true,
-                            result: `Threat detected: ${threatName}`,
-                            scanner: 'ClamAV'
-                        });
-                    } else {
-                        resolve({
-                            safe: false,
-                            scanned: true,
-                            result: `Unexpected response: ${response}`,
-                            scanner: 'ClamAV'
-                        });
-                    }
-                });
-
-                socket.on('error', (error: Error) => {
-                    this.logger.err(`ClamAV scan error: ${error.message}`);
-                    reject({
-                        safe: false,
-                        scanned: false,
-                        error: error.message,
-                        scanner: 'ClamAV'
-                    });
-                });
-
-                socket.on('timeout', () => {
-                    socket.destroy();
-                    reject({
-                        safe: false,
-                        scanned: false,
-                        error: 'ClamAV scan timeout',
-                        scanner: 'ClamAV'
-                    });
-                });
-            });
-        } catch (error: any) {
-            this.logger.err(`ClamAV scan failed: ${error.message}`);
-            return {
-                safe: false,
-                scanned: false,
-                error: error.message,
-                scanner: 'ClamAV'
-            };
-        }
-    }
-}
-
-/**
- * VirusTotal API Scanner - Uses VirusTotal API
- */
-export class VirusTotalScanner implements FileScanner {
-    private logger: serverLogger;
-    private apiKey: string;
-    private apiUrl: string;
-
-    constructor(apiKey: string, logger?: serverLogger) {
-        this.logger = logger || getLogger('virustotal_scanner');
-        this.apiKey = apiKey;
-        this.apiUrl = 'https://www.virustotal.com/vtapi/v2';
-    }
-
-    getName(): string {
-        return 'VirusTotal';
-    }
-
-    isAvailable(): boolean {
-        return !!this.apiKey && this.apiKey.length > 0;
-    }
-
-    async scanFile(filePath: string, buffer?: Buffer): Promise<ScanResult> {
-        try {
-            const crypto = require('crypto');
-            const fs = require('fs').promises;
-            const FormData = require('form-data');
-            const axios = require('axios');
-
-            const data = buffer || await fs.readFile(filePath);
-            const hash = crypto.createHash('sha256').update(data).digest('hex');
-
-            // First, check if file was already scanned
-            const checkResponse = await axios.get(`${this.apiUrl}/file/report`, {
-                params: {
-                    apikey: this.apiKey,
-                    resource: hash
+                    socket.write(chunk);
                 }
+                socket.write(Buffer.alloc(4)); // A zero-length chunk ends the stream.
             });
+            socket.setTimeout(this.timeout);
 
-            if (checkResponse.data.response_code === 1) {
-                // File was already scanned
-                const positives = checkResponse.data.positives || 0;
-                return {
-                    safe: positives === 0,
-                    scanned: true,
-                    result: `${positives} engines detected threats`,
-                    scanner: 'VirusTotal'
-                };
-            }
-
-            // Upload and scan new file
-            const form = new FormData();
-            form.append('file', data, path.basename(filePath));
-
-            const uploadResponse = await axios.post(
-                `${this.apiUrl}/file/scan`,
-                form,
-                {
-                    headers: form.getHeaders(),
-                    params: {
-                        apikey: this.apiKey
-                    }
-                }
-            );
-
-            // Wait a bit and check result
-            await new Promise(resolve => setTimeout(resolve, 5000));
-
-            const resultResponse = await axios.get(`${this.apiUrl}/file/report`, {
-                params: {
-                    apikey: this.apiKey,
-                    resource: uploadResponse.data.scan_id
-                }
+            socket.on('data', (chunk: Buffer) => {
+                reply += chunk.toString();
+                // A z-prefixed command's reply ends with NUL.
+                if (reply.includes('\0')) finish(parseClamdReply(reply));
             });
-
-            const positives = resultResponse.data.positives || 0;
-            return {
-                safe: positives === 0,
-                scanned: true,
-                result: `${positives} engines detected threats`,
-                scanner: 'VirusTotal'
-            };
-
-        } catch (error: any) {
-            this.logger.err(`VirusTotal scan failed: ${error.message}`);
-            return {
-                safe: false,
-                scanned: false,
-                error: error.message,
-                scanner: 'VirusTotal'
-            };
-        }
+            socket.on('end', () => finish(parseClamdReply(reply)));
+            socket.on('close', () => finish(parseClamdReply(reply)));
+            // clamd answers a stream over its size limit and then closes, so a broken pipe may follow a reply that explains it.
+            socket.on('error', (error: Error) => (reply ? finish(parseClamdReply(reply)) : fail(error.message)));
+            socket.on('timeout', () => fail('ClamAV scan timeout'));
+        });
     }
 }
 
@@ -297,27 +171,13 @@ export class VirusTotalScanner implements FileScanner {
  */
 export class FileScannerFactory {
     static createScanner(logger?: serverLogger): FileScanner {
-        const scannerType = FILE_UPLOAD.FILE_SCANNER_TYPE;
-        const simulateThreats = FILE_UPLOAD.MOCK_SCANNER_SIMULATE_THREATS;
-
-        switch (scannerType.toLowerCase()) {
+        switch ((FILE_UPLOAD.FILE_SCANNER_TYPE ?? '').toLowerCase()) {
             case 'clamav':
-                const clamavHost = FILE_UPLOAD.CLAMAV_HOST;
-                const clamavPort = FILE_UPLOAD.CLAMAV_PORT;
-                return new ClamAVScanner(clamavHost, clamavPort, 30000, logger);
-
-            case 'virustotal':
-                const apiKey = FILE_UPLOAD.VIRUSTOTAL_API_KEY;
-                if (!apiKey) {
-                    logger?.warn('VirusTotal API key not found, falling back to mock scanner');
-                    return new MockFileScanner(logger, simulateThreats);
-                }
-                return new VirusTotalScanner(apiKey, logger);
+                return new ClamAVScanner(FILE_UPLOAD.CLAMAV_HOST, FILE_UPLOAD.CLAMAV_PORT, CLAMAV_SCAN_TIMEOUT_MS, logger);
 
             case 'mock':
             default:
-                return new MockFileScanner(logger, simulateThreats);
+                return new MockFileScanner(logger, FILE_UPLOAD.MOCK_SCANNER_SIMULATE_THREATS);
         }
     }
 }
-

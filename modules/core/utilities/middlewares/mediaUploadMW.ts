@@ -7,13 +7,17 @@ import {IMedia, IMediaMetadata} from '@coreModule/database/schemas/media/media';
 import {apiValidationException} from 'armonia/src/modules/core/helpers/exceptions';
 import {getGridFSStorage} from '@coreModule/utilities/gridfs/gridfsStorage';
 import {FileScannerFactory} from '@coreModule/utilities/security/fileScanner';
+import {isOleCompoundFile, oleEntryNames} from '@coreModule/utilities/media/oleCompoundFile';
 import {Readable} from 'stream';
 import path from 'path';
+import sharp from 'sharp';
+import {PDFArray, PDFDict, PDFDocument, PDFName, PDFObject, PDFPage} from 'pdf-lib';
 import {
     ALLOWED_MIME_TYPES,
     BLOCKED_EXTENSIONS,
     BLOCKED_MIME_TYPES,
-    FILE_SIGNATURES
+    FILE_SIGNATURES,
+    UPLOAD_MIME_BY_EXTENSION
 } from "armonia/src/modules/core/constants";
 import {FILE_UPLOAD} from "@coreModule/environment";
 import {sealMediaFileStream} from "@coreModule/utilities/security/healthDataCrypto";
@@ -45,7 +49,7 @@ export interface UnifiedMediaUploadOptions {
     validateFileContent?: boolean;
     /** Whether to sanitize images by re-encoding them (strips metadata and embedded scripts, requires sharp, default: true) */
     sanitizeImages?: boolean;
-    /** Whether to sanitize PDFs by removing JavaScript and embedded objects (requires pdf-lib, default: false) */
+    /** Whether to sanitize PDFs by removing scripts, actions and embedded files (requires pdf-lib, default: true) */
     sanitizePdfs?: boolean;
     /** Whether to validate Office documents structure (default: true) */
     validateOfficeDocuments?: boolean;
@@ -75,21 +79,27 @@ function getFileExtension(filename: string): string {
     return ext || '';
 }
 
-/** Browsers send an empty, generic or vendor type for these; the extension names the real one. */
-const MIME_BY_EXTENSION: Record<string, {mime: string; aliases: string[]}> = {
-    ".p12": {mime: "application/x-pkcs12", aliases: []},
-    ".pfx": {mime: "application/x-pkcs12", aliases: []},
-    ".dcm": {mime: "application/dicom", aliases: []},
-    ".zip": {mime: "application/zip", aliases: ["application/x-zip-compressed"]},
-    ".stl": {mime: "model/stl", aliases: ["application/sla", "application/vnd.ms-pki.stl", "model/x.stl-binary", "model/x.stl-ascii"]},
-};
+/** The extension a file of this type is stored under: the first one UPLOAD_MIME_BY_EXTENSION lists for it. */
+function extensionForMime(mimeType: string): string {
+    return Object.keys(UPLOAD_MIME_BY_EXTENSION).find(extension => UPLOAD_MIME_BY_EXTENSION[extension] === mimeType) ?? '';
+}
 
-function normalizedMime(mimeType: string, filename: string): string {
-    const known = MIME_BY_EXTENSION[getFileExtension(filename)];
-    if (known && (!mimeType || mimeType === "application/octet-stream" || known.aliases.includes(mimeType))) {
-        return known.mime;
-    }
-    return mimeType;
+/** The extensions uploads of these types may have, for messages: ".jpg, .jpeg, .png". */
+function acceptedExtensions(mimeTypes: readonly string[]): string {
+    return Object.keys(UPLOAD_MIME_BY_EXTENSION).filter(extension => mimeTypes.includes(UPLOAD_MIME_BY_EXTENSION[extension])).join(', ');
+}
+
+const MEGABYTE = 1024 * 1024;
+
+/** A size limit for messages: "100 MB", or "800 KB" below a megabyte. */
+function formatSizeLimit(bytes: number): string {
+    return bytes >= MEGABYTE ? `${Math.floor(bytes / MEGABYTE)} MB` : `${Math.max(1, Math.floor(bytes / 1024))} KB`;
+}
+
+/** The file name with its extension replaced, or added, so the name matches the type of the stored bytes. */
+function withExtension(filename: string, extension: string): string {
+    const current = path.extname(filename);
+    return `${current ? filename.slice(0, -current.length) : filename}${extension}`;
 }
 
 /**
@@ -110,13 +120,14 @@ function getFileType(mimeType: string): IMedia['type'] {
 }
 
 /**
- * Validates file type and extension
+ * Validates a file's type and returns the type it is checked and stored as: the one its extension names
+ * (UPLOAD_MIME_BY_EXTENSION), never the browser's, so a download's name always matches what was checked.
+ * Only a file without an extension keeps the browser's type, and then gets that type's extension.
  */
-function validateFileType(mimeType: string, filename: string, languageCode: string): void {
+function validateFileType(clientMimeType: string, filename: string, languageCode: string): string {
     const extension = getFileExtension(filename);
 
-    // Check blocked extensions
-    if (BLOCKED_EXTENSIONS.includes(extension)) {
+    if (BLOCKED_EXTENSIONS.includes(extension) || BLOCKED_MIME_TYPES.includes(clientMimeType)) {
         throw apiValidationException(
             "file_type_blocked",
             null,
@@ -125,96 +136,98 @@ function validateFileType(mimeType: string, filename: string, languageCode: stri
         );
     }
 
-    // Check blocked MIME types
-    if (BLOCKED_MIME_TYPES.includes(mimeType)) {
-        throw apiValidationException(
-            "file_type_blocked",
-            null,
-            null,
-            languageCode
-        );
-    }
-
-    // Check allowed MIME types
-    if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+    const mimeType = extension ? UPLOAD_MIME_BY_EXTENSION[extension] : clientMimeType;
+    if (!mimeType || !ALLOWED_MIME_TYPES.includes(mimeType)) {
         throw apiValidationException(
             "file_type_not_allowed",
             null,
             null,
-            languageCode
+            languageCode,
+            [acceptedExtensions(ALLOWED_MIME_TYPES)]
         );
     }
+    return mimeType;
 }
 
+/** Text has no NUL bytes, unless it is UTF-16, which opens with a byte-order mark. */
+function isText(buffer: Buffer): boolean {
+    const utf16 = buffer.length >= 2 && ((buffer[0] === 0xFF && buffer[1] === 0xFE) || (buffer[0] === 0xFE && buffer[1] === 0xFF));
+    return utf16 || !buffer.includes(0);
+}
+
+/** Binary STL: an 80-byte header, a triangle count, then 50 bytes per triangle. ASCII STL: text opening with "solid". */
+function isStl(buffer: Buffer): boolean {
+    if (buffer.length >= 84 && buffer.length === 84 + 50 * buffer.readUInt32LE(80)) return true;
+    return isText(buffer) && /^\s*solid\b/.test(buffer.subarray(0, 256).toString('latin1'));
+}
+
+/** Types with no fixed opening bytes, checked by their structure instead of FILE_SIGNATURES. */
+const STRUCTURE_CHECKS: Partial<Record<string, (buffer: Buffer) => boolean>> = {
+    'text/plain': isText,
+    'text/csv': isText,
+    'image/svg+xml': buffer => isText(buffer) && buffer.includes('<svg'),
+    'model/stl': isStl,
+};
+
 /**
- * Validates file content against MIME type using magic bytes
+ * Validates file content against its type: magic bytes (FILE_SIGNATURES, where `null` matches any byte) or a
+ * structure check. A type with neither fails closed.
  */
-function validateFileContentBySignature(buffer: Buffer, expectedMimeType: string, logger: serverLogger): boolean {
-    try {
-        const signatures = FILE_SIGNATURES[expectedMimeType];
-        if (!signatures || signatures.length === 0) {
-            logger.debug(`[validate] No signatures for MIME type: ${expectedMimeType}`);
-            return true;
-        }
-
-        if (buffer.length === 0) {
-            logger.debug(`[validate] Buffer is empty`);
-            return false;
-        }
-
-        // Check if file matches any of the expected signatures
-        return signatures.some(signature => {
-            // console.log(`[validate] Checking signature for ${expectedMimeType}:`, signature);
-            // console.log(`[validate] Buffer first ${signature.length} bytes:`, Array.from(buffer.slice(0, signature.length)));
-
-            if (buffer.length < signature.length) {
-                // console.log(`[validate] Buffer shorter than signature`);
-                return false;
-            }
-
-            const match = signature.every((byte, index) => buffer[index] === byte);
-            // console.log(`[validate] Signature match result:`, match);
-            return match;
-        });
-    } catch (error) {
-        logger.warn(`[validate] Error validating file: ${error instanceof Error ? error.message : String(error)}`);
+function contentMatchesType(buffer: Buffer, mimeType: string, logger: serverLogger): boolean {
+    if (buffer.length === 0) return false;
+    const structureCheck = STRUCTURE_CHECKS[mimeType];
+    if (structureCheck) return structureCheck(buffer);
+    const signatures = FILE_SIGNATURES[mimeType];
+    if (!signatures?.length) {
+        logger.warn(`[validate] No content check for MIME type: ${mimeType}`);
         return false;
     }
+    return signatures.some(signature =>
+        buffer.length >= signature.length && signature.every((byte, index) => byte === null || buffer[index] === byte));
 }
 
+/** An SVG is stored as a PNG at least this many pixels on its long side, so a small logo stays sharp, and at most the max. */
+const SVG_RASTER_MIN_PX = 1024;
+const SVG_RASTER_MAX_PX = 4096;
+const SHARP_MAX_DENSITY = 100_000;
+
 /**
- * Sanitizes image by re-encoding it, which strips all metadata and embedded scripts
- * Works with buffer instead of file path
+ * Sanitizes an image by re-encoding it, which strips metadata and anything embedded. Photos are turned upright first
+ * (their EXIF orientation is dropped with the metadata), GIF and WebP keep their animation, and an SVG becomes a PNG.
+ * Returns the type of the bytes it produced.
  */
-async function sanitizeImageBuffer(inputBuffer: Buffer, mimeType: string): Promise<{buffer: Buffer; resolution?: {width: number; height: number}}> {
-
+async function sanitizeImageBuffer(inputBuffer: Buffer, mimeType: string): Promise<{buffer: Buffer; mimeType: string; resolution?: {width: number; height: number}}> {
     try {
-        const sharp = require('sharp');
-        let pipeline = sharp(inputBuffer);
-
-        // Determine output format based on MIME type
-        if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
-            pipeline = pipeline.jpeg({ quality: 90, mozjpeg: true });
+        let pipeline: sharp.Sharp;
+        let outputMimeType = mimeType;
+        if (mimeType === 'image/jpeg') {
+            pipeline = sharp(inputBuffer).rotate().jpeg({quality: 90, mozjpeg: true});
         }
         else if (mimeType === 'image/png') {
-            pipeline = pipeline.png({ quality: 90, compressionLevel: 9 });
+            pipeline = sharp(inputBuffer).rotate().png({quality: 90, compressionLevel: 9});
         }
         else if (mimeType === 'image/webp') {
-            pipeline = pipeline.webp({ quality: 90 });
+            pipeline = sharp(inputBuffer, {animated: true}).webp({quality: 90});
         }
         else if (mimeType === 'image/gif') {
-            // GIFs are tricky - convert to PNG for safety
-            pipeline = pipeline.png({ quality: 90 });
+            pipeline = sharp(inputBuffer, {animated: true}).gif();
+        }
+        else if (mimeType === 'image/svg+xml') {
+            const {width = 0, height = 0} = await sharp(inputBuffer).metadata();
+            const longSide = Math.max(width, height);
+            if (!longSide) throw new Error('The SVG has no size');
+            const targetSide = Math.min(Math.max(longSide, SVG_RASTER_MIN_PX), SVG_RASTER_MAX_PX);
+            const density = Math.min(72 * targetSide / longSide, SHARP_MAX_DENSITY);
+            pipeline = sharp(inputBuffer, {density}).png({compressionLevel: 9});
+            outputMimeType = 'image/png';
         }
         else {
-            // For other image types, convert to JPEG as safe default
-            pipeline = pipeline.jpeg({ quality: 90, mozjpeg: true });
+            // Any other image type is stored as a JPEG.
+            pipeline = sharp(inputBuffer).rotate().jpeg({quality: 90, mozjpeg: true});
+            outputMimeType = 'image/jpeg';
         }
 
-        // Re-encode image - this strips ALL metadata, EXIF data, and embedded scripts
         const sanitizedBuffer = await pipeline.toBuffer();
-
-        // Get resolution
         const metadata = await sharp(sanitizedBuffer).metadata();
         const resolution = metadata.width && metadata.height ? {
             width: metadata.width,
@@ -223,6 +236,7 @@ async function sanitizeImageBuffer(inputBuffer: Buffer, mimeType: string): Promi
 
         return {
             buffer: sanitizedBuffer,
+            mimeType: outputMimeType,
             resolution
         };
     } catch (error) {
@@ -230,89 +244,140 @@ async function sanitizeImageBuffer(inputBuffer: Buffer, mimeType: string): Promi
     }
 }
 
+/** Annotation kinds that carry files or media players; a cleaned PDF drops them. */
+const PDF_REMOVED_ANNOTATIONS = new Set(['FileAttachment', 'RichMedia', 'Screen', 'Movie', 'Sound', '3D']);
+/** The only actions a cleaned PDF keeps: links to a web address or to a place in the document. */
+const PDF_KEPT_ACTIONS = new Set(['URI', 'GoTo']);
+/** How far up a form widget's field tree its actions are removed. */
+const PDF_MAX_FIELD_DEPTH = 10;
+
+/** Strips a copied page of what runs by itself or launches something: page, link and form actions, embedded files and media. */
+function stripPdfPageActions(pdf: PDFDocument, page: PDFPage): void {
+    page.node.delete(PDFName.of('AA'));
+    const annotations = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+    if (!annotations) return;
+
+    const kept: PDFObject[] = [];
+    for (let index = 0; index < annotations.size(); index++) {
+        const entry = annotations.get(index);
+        const annotation = pdf.context.lookupMaybe(entry, PDFDict);
+        if (!annotation) continue;
+        const subtype = annotation.lookupMaybe(PDFName.of('Subtype'), PDFName);
+        if (subtype && PDF_REMOVED_ANNOTATIONS.has(subtype.decodeText())) continue;
+
+        // A form widget's actions can also sit on the fields above it.
+        let node: PDFDict | undefined = annotation;
+        for (let depth = 0; node && depth < PDF_MAX_FIELD_DEPTH; depth++) {
+            node.delete(PDFName.of('AA'));
+            const action = node.lookupMaybe(PDFName.of('A'), PDFDict);
+            const kind = action?.lookupMaybe(PDFName.of('S'), PDFName)?.decodeText();
+            if (action && kind && PDF_KEPT_ACTIONS.has(kind)) action.delete(PDFName.of('Next'));
+            else node.delete(PDFName.of('A'));
+            node = node.lookupMaybe(PDFName.of('Parent'), PDFDict);
+        }
+        kept.push(entry);
+    }
+    page.node.set(PDFName.of('Annots'), pdf.context.obj(kept));
+}
+
 /**
- * Sanitizes PDF by removing JavaScript, embedded files, and dangerous actions
- * Works with buffer instead of file path
+ * Sanitizes a PDF: its pages are copied into a new document, which leaves behind document-level scripts, open
+ * actions and attachments, and each page is stripped of its actions. pdf-lib cannot decrypt, so an encrypted PDF
+ * (often only owner-locked, like bank statements, which open without a password) is kept as uploaded; the virus scan
+ * has already run on it.
  */
-async function sanitizePdfBuffer(inputBuffer: Buffer): Promise<Buffer> {
-
+async function sanitizePdfBuffer(inputBuffer: Buffer, logger: serverLogger): Promise<Buffer> {
     try {
-        const {PDFDocument} = require('pdf-lib');
-
-        // Load the PDF
-        const pdfDoc = await PDFDocument.load(inputBuffer);
-
-        // Create a new clean PDF
-        const cleanPdf = await PDFDocument.create();
-        
-        // Copy pages without JavaScript
-        const pages = pdfDoc.getPages();
-        for (let i = 0; i < pages.length; i++) {
-            const [copiedPage] = await cleanPdf.copyPages(pdfDoc, [i]);
-            cleanPdf.addPage(copiedPage);
+        const source = await PDFDocument.load(inputBuffer, {ignoreEncryption: true});
+        if (source.isEncrypted) {
+            logger.warn('Encrypted PDF stored as uploaded, without script cleaning');
+            return inputBuffer;
         }
 
-        // Save the sanitized PDF
-        const sanitizedBytes = await cleanPdf.save();
-        return Buffer.from(sanitizedBytes);
-
+        const cleanPdf = await PDFDocument.create();
+        const pages = await cleanPdf.copyPages(source, source.getPageIndices());
+        for (const page of pages) {
+            cleanPdf.addPage(page);
+            stripPdfPageActions(cleanPdf, page);
+        }
+        return Buffer.from(await cleanPdf.save());
     } catch (error) {
         throw new Error(`Failed to sanitize PDF: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
+/** Files that run code when opened, anywhere inside an Office document. */
+const OFFICE_EXECUTABLE_ENTRY = /\.(exe|dll|ocx|scr|com|msi|bat|cmd|ps1|vbs|vbe|js|jse|wsf|wsh|hta|jar|lnk)$/;
+/** Relationships that make Office fetch an object, a template or a frame from elsewhere when the file opens. */
+const OFFICE_FETCHED_RELATIONSHIP = /\/(oleObject|attachedTemplate|frame|subDocument)$/;
+/** OLE2 entries that hold VBA macros, a packaged file, or an Equation Editor 3.0 object (a long-exploited component). */
+const OLE_DANGEROUS_ENTRIES = new Map<string, string>([
+    ['macros', 'macros'], ['_vba_project_cur', 'macros'], ['_vba_project', 'macros'], ['vba', 'macros'],
+    ['\u0001ole10native', 'an embedded file'], ['equation native', 'an Equation Editor object'],
+]);
+/** The largest part of an Office file unpacked for inspection; a bigger one is refused rather than unpacked. */
+const OFFICE_PART_MAX_BYTES = 50 * 1024 * 1024;
+/** How deep objects embedded in objects are followed. */
+const OFFICE_MAX_NESTING = 2;
+const ZIP_ENTRY_SIGNATURE = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
+
+function relationshipFetchesExternally(relationshipsXml: string): boolean {
+    return (relationshipsXml.match(/<Relationship\b[^>]*>/g) ?? []).some(tag =>
+        /TargetMode\s*=\s*"External"/i.test(tag) && OFFICE_FETCHED_RELATIONSHIP.test(/Type\s*=\s*"([^"]*)"/.exec(tag)?.[1] ?? ''));
+}
+
 /**
- * Validates Office document structure (DOCX, XLSX, PPTX are ZIP files)
- * Works with buffer instead of file path
+ * What makes an Office document unsafe to accept: macros, ActiveX controls, packaged files, executables, or objects
+ * and templates fetched from elsewhere. Charts (an embedded workbook) and printer settings are fine, and embedded
+ * objects are checked by the same rules. Office 97-2003 files are OLE2 containers, checked by their entry names;
+ * PowerPoint 97-2003 keeps macros inside a compressed stream, which ClamAV checks (AlertOLE2Macros).
+ * Throws when the file cannot be read.
  */
-async function validateOfficeDocumentBuffer(buffer: Buffer, mimeType: string): Promise<{isValid: boolean; warnings: string[]}> {
-    const warnings: string[] = [];
+function officeDocumentProblems(buffer: Buffer, depth: number = 0): string[] {
+    if (isOleCompoundFile(buffer)) {
+        return [...new Set(oleEntryNames(buffer).flatMap(name => OLE_DANGEROUS_ENTRIES.get(name.toLowerCase()) ?? []))];
+    }
 
-    try {
-        const AdmZip = require('adm-zip');
-        const zip = new AdmZip(buffer);
-        const entries = zip.getEntries();
+    const AdmZip = require('adm-zip');
+    const problems: string[] = [];
+    for (const entry of new AdmZip(buffer).getEntries()) {
+        if (entry.isDirectory) continue;
+        const name: string = entry.entryName;
+        const lowerName = name.toLowerCase();
+        const unpack = (): Buffer => {
+            if (entry.header.size > OFFICE_PART_MAX_BYTES) throw new Error(`${name} is too large to inspect`);
+            return entry.getData();
+        };
 
-        // Check for dangerous embedded objects
-        const dangerousPatterns = [
-            /\.vba$/i,           // VBA macros
-            /\.bin$/i,           // Binary embedded objects
-            /activeX/i,          // ActiveX controls
-            /\.ocx$/i,           // OCX files
-            /\.dll$/i,           // DLL files
-            /\.exe$/i,           // Executable files
-            /\.js$/i,            // JavaScript files
-            /\.vbs$/i,           // VBScript files
-            /\.wsf$/i,           // Windows Script files
-        ];
-
-        for (const entry of entries) {
-            const entryName = entry.entryName.toLowerCase();
-            
-            // Check for dangerous patterns
-            for (const pattern of dangerousPatterns) {
-                if (pattern.test(entryName)) {
-                    warnings.push(`Potentially dangerous content detected: ${entryName}`);
-                }
+        if (/(^|\/)vbaproject\.bin$|(^|\/)vbadata\.xml$/.test(lowerName)) {
+            problems.push(`macros (${name})`);
+        }
+        else if (/(^|\/)activex\//.test(lowerName)) {
+            problems.push(`an ActiveX control (${name})`);
+        }
+        else if (OFFICE_EXECUTABLE_ENTRY.test(lowerName)) {
+            problems.push(`an executable (${name})`);
+        }
+        else if (/(^|\/)embeddings\//.test(lowerName)) {
+            if (depth >= OFFICE_MAX_NESTING) {
+                problems.push(`objects nested too deeply (${name})`);
+                continue;
             }
-
-            // Check for embedded OLE objects (can contain executables)
-            if (entryName.includes('oleObject') || entryName.includes('embeddings')) {
-                warnings.push(`Embedded object detected: ${entryName}`);
+            const data = unpack();
+            if (data.subarray(0, 4).equals(ZIP_ENTRY_SIGNATURE) || isOleCompoundFile(data)) {
+                problems.push(...officeDocumentProblems(data, depth + 1).map(problem => `${problem} in ${name}`));
+            } else {
+                problems.push(`an embedded object of unknown kind (${name})`);
             }
         }
-
-        return {
-            isValid: warnings.length === 0,
-            warnings
-        };
-
-    } catch (error) {
-        return {
-            isValid: false,
-            warnings: [`Failed to validate Office document structure: ${error instanceof Error ? error.message : String(error)}`]
-        };
+        else if (lowerName === '[content_types].xml' && /vbaProject|macroEnabled/i.test(unpack().toString('utf8'))) {
+            problems.push('macros (declared in [Content_Types].xml)');
+        }
+        else if (lowerName.endsWith('.rels') && relationshipFetchesExternally(unpack().toString('utf8'))) {
+            problems.push(`content fetched from elsewhere (${name})`);
+        }
     }
+    return problems;
 }
 
 /**
@@ -321,7 +386,6 @@ async function validateOfficeDocumentBuffer(buffer: Buffer, mimeType: string): P
 async function getImageResolutionFromBuffer(buffer: Buffer): Promise<{width: number; height: number} | undefined> {
 
     try {
-        const sharp = require('sharp');
         const metadata = await sharp(buffer).metadata();
         if (metadata.width && metadata.height) {
             return {
@@ -410,20 +474,45 @@ async function extractMediaDurationFromBuffer(buffer: Buffer, mimeType: string, 
     return undefined;
 }
 
+type StoredUpload = {gridfsFileId: string; mediaId: MongooseTypes.ObjectId};
+
+/**
+ * Deletes what a failed request already stored. Without a transaction nothing rolls back, and these Media records are
+ * not marked `pendingReference`, so `core.orphanUploadCleanup` would never remove them.
+ */
+async function discardStoredUploads(uploads: StoredUpload[], languageCode: string, logger: serverLogger): Promise<void> {
+    if (uploads.length === 0) return;
+    try {
+        await mediaService.deleteMany({_id: {$in: uploads.map(upload => upload.mediaId)}}, {hard: true, logger});
+    } catch (error: any) {
+        logger.warn(`Failed to delete the Media records of a failed upload: ${error.message}`);
+    }
+    const gridfs = getGridFSStorage(languageCode, 'media', logger);
+    for (const upload of uploads) {
+        try {
+            await gridfs.deleteFile(upload.gridfsFileId);
+        } catch (error: any) {
+            logger.warn(`Failed to delete GridFS file ${upload.gridfsFileId} of a failed upload: ${error.message}`);
+        }
+    }
+}
+
 /**
  * Unified Media Upload Middleware
- * 
+ *
  * Handles all file uploads using multer (memory storage), validates files,
  * scans for security threats, sanitizes content, and stores in GridFS.
  * This is the single, unified middleware for all media uploads in the application.
  * 
  * **Security Features:**
- * - **File Type Validation**: Blocks dangerous extensions and MIME types
- * - **File Content Validation**: Validates actual file content against MIME type using magic bytes
- * - **Security Scanning**: Pluggable scanner (ClamAV/VirusTotal/Mock)
+ * - **File Type Validation**: The extension decides the type (UPLOAD_MIME_BY_EXTENSION); blocked or unlisted types are refused
+ * - **File Content Validation**: Validates actual file content against that type (magic bytes or structure)
+ * - **Security Scanning**: Pluggable scanner (ClamAV, or the mock, which scans nothing and records files as not scanned)
  * - **Image Sanitization**: Re-encodes images to strip metadata and embedded scripts (requires sharp)
- * - **PDF Sanitization**: Removes JavaScript and embedded objects from PDFs (requires pdf-lib)
- * - **Office Document Validation**: Validates structure and blocks dangerous embedded content (requires adm-zip)
+ * - **PDF Sanitization**: Removes scripts, actions and embedded files from PDFs (requires pdf-lib)
+ * - **Office Document Validation**: Blocks macros, ActiveX, packaged files and externally fetched content (adm-zip, OLE2 reader)
+ * - **Rejections reach the caller**: a refused file fails the request; nothing is dropped silently, and files already
+ *   stored by a failed request are deleted
  * - **GridFS Storage**: Stores files in MongoDB GridFS for scalability
  * - **Metadata Extraction**: Extracts image resolution, video/audio duration
  * 
@@ -503,16 +592,19 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         const languageCode = req.header("language") || "en-US";
         
         try {
-            // Never trust client MIME type - validate it
-            file.mimetype = normalizedMime(file.mimetype, file.originalname);
-            validateFileType(file.mimetype, file.originalname, languageCode);
+            // Never trust client MIME type: the extension decides it, and the bytes are checked against it later.
+            file.mimetype = validateFileType(file.mimetype, file.originalname, languageCode);
+            if (!getFileExtension(file.originalname)) {
+                file.originalname = withExtension(file.originalname, extensionForMime(file.mimetype));
+            }
             const allowedForField = fieldMimeTypes?.[file.fieldname];
             if (allowedForField?.length && !allowedForField.includes(file.mimetype)) {
                 throw apiValidationException(
                     "file_type_not_allowed",
                     null,
                     null,
-                    languageCode
+                    languageCode,
+                    [acceptedExtensions(allowedForField)]
                 );
             }
             cb(null, true);
@@ -539,6 +631,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
         const logger: serverLogger = req.body?.logger || getLogger("unified_media_upload");
         const session: ClientSession | undefined = req.body?.session;
         const languageCode = req.header("language") || "en-US";
+        const storedUploads: StoredUpload[] = [];
 
         try {
             logger.start("Processing unified media upload...");
@@ -549,51 +642,41 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
             let files: Express.Multer.File[] = [];
             let filesByField: Record<string, Express.Multer.File[]> = {};
 
-            try{
-                // Use multer to handle file upload (memory storage)
-                let multerMiddleware;
-                
-                if (fields) {
-                    // Multi-field mode: use fields() to handle multiple field names
-                    const fieldsArray = Object.entries(fields).map(([name, maxCount]) => ({
-                        name,
-                        maxCount
-                    }));
-                    multerMiddleware = upload.fields(fieldsArray);
-                    logger.debug(`Using multi-field mode with fields: ${Object.keys(fields).join(', ')}`);
-                }
-                else {
-                    // Single field mode: use array() for backward compatibility
-                    multerMiddleware = upload.array(fieldName, maxFiles);
-                    logger.debug(`Using single-field mode with field: ${fieldName}`);
-                }
+            // Use multer to handle file upload (memory storage)
+            let multerMiddleware;
 
-                // Wrap multer in a promise
-                await new Promise<void>((resolve, reject) => {
-                    multerMiddleware(req, res, (err: any) => {
-                        if (err) {
-                            if (err.code === 'LIMIT_FILE_SIZE') {
-                                return reject(apiValidationException("file_too_large", null, null, languageCode));
-                            }
-                            if (err.code === 'LIMIT_FILE_COUNT') {
-                                return reject(apiValidationException("too_many_files", null, null, languageCode));
-                            }
-                            return reject(err);
+            if (fields) {
+                // Multi-field mode: use fields() to handle multiple field names
+                const fieldsArray = Object.entries(fields).map(([name, maxCount]) => ({
+                    name,
+                    maxCount
+                }));
+                multerMiddleware = upload.fields(fieldsArray);
+                logger.debug(`Using multi-field mode with fields: ${Object.keys(fields).join(', ')}`);
+            }
+            else {
+                // Single field mode: use array() for backward compatibility
+                multerMiddleware = upload.array(fieldName, maxFiles);
+                logger.debug(`Using single-field mode with field: ${fieldName}`);
+            }
+
+            // A file refused while reading the request (type, size, count) fails the whole request, so the caller
+            // learns why instead of seeing the other files saved without it.
+            await new Promise<void>((resolve, reject) => {
+                multerMiddleware(req, res, (err: any) => {
+                    if (err) {
+                        if (err.code === 'LIMIT_FILE_SIZE') {
+                            return reject(apiValidationException("file_too_large", null, null, languageCode, [formatSizeLimit(maxFileSize)]));
                         }
-                        resolve();
-                    });
-                });
-            }
-            catch (e){
-                // Preserve existing files if multer fails
-                if (req.files) {
-                    if (Array.isArray(req.files)) {
-                        files = req.files;
-                    } else if (typeof req.files === 'object') {
-                        filesByField = req.files as Record<string, Express.Multer.File[]>;
+                        // Multer reports a field over its maxCount as an unexpected file.
+                        if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+                            return reject(apiValidationException("too_many_files", null, null, languageCode));
+                        }
+                        return reject(err);
                     }
-                }
-            }
+                    resolve();
+                });
+            });
 
             // Clean up: Remove string "null" values that multer may have set from form data
             if (fields) {
@@ -693,14 +776,13 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
             for (const file of files) {
                 try {
                     const fileType = getFileType(file.mimetype);
-                    const extension = getFileExtension(file.originalname);
                     const fileBuffer = file.buffer;
 
                     logger.debug(`Processing file: ${file.originalname} (${file.mimetype}, ${file.size} bytes)`);
 
-                    // Security: Validate file content against MIME type using magic bytes
+                    // Security: Validate file content against its type (magic bytes or structure)
                     if (validateFileContent) {
-                        const isValid = validateFileContentBySignature(fileBuffer, file.mimetype, logger);
+                        const isValid = contentMatchesType(fileBuffer, file.mimetype, logger);
                         if (!isValid) {
                             throw apiValidationException(
                                 "file_content_does_not_match_type",
@@ -718,6 +800,16 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                             scanResult = await scanner.scanFile(file.originalname, fileBuffer);
                             logger.debug(`Security scan result for ${file.originalname}: ${scanResult.safe ? 'SAFE' : 'THREAT DETECTED'}`);
                             
+                            // A threat found and a scan that could not run read differently to the user.
+                            if (!scanResult.safe && scanResult.scanned) {
+                                throw apiValidationException(
+                                    "file_contains_malware",
+                                    null,
+                                    null,
+                                    languageCode,
+                                    [scanResult.threat ?? '?']
+                                );
+                            }
                             if (!scanResult.safe) {
                                 throw apiValidationException(
                                     "file_security_scan_failed",
@@ -754,6 +846,11 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                             if (sanitized.resolution) {
                                 resolution = sanitized.resolution;
                             }
+                            // An SVG is stored as a PNG: the stored type and name follow the bytes.
+                            if (sanitized.mimeType !== file.mimetype) {
+                                file.mimetype = sanitized.mimeType;
+                                file.originalname = withExtension(file.originalname, extensionForMime(sanitized.mimeType));
+                            }
                             logger.debug(`Sanitized image: ${file.originalname}`);
                         }
                         catch (sanitizeError: any) {
@@ -777,7 +874,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                     // SECURITY: Sanitize PDFs by removing JavaScript and embedded objects
                     if (sanitizePdfs && fileType === 'pdf') {
                         try {
-                            processedBuffer = await sanitizePdfBuffer(processedBuffer);
+                            processedBuffer = await sanitizePdfBuffer(processedBuffer, logger);
                             logger.debug(`Sanitized PDF: ${file.originalname}`);
                         }
                         catch (sanitizeError: any) {
@@ -791,13 +888,25 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         }
                     }
 
-                    // SECURITY: Validate Office documents structure
-                    if (validateOfficeDocuments && (fileType === 'document' || file.mimetype.includes('office') || file.mimetype.includes('msword') || file.mimetype.includes('spreadsheet') || file.mimetype.includes('presentation'))) {
+                    // SECURITY: Office documents (.docx/.xlsx/.pptx and the 97-2003 .doc/.xls/.ppt)
+                    if (validateOfficeDocuments && fileType === 'document') {
+                        let problems: string[];
                         try {
-                            const validation = await validateOfficeDocumentBuffer(processedBuffer, file.mimetype);
+                            problems = officeDocumentProblems(processedBuffer);
+                        }
+                        catch (readError: any) {
+                            logger.err(`Error reading Office document ${file.originalname}:`, readError);
+                            throw apiValidationException(
+                                "office_document_validation_failed",
+                                null,
+                                null,
+                                languageCode
+                            );
+                        }
 
-                            if (!validation.isValid || (blockDangerousOfficeContent && validation.warnings.length > 0)) {
-                                logger.warn(`Office document validation failed for ${file.originalname}:`, validation.warnings);
+                        if (problems.length > 0) {
+                            logger.warn(`Office document ${file.originalname} contains ${problems.join('; ')}`);
+                            if (blockDangerousOfficeContent) {
                                 throw apiValidationException(
                                     "office_document_validation_failed",
                                     null,
@@ -805,24 +914,6 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                                     languageCode
                                 );
                             }
-
-                            if (validation.warnings.length > 0) {
-                                logger.warn(`Office document warnings for ${file.originalname}:`, validation.warnings);
-                            }
-                        }
-                        catch (validationError: any) {
-                            if (validationError.error_code) {
-                                throw validationError;
-                            }
-                            logger.err(`Error validating Office document ${file.originalname}:`, validationError);
-                            if (blockDangerousOfficeContent) {
-                                    throw apiValidationException(
-                                        "office_document_validation_failed",
-                                        null,
-                                        null,
-                                        languageCode
-                                    );
-                                }
                         }
                     }
 
@@ -843,6 +934,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                         }
                     }
 
+                    const extension = getFileExtension(file.originalname);
                     // Health files are sealed for this Media record before anything is stored (D102).
                     const newMediaId = new MongooseTypes.ObjectId();
                     // The Media record's company (below), whose key seals it.
@@ -865,6 +957,7 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                     if (session && req.body._mediaUploadGridFsIds) {
                         req.body._mediaUploadGridFsIds.push(gridfsFileId.toString());
                     }
+                    storedUploads.push({gridfsFileId: gridfsFileId.toString(), mediaId: newMediaId});
 
                     // Create metadata object
                     const metadata: IMediaMetadata = {
@@ -1021,6 +1114,9 @@ export function mediaUploadMW(options: UnifiedMediaUploadOptions = {}) {
                 } catch (endErr: any) {
                     logger.err("Error ending session in media upload middleware:", endErr);
                 }
+            }
+            else {
+                await discardStoredUploads(storedUploads, languageCode, logger);
             }
 
             next(error);
