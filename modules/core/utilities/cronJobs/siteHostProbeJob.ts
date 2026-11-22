@@ -11,8 +11,9 @@ export type SiteHostProbeResult = {
 
 export function interpretSiteHostProbe(input: {
     httpStatus: number | null;
-    responseVat?: string;
-    expectedVat: string;
+    /** Site slug of the company the host answered for (`POST /api/portal/site`). */
+    responseSlug?: string;
+    expectedSlug: string;
     networkError?: string;
 }): SiteHostProbeResult {
     if (input.networkError) {
@@ -21,9 +22,10 @@ export function interpretSiteHostProbe(input: {
     if (input.httpStatus !== 200) {
         return {status: "failed", lastError: `HTTP ${input.httpStatus ?? "000"}`, reachable: false};
     }
-    const servedVat = (input.responseVat ?? "").trim();
-    const expectedVat = input.expectedVat.trim();
-    if (!servedVat || servedVat !== expectedVat) {
+    // The slug, not the VAT, names the company: a self-serve company may have no VAT yet (D178), and slugs are unique.
+    const servedSlug = (input.responseSlug ?? "").trim();
+    const expectedSlug = input.expectedSlug.trim();
+    if (!servedSlug || servedSlug !== expectedSlug) {
         return {status: "failed", lastError: "site served a different company", reachable: false};
     }
     return {status: "online", lastError: "", reachable: true};
@@ -43,8 +45,8 @@ function applyProbeResult(company: ICompany, result: SiteHostProbeResult): void 
     company.markModified("siteProvision");
 }
 
-/** Asks the host which company it serves (`POST /api/portal/site`) and compares the VAT. */
-async function probeSite(siteHost: string, expectedVat: string): Promise<SiteHostProbeResult> {
+/** Asks the host which company it serves (`POST /api/portal/site`) and compares the site slug. */
+async function probeSite(siteHost: string, expectedSlug: string): Promise<SiteHostProbeResult> {
     const origin = `https://${siteHost}`;
     try {
         const response = await fetch(`${origin}/api/portal/site`, {
@@ -58,21 +60,21 @@ async function probeSite(siteHost: string, expectedVat: string): Promise<SiteHos
             body: "{}",
             signal: AbortSignal.timeout(12000),
         });
-        let responseVat: string | undefined;
+        let responseSlug: string | undefined;
         if (response.status === 200) {
-            const body = await response.json() as {data?: {company?: {vat?: string}}};
-            responseVat = body.data?.company?.vat;
+            const body = await response.json() as {data?: {company?: {slug?: string}}};
+            responseSlug = body.data?.company?.slug;
         }
         return interpretSiteHostProbe({
             httpStatus: response.status,
-            responseVat,
-            expectedVat,
+            responseSlug,
+            expectedSlug,
         });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         return interpretSiteHostProbe({
             httpStatus: null,
-            expectedVat,
+            expectedSlug,
             networkError: message,
         });
     }
@@ -98,7 +100,7 @@ export async function runSiteHostProbe(ctx: CronHandlerContext): Promise<void> {
         return;
     }
 
-    const result = await probeSite(company.siteHost, company.vat);
+    const result = await probeSite(company.siteHost, company.siteSlug);
     applyProbeResult(company, result);
     await company.save();
     ctx.appendLog(

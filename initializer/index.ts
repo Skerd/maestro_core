@@ -32,6 +32,7 @@ import MessagingProvider from "@coreModule/database/schemas/messagingProvider/me
 import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {registerModelModules} from "@coreModule/utilities/modules/modelModules";
 import {registerPlatformOnlyUse} from "@coreModule/database/plugins/platformOnlyPlugin";
+import {registerSelfServeBusinessTypes, type SelfServeBusinessType} from "@coreModule/domain/company/selfServeBusinessTypes";
 import {createUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {createCompanies} from "@coreModule/database/schemas/company/company.defaults";
 import {
@@ -51,6 +52,8 @@ type ModuleBootstrap = {
      * rows of (e.g. `["SmtpServer"]` for mail servers of their own). Registered under the module's folder name.
      */
     platformOnlyUses?: string[];
+    /** Kinds of business a person may create by themselves on the portal (D178), registered under the folder name. */
+    selfServeBusinessTypes?: SelfServeBusinessType[];
 };
 
 const coreModels: Model<any>[] = [
@@ -117,6 +120,7 @@ export async function loadOptionalModuleBootstraps(parentLogger?: serverLogger):
             for (const model of bootstrap.platformOnlyUses ?? []) {
                 registerPlatformOnlyUse({model, module: moduleEntry.name});
             }
+            registerSelfServeBusinessTypes(moduleEntry.name, bootstrap.selfServeBusinessTypes ?? []);
             logger.debug(`Loaded moduleBootstrap for [${moduleEntry.name}]`);
         } catch (error: any) {
             logger.err(`Failed to load moduleBootstrap for ${moduleEntry.name}`, error);

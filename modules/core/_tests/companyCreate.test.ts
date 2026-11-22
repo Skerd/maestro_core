@@ -155,4 +155,32 @@ describe("PUT /api/company (TD-B115)", {timeout: 60000}, () => {
         const logo = await Media.collection.findOne({_id: updated!.logo});
         expect(logo?.company).toEqual(id);
     });
+
+    it("creates companies without a VAT and keeps a filled VAT unique (D178)", async () => {
+        const first = await createCompany({name: "First", vat: "", siteSlug: "first", withLogo: false, withAddress: false});
+        expect(first.body.error_code ? first.body : "ok").toBe("ok");
+        const second = await createCompany({name: "Second", vat: "", siteSlug: "second", withLogo: false, withAddress: false});
+        expect(second.body.error_code ? second.body : "ok").toBe("ok");
+        const withoutVat = await Company.collection.find({siteSlug: {$in: ["first", "second"]}}).toArray();
+        expect(withoutVat.map((company) => company.vat)).toEqual([undefined, undefined]);
+
+        const taken = await createCompany({name: "Copy", vat: "CR-1", siteSlug: "copy", withLogo: false, withAddress: false});
+        expect(taken.body.error_code).toBe("company_exists_with_same_vat");
+    });
+
+    it("refuses editing the VAT to another company's", async () => {
+        const res = await createCompany({name: "Mover", vat: "MV-1", siteSlug: "mover", withLogo: false, withAddress: false});
+        expect(res.body.error_code ? res.body : "ok").toBe("ok");
+        const id = (await Company.collection.findOne({vat: "MV-1"}))!._id as ObjectId;
+
+        creator.companyId = id.toString();
+        try {
+            const edit = await request(app).patch("/api/company").set(callerHeader({...admin, companyId: id.toString()}))
+                .field("data", JSON.stringify({_id: id.toString(), name: "Mover", vat: "CR-1"}));
+            expect(edit.body.error_code).toBe("company_exists_with_same_vat");
+        } finally {
+            creator.companyId = creatorCompany.toString();
+        }
+        expect((await Company.collection.findOne({_id: id}))!.vat).toBe("MV-1");
+    });
 });

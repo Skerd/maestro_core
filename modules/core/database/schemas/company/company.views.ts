@@ -318,7 +318,7 @@ const companyFormCreateFields: ViewConfig["nodes"] = [
             {render: "#Field", field: {name: "name", widget: "#Input", label: "form.nameLabel", placeholder: "form.namePlaceholder", required: true}},
             {render: "#Field", field: {name: "siteSlug", widget: "#Input", label: "form.siteSlugLabel", placeholder: "form.siteSlugPlaceholder"}},
             {render: "#Field", field: {name: "timezone", widget: "#SimpleSelect", label: "form.timezoneLabel", placeholder: "form.timezonePlaceholder", widgetProps: {options: TIME_ZONE_OPTIONS}}},
-            {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder", required: true}},
+            {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder"}},
             {
                 render: "#Field",
                 field: {
@@ -362,7 +362,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                     {render: "#Field", field: {name: "linkedin", widget: "#Input", label: "form.linkedinLabel", placeholder: "form.linkedinPlaceholder"}, permissions: {read: "linkedin", write: "linkedin"}},
                     {render: "#Field", field: {name: "instagram", widget: "#Input", label: "form.instagramLabel", placeholder: "form.instagramPlaceholder"}, permissions: {write: "instagram", read: "instagram"}},
                     {render: "#Field", field: {name: "facebook", widget: "#Input", label: "form.facebookLabel", placeholder: "form.facebookPlaceholder"}, permissions: {read: "facebook", write: "facebook"}},
-                    {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder", required: true}, permissions: {read: "vat", write: "vat"}},
+                    {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder"}, permissions: {read: "vat", write: "vat"}},
                     {
                         render: "div",
                         props: {className: "md:col-span-2"},

@@ -6,7 +6,9 @@ export function applyCompanyIndexes(CompanySchema: Schema): void {
     // Primary field indexes
     CompanySchema.index({name: 1});
     CompanySchema.index({email: 1});
-    // vat: `unique` on the field already indexes it; a second declaration of the same key conflicts
+    // Unique only when filled (D178): a self-serve company may start without one. Databases made before D178 hold a
+    // plain unique `vat_1` that must be dropped once for this one to build (no migration, GLB-06).
+    CompanySchema.index({vat: 1}, {unique: true, partialFilterExpression: {vat: {$gt: ""}}});
     CompanySchema.index({phoneNumber: 1});
     CompanySchema.index({parentCompany: 1});
     CompanySchema.index({isActive: 1});

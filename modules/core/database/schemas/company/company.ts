@@ -40,6 +40,11 @@ import {seedCronJobsForCompany} from "@coreModule/cronjobs/bootstrap/seedCompany
 import {runModuleCompanyDemoSeeds} from "@coreModule/utilities/modules/runModuleCompanyDemoSeeds";
 import {seedCoreDemoData} from "@coreModule/database/demo/coreCompanyDemo";
 import {validateSchemaDefAgainstMongoose} from "@coreModule/database/utilities/validateSchemaDefAgainstMongoose";
+import {
+    PORTAL_APPROVAL_REASON_MAX,
+    PORTAL_APPROVAL_STATUSES,
+    type PortalApprovalStatus,
+} from "armonia/src/modules/core/api/company/private/company/portalApproval";
 import {COMPANY_TIMEZONE_MAX, CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import {
     SITE_PROVISION_STATUSES,
@@ -87,7 +92,8 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     linkedin?: string;
     instagram?: string;
     facebook?: string;
-    vat: string;
+    /** Optional (D178): a self-serve company may add it later; unique when filled. */
+    vat?: string;
     siteSlug?: string;
     /** IANA zone the company's business days are evaluated in (D91); resolve it with `companyTimeZone`. */
     timezone?: string;
@@ -112,6 +118,16 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     isPlatformOwner: boolean;
     /** Set by the platform owner: the company is left off the portal and the shop apex. */
     hiddenFromPortal: boolean;
+    /**
+     * The platform's decision on listing a self-serve company on the portal apex (D178); absent for companies the
+     * platform created, which count as approved. Its own site works whatever the status.
+     */
+    portalApproval?: {
+        status: PortalApprovalStatus;
+        decidedBy?: ObjectId;
+        decidedAt?: Date;
+        reason?: string;
+    };
     /**
      * A company the platform cannot run without (the platform owner, the marketplace operator): it cannot be
      * deactivated, hidden from the portal or lose a module. Set only by the seed.
@@ -247,10 +263,10 @@ const CompanySchema: Schema = new Schema(
         facebook: {
             type: SchemaTypes.String
         },
+        // Optional and unique only when filled (D178): the index is in company.indexes.ts.
         vat: {
             type: SchemaTypes.String,
-            required: true,
-            unique: true
+            trim: true,
         },
         siteSlug: {
             type: SchemaTypes.String,
@@ -348,6 +364,20 @@ const CompanySchema: Schema = new Schema(
         hiddenFromPortal: {
             type: SchemaTypes.Boolean,
             default: false,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        portalApproval: {
+            type: {
+                status: {type: SchemaTypes.String, enum: PORTAL_APPROVAL_STATUSES, required: true},
+                decidedBy: {type: SchemaTypes.ObjectId, ref: "User"},
+                decidedAt: {type: SchemaTypes.Date},
+                reason: {type: SchemaTypes.String, trim: true, maxlength: PORTAL_APPROVAL_REASON_MAX},
+            },
+            required: false,
+            // Set by self-serve sign-up and decided by the platform only (D178).
             permissions: {
                 self: {write: "no-permission"},
                 others: {write: "no-permission"},

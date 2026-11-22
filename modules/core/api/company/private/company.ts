@@ -33,20 +33,22 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {ActionMessage} from "armonia/src/modules/core/types/shared.types";
-import {countryService} from "@coreModule/database/schemas/country/country.service";
-import {stateService} from "@coreModule/database/schemas/state/state.service";
-import {cityService} from "@coreModule/database/schemas/city/city.service";
 import {
     CreateCompanyFormType,
     EditCompanyFormType
 } from "armonia/src/modules/core/api/company/private/company/company.schema-def";
-import {resolveSiteSlug, type SiteSlugError} from "armonia/src/modules/core/api/company/private/company/siteSlug";
+import {resolveSiteSlug} from "armonia/src/modules/core/api/company/private/company/siteSlug";
+import {
+    assertSiteSlugAvailable,
+    assertVatAvailable,
+    companyTimeZoneInput,
+    createCompany,
+    SITE_SLUG_ERRORS,
+    trimDomains,
+    validateAndMapAddresses,
+} from "@coreModule/domain/company/createCompany";
 import {PORTAL_ROOT_DOMAIN} from "@coreModule/environment";
 import {buildSiteHostAssignment} from "@coreModule/utilities/company/siteHost";
-import {isValidTimeZone} from "@coreModule/utilities/time/timeWindows";
-import type {FilterQuery} from "mongoose";
-import type {ICompany} from "@coreModule/database/schemas/company/company";
-import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 /**
  * Company Management Endpoints (Private)
@@ -64,79 +66,6 @@ import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantS
  * @module modules/core/api/company/company
  */
 const router = Router();
-
-const SITE_SLUG_ERRORS = {
-    empty: "company_site_slug_empty",
-    invalid: "company_site_slug_invalid",
-    reserved: "company_site_slug_reserved",
-} as const satisfies Record<SiteSlugError, string>;
-
-/** The company's IANA zone as stored (D91): trimmed, `undefined` when empty; an unknown zone is refused. */
-function companyTimeZoneInput(timezone: string | undefined, languageCode: string): string | undefined {
-    const zone = timezone?.trim();
-    if (!zone) return undefined;
-    if (!isValidTimeZone(zone)) throw apiValidationException("company_invalid_timezone", "", null, languageCode, [zone]);
-    return zone;
-}
-
-function trimDomains(domains: string[] | undefined): string[] {
-    return (domains ?? []).map((domain) => domain.trim()).filter((domain) => domain !== "");
-}
-
-async function assertSiteSlugAvailable(
-    slug: string,
-    languageCode: string,
-    ctx: {session: any; logger: any},
-    excludeId?: ObjectId,
-): Promise<void> {
-    const filter: FilterQuery<ICompany> = {siteSlug: slug};
-    if (excludeId) {
-        filter._id = {$ne: excludeId};
-    }
-    const taken = await companyService.findOne(filter, {session: ctx.session, logger: ctx.logger, languageCode});
-    if (taken) {
-        throw apiValidationException("company_site_slug_taken", "siteSlug", [slug], languageCode);
-    }
-}
-
-async function validateAndMapAddresses(
-    addresses: any[] | undefined,
-    ctx: {logger: any; languageCode: string; session: any},
-): Promise<any[]> {
-    // `addresses` is optional on the form: none sent means none to store.
-    return Promise.all(
-        (addresses ?? []).map(async (addr) => {
-            const countryId = new ObjectId(addr.country);
-            const stateId   = addr.state ? new ObjectId(addr.state) : undefined;
-            const cityId    = new ObjectId(addr.city);
-
-            const cityFilter: Record<string, any> = {_id: cityId, country: countryId};
-            if (stateId) cityFilter.state = stateId;
-
-            const [country, state, city] = await Promise.all([
-                countryService.findOne({_id: countryId}, ctx),
-                stateId
-                    ? stateService.findOne({_id: stateId, country: countryId}, ctx)
-                    : Promise.resolve(true as any),
-                cityService.findOne(cityFilter, ctx),
-            ]);
-
-            if (!country) throw apiValidationException("country_not_found", null, null, ctx.languageCode);
-            if (stateId && !state) throw apiValidationException("state_not_found", null, null, ctx.languageCode);
-            if (!city) throw apiValidationException("city_not_found", null, null, ctx.languageCode);
-
-            return {
-                street:     addr.street,
-                postalCode: addr.postalCode,
-                city:       cityId,
-                state:      stateId,
-                country:    countryId,
-                latitude:   addr.latitude,
-                longitude:  addr.longitude,
-            };
-        }),
-    );
-}
 
 /**
  * GET /api/company
@@ -283,67 +212,21 @@ type CreateNewCompanyType = TransactionRequiredParams & CreateCompanyFormType & 
  * @remarks Validates VAT uniqueness; creates addresses if provided; adds to userInfo.companies/roles/finance
  */
 async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone, allowedDomains, publicAiChat, languageCode, logger, userInfo, session, actionUserCtx, fileIds, company} = params;
+    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone, allowedDomains, publicAiChat, languageCode, logger, session, actionUserCtx, fileIds, company} = params;
 
     logger.start(`Trying to create new company...`);
 
     // Check model-level permission first
     SchemaGuard.checkModelPermission(Company, "create", actionUserCtx);
 
-    const existingCompany = await companyService.findOne({ vat }, { session, logger, languageCode });
-
-    if (existingCompany) {
-        throw apiValidationException("company_exists_with_same_vat", null, null, languageCode);
-    }
-
-    const resolvedSlug = resolveSiteSlug(name, siteSlug);
-    if (resolvedSlug.ok === false) {
-        throw apiValidationException(SITE_SLUG_ERRORS[resolvedSlug.error], "siteSlug", [siteSlug ?? ""], languageCode);
-    }
-    await assertSiteSlugAvailable(resolvedSlug.slug, languageCode, {session, logger});
-    const zone = companyTimeZoneInput(timezone, languageCode);
-
-    const siteHostAssignment = buildSiteHostAssignment({siteSlug: resolvedSlug.slug, rootDomain: PORTAL_ROOT_DOMAIN});
-    const domains = trimDomains(allowedDomains);
-
-    const newCompanyId = new ObjectId();
-    const crudOptions = {session, logger, languageCode, auditUserId: actionUserCtx.userId};
-    // Places are platform lists (D160): the new company's addresses name the same rows the dialog offered.
-    const ownAddresses = await validateAndMapAddresses(addresses, {languageCode, session, logger});
-    // The logo was uploaded in the creator's company; a company's logo is its own Media row (publicMediaPlugin).
-    const logo = fileIds?.[0] ?? null;
-    if (logo) {
-        await asCrossTenant("a new company takes over the logo its creator uploaded for it", () =>
-            mediaService.updateOne({_id: new ObjectId(logo), company: company._id}, {$set: {company: newCompanyId}}, {session, logger}));
-    }
-    // Its row, roles and public logo are the new company's own data (D16).
-    await withTenant(newCompanyId, () => companyService.create(
+    // The platform owner grants further modules (PUT /api/platform/companies/modules/:id).
+    await createCompany(
         {
-            _id: newCompanyId,
-            name,
-            email,
-            phoneNumber,
-            description,
-            logo,
-            website,
-            linkedin,
-            instagram,
-            facebook,
-            vat,
-            company: company._id,
-            siteSlug: siteHostAssignment.siteSlug,
-            siteHost: siteHostAssignment.siteHost,
-            siteProvision: siteHostAssignment.siteProvision,
-            ...(zone ? {timezone: zone} : {}),
-            allowedDomains: domains.length > 0 ? domains : ["none.none.com"],
-            addresses: ownAddresses,
-            parentCompany: company._id,
-            // The platform owner grants further modules (PUT /api/platform/companies/modules/:id).
-            modules: ["core"],
-            ...(publicAiChat ? {publicAiChat} : {}),
-        } as any,
-        crudOptions,
-    ));
+            name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone,
+            allowedDomains, publicAiChat, logo: fileIds?.[0] ?? null, parentCompanyId: company._id,
+        },
+        {session, logger, languageCode, auditUserId: actionUserCtx.userId},
+    );
 
     logger.finish(`Finished creating new company!`);
 
@@ -430,7 +313,10 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     if (linkedin !== undefined && sanitizedWriteFields.linkedin) existingCompany.linkedin = linkedin;
     if (instagram !== undefined && sanitizedWriteFields.instagram) existingCompany.instagram = instagram;
     if (facebook !== undefined && sanitizedWriteFields.facebook) existingCompany.facebook = facebook;
-    if (vat && sanitizedWriteFields.vat) existingCompany.vat = vat;
+    if (vat && sanitizedWriteFields.vat) {
+        await assertVatAvailable(vat, {session, logger, languageCode}, existingCompany._id);
+        existingCompany.vat = vat;
+    }
     // An unsent slug is built from the name only when none is stored: a stored slug never follows the name on an
     // unrelated edit (a name like "Shop" slugifies to a reserved word and would block every later save).
     const slugSent = (siteSlug ?? "").trim().length > 0;
@@ -490,7 +376,8 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     // Not sent: the addresses stay as they are.
     if (sanitizedWriteFields.addresses && addresses !== undefined) {
         if( addresses.length > 0 ){
-            existingCompany.addresses = await validateAndMapAddresses(addresses, {languageCode, session, logger});
+            // Stored as references to the platform's places; the typed field describes them populated.
+            existingCompany.set("addresses", await validateAndMapAddresses(addresses, {languageCode, session, logger}));
         }
         else if( addresses.length === 0 ){
             existingCompany.addresses = [];
