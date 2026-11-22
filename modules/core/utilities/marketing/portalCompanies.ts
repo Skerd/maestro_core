@@ -30,6 +30,17 @@ export function portalCompanyClause(moduleName: string): Record<string, unknown>
     return {$and: [{isActive: true, deletedAt: null, hiddenFromPortal: {$ne: true}}, companyModuleClause(moduleName)]};
 }
 
+/**
+ * The apex lists a self-serve company only once the platform approved it (D178). Companies the platform created carry
+ * no decision and count as approved. A company's own site does not depend on it.
+ */
+export const PORTAL_APPROVED_CLAUSE = {"portalApproval.status": {$nin: ["pending", "rejected"]}};
+
+export function isPortalApproved(company: Pick<ICompany, "portalApproval">): boolean {
+    const status = company.portalApproval?.status;
+    return status !== "pending" && status !== "rejected";
+}
+
 export function isPortalListable(
     company: Pick<ICompany, "isActive" | "hiddenFromPortal" | "modules"> & {deletedAt?: Date | null},
     moduleName: string,
@@ -177,7 +188,8 @@ export type PortalScope = {companyId?: ObjectId};
 /**
  * Companies a portal section shows in `scope`: eligible for `moduleName` and meeting the module's
  * own site rule (`configModel` + `configFilter`, e.g. `publicBookingEnabled`). On the apex they
- * must also have opted in to the listing, on their config (`listedOn`) or company (`companyListedOn`).
+ * must also have opted in to the listing, on their config (`listedOn`) or company (`companyListedOn`), and a
+ * self-serve company must be approved by the platform (D178).
  */
 export async function portalListedCompanyIds(
     moduleName: string,
@@ -190,7 +202,10 @@ export async function portalListedCompanyIds(
     scope: PortalScope,
 ): Promise<ObjectId[]> {
     const apex = !scope.companyId;
-    const filter: Record<string, unknown> = {...portalCompanyClause(moduleName), ...(apex ? rule.companyListedOn : {_id: scope.companyId})};
+    const filter: Record<string, unknown> = {
+        ...portalCompanyClause(moduleName),
+        ...(apex ? {...rule.companyListedOn, ...PORTAL_APPROVED_CLAUSE} : {_id: scope.companyId}),
+    };
     if (rule.configModel) {
         const configs = await rule.configModel.find({deletedAt: null, ...rule.configFilter, ...(apex ? rule.listedOn : {company: scope.companyId})})
             .select("company").lean<{company: ObjectId}[]>();

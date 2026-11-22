@@ -183,4 +183,23 @@ describe("PUT /api/company (TD-B115)", {timeout: 60000}, () => {
         }
         expect((await Company.collection.findOne({_id: id}))!.vat).toBe("MV-1");
     });
+    it("takes back the platform's verification when the VAT changes (D178)", async () => {
+        const res = await createCompany({name: "Checked", vat: "CK-1", siteSlug: "checked", withLogo: false, withAddress: false});
+        expect(res.body.error_code ? res.body : "ok").toBe("ok");
+        const id = (await Company.collection.findOne({vat: "CK-1"}))!._id as ObjectId;
+        await Company.collection.updateOne({_id: id}, {$set: {verifiedAt: new Date(), verifiedBy: creatorId}});
+        const edit = (vat: string) => request(app).patch("/api/company").set(callerHeader({...admin, companyId: id.toString()}))
+            .field("data", JSON.stringify({_id: id.toString(), name: "Checked", vat}));
+
+        creator.companyId = id.toString();
+        try {
+            expect((await edit("CK-1")).body.error_code).toBeUndefined();
+            expect((await Company.collection.findOne({_id: id}))!.verifiedAt).toBeInstanceOf(Date);
+            expect((await edit("CK-2")).body.error_code).toBeUndefined();
+        } finally {
+            creator.companyId = creatorCompany.toString();
+        }
+        const row = await Company.collection.findOne({_id: id});
+        expect([row!.vat, row!.verifiedAt, row!.verifiedBy]).toEqual(["CK-2", undefined, undefined]);
+    });
 });

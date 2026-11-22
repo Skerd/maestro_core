@@ -20,6 +20,7 @@ import {findSelfServeBusinessType} from "@coreModule/domain/company/selfServeBus
 import {companySiteUrl, findPlatformCompany} from "@coreModule/utilities/marketing/portalCompanies";
 import {clientHostFor} from "@coreModule/environment";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {notifyCompanySignedUp} from "@coreModule/domain/company/companySignupNotices";
 
 /**
  * Self-serve business sign-up (D178): a signed-in person creates their own company from the portal. It belongs to the
@@ -81,6 +82,8 @@ async function createSelfServeBusiness(params: CreateSelfServeBusinessParams): P
     if (onCreated) {
         await withTenant(business._id, () => onCreated({company: business, session, logger, languageCode}));
     }
+    // The platform's admins decide whether the apex lists it.
+    await notifyCompanySignedUp({_id: business._id, name: business.name}, {languageCode, session});
     logger.finish(`Created self-serve business '${name}' (${String(business._id)})`);
 
     return {

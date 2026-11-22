@@ -128,6 +128,9 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
         decidedAt?: Date;
         reason?: string;
     };
+    /** When the platform checked the company's NIPT/VAT (D178); cleared when the VAT changes. */
+    verifiedAt?: Date;
+    verifiedBy?: ObjectId;
     /**
      * A company the platform cannot run without (the platform owner, the marketplace operator): it cannot be
      * deactivated, hidden from the portal or lose a module. Set only by the seed.
@@ -378,6 +381,22 @@ const CompanySchema: Schema = new Schema(
             },
             required: false,
             // Set by self-serve sign-up and decided by the platform only (D178).
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        // Set by the platform after checking the NIPT/VAT (D178).
+        verifiedAt: {
+            type: SchemaTypes.Date,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        verifiedBy: {
+            type: SchemaTypes.ObjectId,
+            ref: "User",
             permissions: {
                 self: {write: "no-permission"},
                 others: {write: "no-permission"},

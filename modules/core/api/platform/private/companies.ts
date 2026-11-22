@@ -7,6 +7,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {runAfterCommit, TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
 import {dslFilterMW, DslFilterMWType} from "@coreModule/utilities/middlewares/dslFilterMW";
+import {schemaSanitizer} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {TableForm, TableResponse} from "armonia/src/modules/core/types/shared.types";
 import {validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
@@ -16,8 +17,18 @@ import {setCompanyModulesSchema} from "armonia/src/modules/core/api/platform/pri
 import {
     PlatformModulesResponse,
     SetCompanyModulesResponse,
+    SetCompanyVerificationResponse,
+    SetPortalApprovalResponse,
     SetPortalVisibilityResponse,
 } from "armonia/src/modules/core/api/platform/private/companies/platformModules.dto";
+import {
+    setPortalApprovalSchema,
+    type SetPortalApprovalFormType,
+} from "armonia/src/modules/core/api/platform/private/companies/setPortalApproval.form.validator";
+import {
+    setCompanyVerificationSchema,
+    type SetCompanyVerificationFormType,
+} from "armonia/src/modules/core/api/platform/private/companies/setCompanyVerification.form.validator";
 import {SetPortalVisibilityFormType} from "armonia/src/modules/core/api/platform/private/companies/setPortalVisibility.form.type";
 import {setPortalVisibilitySchema} from "armonia/src/modules/core/api/platform/private/companies/setPortalVisibility.form.validator";
 import Company from "@coreModule/database/schemas/company/company";
@@ -34,6 +45,7 @@ import {
 import {skipMissedCronRuns} from "@coreModule/cronjobs/bootstrap/seedCompanyJobs";
 import {assertCompanyChangeAllowed, assertPlatformAdmin} from "@coreModule/utilities/security/platformAccess";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {notifyPortalApprovalDecided} from "@coreModule/domain/company/companySignupNotices";
 
 /**
  * Platform administration of companies (Private)
@@ -86,6 +98,8 @@ router.post(
     authMW("private"),
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(validateTableForm),
+    // The filter compiles against the fields the caller may read; without it every search and filter was refused.
+    schemaSanitizer({model: "companies", requiredModes: ["read"]}),
     dslFilterMW({model: "companies"}),
     asyncHandler(listCompanies)
 );
@@ -211,6 +225,85 @@ async function setPortalVisibility(params: SetPortalVisibilityType, routeParams:
     await withTenant(target._id, () => target.save({session}));
     logger.debug(`Company '${target.name}' ${hiddenFromPortal ? "hidden from" : "shown on"} the portal`);
     return {_id: target._id.toString(), hiddenFromPortal: target.hiddenFromPortal};
+}
+
+/**
+ * PUT /api/platform/companies/portalApproval/:id
+ *
+ * The platform's decision on listing a self-serve company on the portal apex (D178): approved lists it, rejected keeps
+ * it off, with a reason its admins are told. Its own site works either way; hiding (portalVisibility) stays the
+ * platform's override for every company.
+ */
+router.put(
+    "/portalApproval/:id",
+    authMW("private"),
+    rateLimiter({windowMs: 60000, max: 30}),
+    transactionHandler(),
+    validateFormZod(setPortalApprovalSchema),
+    asyncHandler(setPortalApproval)
+);
+type SetPortalApprovalType = TransactionRequiredParams & SetPortalApprovalFormType;
+
+async function setPortalApproval(params: SetPortalApprovalType, routeParams: {id: string}): Promise<SetPortalApprovalResponse> {
+    assertPlatformAdmin(params);
+    const {logger, languageCode, session, actionUserCtx, status} = params;
+    if (!ObjectId.isValid(routeParams.id)) {
+        throw apiValidationException("not_found", "", null, languageCode);
+    }
+    const target = await companyService.findById(new ObjectId(routeParams.id), {session});
+    if (!target) {
+        throw apiValidationException("not_found", "", null, languageCode);
+    }
+    // A company the platform cannot run without is never kept off the portal.
+    assertCompanyChangeAllowed(target, {hideFromPortal: status === "rejected"}, languageCode);
+    const reason = status === "rejected" ? params.reason?.trim() || undefined : undefined;
+    const decidedAt = new Date();
+    target.portalApproval = {status, decidedBy: new ObjectId(actionUserCtx.userId), decidedAt, ...(reason ? {reason} : {})};
+    target.$locals = target.$locals || {};
+    target.$locals.auditUserId = actionUserCtx.userId;
+    // Saved in the target's tenant: its public-media plugin touches the target's logo (TD-B188).
+    await withTenant(target._id, () => target.save({session}));
+    await notifyPortalApprovalDecided({_id: target._id, name: target.name}, {status, reason}, {languageCode, session});
+    logger.debug(`Company '${target.name}' ${status} for the portal`);
+    return {_id: target._id.toString(), portalApproval: {status, decidedAt: decidedAt.toISOString(), ...(reason ? {reason} : {})}};
+}
+
+/**
+ * PUT /api/platform/companies/verification/:id
+ *
+ * The platform marks a company verified after checking its NIPT/VAT, or takes the mark back (D178). The mark needs a
+ * VAT, and changing the VAT later clears it.
+ */
+router.put(
+    "/verification/:id",
+    authMW("private"),
+    rateLimiter({windowMs: 60000, max: 30}),
+    transactionHandler(),
+    validateFormZod(setCompanyVerificationSchema),
+    asyncHandler(setCompanyVerification)
+);
+type SetCompanyVerificationType = TransactionRequiredParams & SetCompanyVerificationFormType;
+
+async function setCompanyVerification(params: SetCompanyVerificationType, routeParams: {id: string}): Promise<SetCompanyVerificationResponse> {
+    assertPlatformAdmin(params);
+    const {logger, languageCode, session, actionUserCtx, verified} = params;
+    if (!ObjectId.isValid(routeParams.id)) {
+        throw apiValidationException("not_found", "", null, languageCode);
+    }
+    const target = await companyService.findById(new ObjectId(routeParams.id), {session});
+    if (!target) {
+        throw apiValidationException("not_found", "", null, languageCode);
+    }
+    if (verified && !target.vat?.trim()) {
+        throw apiValidationException("company_verification_needs_vat", "vat", null, languageCode);
+    }
+    target.set("verifiedAt", verified ? new Date() : undefined);
+    target.set("verifiedBy", verified ? new ObjectId(actionUserCtx.userId) : undefined);
+    target.$locals = target.$locals || {};
+    target.$locals.auditUserId = actionUserCtx.userId;
+    await withTenant(target._id, () => target.save({session}));
+    logger.debug(`Company '${target.name}' ${verified ? "verified" : "no longer verified"}`);
+    return {_id: target._id.toString(), verifiedAt: target.verifiedAt?.toISOString() ?? null};
 }
 
 export {router};

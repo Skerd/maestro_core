@@ -315,6 +315,11 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     if (facebook !== undefined && sanitizedWriteFields.facebook) existingCompany.facebook = facebook;
     if (vat && sanitizedWriteFields.vat) {
         await assertVatAvailable(vat, {session, logger, languageCode}, existingCompany._id);
+        // The platform verified the old number (D178): a new one needs checking again.
+        if (vat.trim() !== (existingCompany.vat ?? "")) {
+            existingCompany.set("verifiedAt", undefined);
+            existingCompany.set("verifiedBy", undefined);
+        }
         existingCompany.vat = vat;
     }
     // An unsent slug is built from the name only when none is stored: a stored slug never follows the name on an

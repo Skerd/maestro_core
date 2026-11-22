@@ -43,6 +43,12 @@ export const NotificationEventCodes = {
     UPLOAD_REVIEW_APPROVED: "UPLOAD_REVIEW_APPROVED",
     /** The platform removed a flagged file (kept, never shown to visitors); to whoever uploaded it. */
     UPLOAD_REVIEW_REMOVED: "UPLOAD_REVIEW_REMOVED",
+    /** A person created a company by self-serve sign-up (D178); to the platform's admins, who approve its listing. */
+    COMPANY_SIGNED_UP: "COMPANY_SIGNED_UP",
+    /** The platform approved listing a self-serve company on the portal apex; to the company's admins. */
+    COMPANY_PORTAL_APPROVED: "COMPANY_PORTAL_APPROVED",
+    /** The platform rejected listing a self-serve company on the portal apex; to the company's admins, with the reason. */
+    COMPANY_PORTAL_REJECTED: "COMPANY_PORTAL_REJECTED",
 } as const;
 
 export interface NotificationEvent {
