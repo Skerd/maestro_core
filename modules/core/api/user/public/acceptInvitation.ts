@@ -39,6 +39,7 @@ import {
 } from "armonia/src/modules/core/api/user/public/acceptInvitation/validateInvitationCode.form.response.type";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
+import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
@@ -152,15 +153,17 @@ async function acceptInvitation(params: TransactionRequiredParams & AcceptInvita
     // The invited user is now active - create their single AI-assistant channel.
     // (Eager creation is intentionally deferred from invite time to acceptance so
     // never-accepted invites don't leave orphan channels.)
+    // A public request has no company of its own (D16); the invitation names it, so the channel is made in it.
     if (invitationCompanyIdRaw) {
-        await ensureAiChannel({
+        const invitationCompanyId = new ObjectId(invitationCompanyIdRaw.toString());
+        await withTenant(invitationCompanyId, () => ensureAiChannel({
             userId: user._id,
-            companyId: new ObjectId(invitationCompanyIdRaw.toString()),
+            companyId: invitationCompanyId,
             session,
             logger,
             languageCode,
             auditUserId: user._id
-        });
+        }));
     }
 
     if (notificationCompanyId) {
