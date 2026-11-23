@@ -15,6 +15,8 @@ import {Company as CompanyData} from "armonia/src/modules/core/api/company/priva
 import {SetCompanyModulesFormType} from "armonia/src/modules/core/api/platform/private/companies/setCompanyModules.form.type";
 import {setCompanyModulesSchema} from "armonia/src/modules/core/api/platform/private/companies/setCompanyModules.form.validator";
 import {
+    CompanyTreeNode,
+    CompanyTreeResponse,
     PlatformModulesResponse,
     SetCompanyModulesResponse,
     SetCompanyVerificationResponse,
@@ -36,6 +38,7 @@ import {companyService} from "@coreModule/database/schemas/company/company.servi
 import {COLLECTED_DATA} from "@coreModule/database/collections";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {COMPANY_MODULE_FIELDS, companyToDTO} from "@coreModule/utilities/mappers/company/companyMapper.dto";
+import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
 import {getEnabledModuleNames, loadModuleManifest} from "@coreModule/utilities/modules/enabledModules";
 import {
     closeCompanyModules,
@@ -53,6 +56,7 @@ import {notifyPortalApprovalDecided} from "@coreModule/domain/company/companySig
  * Only admins of the platform-owner company (`Company.isPlatformOwner`) may call these:
  * - GET  /modules     — module catalog (manifest + what this server has installed)
  * - POST ""           — every company on the platform, paginated, Filter DSL via body
+ * - GET  /tree        — every company with the company it was created under (the hierarchy view)
  * - PUT  /modules/:id — grant a company its modules
  * - PUT  /portalVisibility/:id — hide a company from (or show it on) the portal and shop apex
  *
@@ -130,6 +134,51 @@ async function listCompanies(params: ListCompaniesType): Promise<TableResponse<C
         data: companies.map((company) => companyToDTO(company)).filter((dto): dto is CompanyData => dto !== null),
         total,
     };
+}
+
+/**
+ * GET /api/platform/companies/tree
+ *
+ * Every company with the company it was created under, for the hierarchy view. The rows are light (no addresses, no
+ * populated references), so the whole platform fits in one answer and the panel builds the tree.
+ *
+ * @returns {Promise<CompanyTreeResponse>} all companies by name, read fields per the caller's permissions
+ */
+router.get(
+    "/tree",
+    authMW("private"),
+    rateLimiter({windowMs: 60000, max: 60}),
+    asyncHandler(getCompanyTree)
+);
+
+/** What a node shows; each is read only when the caller's permissions allow it (SEC-09). */
+const COMPANY_TREE_FIELDS = {name: {}, logo: {}, vat: {}, parentCompany: {}, isActive: {}};
+
+async function getCompanyTree(params: AuthenticatedMWType): Promise<CompanyTreeResponse> {
+    assertPlatformAdmin(params);
+    const {logger, languageCode, actionUserCtx} = params;
+    logger.start(`Fetching the company hierarchy...`);
+
+    const readable = new Set(Object.keys(SchemaGuard.sanitizeFields(Company, COMPANY_TREE_FIELDS, "read", actionUserCtx, languageCode)));
+    // Platform-managed facts, loaded like the list's (COMPANY_MODULE_FIELDS), not permission-gated fields.
+    const select = [...readable, "isPlatformOwner", "portalApproval.status"].join(" ");
+    // A deleted company is not part of the hierarchy, though an admin's reads see deleted rows (to restore them).
+    const companies = await companyService.find({}, {logger, languageCode, withDeleted: false}, [], select, {name: 1});
+
+    const data = companies.map((company): CompanyTreeNode => ({
+        _id: company._id.toString(),
+        ...(readable.has("name") ? {name: company.name} : {}),
+        ...(readable.has("logo") && company.logo ? {logo: company.logo.toString()} : {}),
+        ...(readable.has("vat") && company.vat ? {vat: company.vat} : {}),
+        // Not populated: the parent's id is all the tree needs, and its name is on its own row.
+        ...(readable.has("parentCompany") && company.parentCompany ? {parentCompany: nestedEntityToRef(company.parentCompany)?.toString()} : {}),
+        ...(readable.has("isActive") ? {isActive: company.isActive} : {}),
+        isPlatformOwner: company.isPlatformOwner === true,
+        ...(company.portalApproval?.status ? {portalApprovalStatus: company.portalApproval.status} : {}),
+    }));
+
+    logger.finish(`Fetched the hierarchy of ${data.length} companies!`);
+    return {data};
 }
 
 /**
