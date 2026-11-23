@@ -3,7 +3,6 @@ import User from "@coreModule/database/schemas/user/user";
 import Role from "@coreModule/database/schemas/role/role";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
-import {isSandboxCompany} from "@coreModule/utilities/company/isSandboxCompany";
 
 export type DemoSignupUserSeed = {
     username: string;
@@ -46,11 +45,6 @@ export async function createDemoSignupUsers(
 ): Promise<void> {
     const logger = getLogger("demo_signup_users", parentLogger);
     const companyId = company._id as ObjectId;
-    // A sample company gets no demo people (D178, TD-B257): they would sign in with the shared password, in production too.
-    if (await isSandboxCompany(companyId)) {
-        logger.info(`'${company.name}' is a sample company; it gets no demo customers`);
-        return;
-    }
     const creatorId = refId(company.createdBy);
 
     // Loaded here: the time zone helper reads companies through the company service, which loads the Company schema,

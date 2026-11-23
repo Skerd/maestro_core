@@ -134,8 +134,6 @@ export type CreateCompanyInput = Omit<CreateCompanyFormType, "logo" | "parentCom
     modules?: string[];
     portalApproval?: ICompany["portalApproval"];
     signupSource?: ICompany["signupSource"];
-    /** Makes it a sample company ("Try with sample data", D178), with its seed's starting progress. */
-    sandboxSeed?: NonNullable<ICompany["sandboxSeed"]>;
 };
 
 export type CreateCompanyContext = CompanyWriteContext & {auditUserId: ObjectId | string};
@@ -194,7 +192,6 @@ export async function createCompany(input: CreateCompanyInput, ctx: CreateCompan
             ...(input.publicAiChat ? {publicAiChat: publicAiChatInput(input.publicAiChat)} : {}),
             ...(input.portalApproval ? {portalApproval: input.portalApproval} : {}),
             ...(input.signupSource ? {signupSource: input.signupSource} : {}),
-            ...(input.sandboxSeed ? {isSandbox: true, sandboxSeed: input.sandboxSeed} : {}),
         },
         {session, logger, languageCode, auditUserId: ctx.auditUserId},
     ));

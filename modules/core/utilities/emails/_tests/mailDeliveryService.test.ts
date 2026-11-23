@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 
 // No real SMTP or database: nodemailer is replaced by a fake transport, each company's servers by a stub list, and the
 // platform company and company names by fixed values.
-const ids = vi.hoisted(() => ({PLATFORM: "6512f0a1b2c3d4e5f6a7b800", COMPANY: "6512f0a1b2c3d4e5f6a7b8c9", SANDBOX: "6512f0a1b2c3d4e5f6a7b8aa"}));
+const ids = vi.hoisted(() => ({PLATFORM: "6512f0a1b2c3d4e5f6a7b800", COMPANY: "6512f0a1b2c3d4e5f6a7b8c9"}));
 const mocks = vi.hoisted(() => ({
     email: {ENABLED: true, SMTP_HOST: "smtp.env.test", SMTP_PORT: 587, SMTP_SECURE: false, FROM_EMAIL: "env@example.com", FROM_NAME: "Env"},
     serversByCompany: {} as Record<string, Array<Record<string, unknown>>>,
@@ -23,15 +23,12 @@ vi.mock("@coreModule/utilities/security/platformAccess", async () => {
     return {findPlatformCompanyId: vi.fn(async () => new ObjectId(ids.PLATFORM))};
 });
 vi.mock("@coreModule/database/schemas/company/company.service", () => ({
-    // SANDBOX is a sample company (D178); every other company is a real one.
-    companyService: {findById: vi.fn(async (id: unknown) => (String(id) === ids.SANDBOX
-        ? {name: "Kudoo Market (sample)", isSandbox: true}
-        : {name: "Kudoo Market", email: "hello@market.test"}))},
+    companyService: {findById: vi.fn(async () => ({name: "Kudoo Market", email: "hello@market.test"}))},
 }));
 
-import {createPooledMailSession, invalidateCompanyMailCache, sendMail} from "../mailDeliveryService";
+import {invalidateCompanyMailCache, sendMail} from "../mailDeliveryService";
 
-const {PLATFORM, COMPANY, SANDBOX} = ids;
+const {PLATFORM, COMPANY} = ids;
 
 function fakeTransport(messageId: string, fail = false) {
     return {
@@ -136,21 +133,5 @@ describe("whose servers send a company's mail, and as whom (D161)", () => {
             from: expect.stringMatching(/Campaign Co.*<noreply@platform\.test>/),
             replyTo: "team@campaign.test",
         }));
-    });
-});
-
-describe("a sample company sends no mail (D178)", () => {
-    it("sends nothing for a sample company, single mails and campaigns alike, while a real company's mail still goes", async () => {
-        mocks.serversByCompany[PLATFORM] = [smtpServer("p1", 1)];
-        mocks.createTransport.mockReturnValue(fakeTransport("<sent@platform>"));
-
-        await expect(sendMail(SANDBOX, {to: "arta.hoxha@example.com", subject: "Your appointment"})).resolves.toEqual({});
-        await expect(sendMail(SANDBOX, {to: "arta.hoxha@example.com", subject: "News"}, {ownServers: true})).resolves.toEqual({});
-        const campaign = await createPooledMailSession(SANDBOX, {ownServers: true});
-        await expect(campaign.send({to: "arta.hoxha@example.com", subject: "News"})).resolves.toEqual({});
-        await campaign.close();
-        expect(mocks.createTransport).not.toHaveBeenCalled();
-
-        await expect(sendMail(COMPANY, {to: "a@example.com", subject: "Hi"})).resolves.toEqual({messageId: "<sent@platform>"});
     });
 });

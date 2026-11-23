@@ -47,7 +47,6 @@ import {
 } from "armonia/src/modules/core/api/company/private/company/portalApproval";
 import {COMPANY_TIMEZONE_MAX, CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import type {CompanySignupSource} from "armonia/src/modules/core/api/company/private/company/company.dto";
-import {SANDBOX_SEED_STATUSES, type SandboxSeedStatus} from "armonia/src/modules/core/api/company/private/sandbox/sandbox.dto";
 import {
     SITE_PROVISION_STATUSES,
     SITE_SLUG_MAX,
@@ -140,19 +139,6 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     signupSource?: {
         via: CompanySignupSource["via"];
         refCompany?: ObjectId | ICompany;
-    };
-    /**
-     * A sample company ("Try with sample data", D178): a separate company holding demo data for its parent's admin to try
-     * the panel with. Never listed on the portal, sends no email or SMS, deleted in one click. Set only by that flow.
-     */
-    isSandbox: boolean;
-    /** How far a sample company's demo data is: seeded in the background after the company is made. */
-    sandboxSeed?: {
-        status: SandboxSeedStatus;
-        startedAt: Date;
-        /** Last sign of life of the running seed; a seed that stops beating died with its server. */
-        heartbeatAt?: Date;
-        finishedAt?: Date;
     };
     /**
      * A company the platform cannot run without (the platform owner, the marketplace operator): it cannot be
@@ -430,28 +416,6 @@ const CompanySchema: Schema = new Schema(
             type: {
                 via: {type: SchemaTypes.String, enum: ["selfServe"] satisfies CompanySignupSource["via"][], required: true},
                 refCompany: {type: SchemaTypes.ObjectId, ref: "Company", refAllowlist: CompanyBlankSnippet},
-            },
-            required: false,
-            permissions: {
-                self: {write: "no-permission"},
-                others: {write: "no-permission"},
-            },
-        },
-        // Set by "Try with sample data" only (D178, P23.4); no form can write it.
-        isSandbox: {
-            type: SchemaTypes.Boolean,
-            default: false,
-            permissions: {
-                self: {write: "no-permission"},
-                others: {write: "no-permission"},
-            },
-        },
-        sandboxSeed: {
-            type: {
-                status: {type: SchemaTypes.String, enum: SANDBOX_SEED_STATUSES, required: true},
-                startedAt: {type: SchemaTypes.Date, required: true},
-                heartbeatAt: {type: SchemaTypes.Date},
-                finishedAt: {type: SchemaTypes.Date},
             },
             required: false,
             permissions: {

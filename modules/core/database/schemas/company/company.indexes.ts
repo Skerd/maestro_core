@@ -22,8 +22,6 @@ export function applyCompanyIndexes(CompanySchema: Schema): void {
     CompanySchema.index({siteHost: 1}, {sparse: true});
     CompanySchema.index({isActive: 1, isDefaultForSignUp: 1});
     CompanySchema.index({parentCompany: 1, isActive: 1});
-    // One sample company per real company at a time (D178, P23.4); the route checks first, this catches a race.
-    CompanySchema.index({parentCompany: 1, isSandbox: 1}, {unique: true, partialFilterExpression: {isSandbox: true}});
     CompanySchema.index({name: 1, isActive: 1});
     CompanySchema.index({vat: 1, isActive: 1});
 }

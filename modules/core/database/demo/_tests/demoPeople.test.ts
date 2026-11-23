@@ -48,19 +48,6 @@ describe("demo customers", () => {
     }));
 });
 
-describe("a sample company (D178, TD-B257)", () => {
-    it("gets no demo customers: in production they would sign in to it with the shared password", async () => {
-        const sampleId = new ObjectId();
-        const sample = {_id: sampleId, name: "Kudoo Market (sample)", createdBy: undefined, timezone: "Europe/Tirane"};
-        await db().collection("companies").insertOne({...sample, company: companyId, parentCompany: companyId, isSandbox: true, vat: "KMS", deletedAt: null});
-        await db().collection("roles").insertOne({_id: new ObjectId(), company: sampleId, name: "Customer", slug: "customer-sample", isSignupDefault: true, permissions: []});
-
-        await withTenant(sampleId, () => createDemoSignupUsers(logger, sample, coreDemoCustomerSeeds, CORE_DEMO_CUSTOMER_PASSWORD));
-
-        expect(await db().collection("users").countDocuments({})).toBe(0);
-    });
-});
-
 describe("company bot", () => {
     it("takes the company's zone and carries no birthday or phone", () => asCompany(async () => {
         await (await Company.findById(companyId))!.createBot();
