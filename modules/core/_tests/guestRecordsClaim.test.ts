@@ -10,19 +10,21 @@ import request from "supertest";
  * (`moduleBootstrap.onAccountVerified`) when an email gets verified and at each portal sign-in, never at a panel sign-in.
  * Fixture modules stand in for the verticals (CORE-07): one records what it gets, one always fails.
  */
-const {calls} = vi.hoisted(() => ({calls: [] as Record<string, unknown>[]}));
+const {calls, slow} = vi.hoisted(() => ({calls: [] as Record<string, unknown>[], slow: {hang: false, release: () => undefined as void}}));
 vi.mock("@coreModule/utilities/middlewares/rateLimiter", () => ({
     rateLimiter: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 vi.mock("@coreModule/utilities/modules/enabledModules", async (importOriginal) => ({
     ...await importOriginal<typeof import("@coreModule/utilities/modules/enabledModules")>(),
-    getEnabledModuleNames: () => ["core", "failingFixture", "guestFixture"],
+    getEnabledModuleNames: () => ["core", "failingFixture", "guestFixture", "slowFixture"],
 }));
 vi.mock("@coreModule/utilities/modules/moduleCompanyDefaults", async (importOriginal) => {
     const fixtures: Record<string, AccountVerifiedHook> = {
         failingFixture: async () => {
             throw new Error("the fixture module is down");
         },
+        // Stands for a module whose transaction keeps retrying: it answers only when the test releases it.
+        slowFixture: () => (slow.hang ? new Promise<void>((resolve) => { slow.release = resolve; }) : Promise.resolve()),
         // What it sees outside any transaction tells whether the caller's work has committed already.
         guestFixture: async ({userId, email, session}) => {
             const db = (await import("mongoose")).default.connection.db!;
@@ -126,6 +128,21 @@ describe("claiming guest records at sign-in and verification (P23.9)", {timeout:
 
         expect([res.status, res.body.error_code, typeof res.body.token]).toEqual([200, undefined, "string"]);
         expect(calls).toEqual([{userId: userId.toString(), email: "ada.guest@example.com", inTransaction: true, sessions: 1, verified: true}]);
+    });
+
+    it("answers the sign-in after a few seconds when a module's claim takes longer, and lets it finish (TD-B267)", async () => {
+        slow.hang = true;
+        try {
+            const started = Date.now();
+            const res = await signIn(apex);
+
+            expect([res.status, typeof res.body.token]).toEqual([200, "string"]);
+            expect(Date.now() - started).toBeLessThan(10000);
+            expect(calls).toHaveLength(1);
+        } finally {
+            slow.hang = false;
+            slow.release();
+        }
     });
 
     it("claims nothing at a panel sign-in", async () => {
