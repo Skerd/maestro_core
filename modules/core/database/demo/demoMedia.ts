@@ -15,6 +15,7 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {ICompany} from "@coreModule/database/schemas/company/company";
 import Media from "@coreModule/database/schemas/media/media";
 import {createGridFSStorage} from "@coreModule/utilities/gridfs/gridfsStorage";
+import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 export type ResolvedDemoImages = {
     mainImageId?: ObjectId;
@@ -44,7 +45,10 @@ function seedMediaId(entityKind: string, seedKey: string, galleryIndex: number, 
  */
 async function companySeedMediaId(entityKind: string, seedKey: string, galleryIndex: number, sourceId: string, company: ICompany): Promise<ObjectId> {
     const shared = seedMediaId(entityKind, seedKey, galleryIndex, sourceId);
-    const existing = await Media.findById(shared).select("company").lean<{company?: ObjectId}>();
+    // Asked across companies: a seed running in its company's tenant (a sample company, D178) would not see another
+    // company's row and would collide with its id.
+    const existing = await asCrossTenant("a demo image id may already belong to another company's seed", () =>
+        Media.findById(shared).select("company").lean<{company?: ObjectId}>());
     if (!existing || String(existing.company) === String(company._id)) return shared;
     return seedMediaId(entityKind, `${company._id}:${seedKey}`, galleryIndex, sourceId);
 }

@@ -7,6 +7,7 @@ import type {ISmtpServer} from "@coreModule/database/schemas/smtpServer/smtpServ
 import {smtpServerService} from "@coreModule/database/schemas/smtpServer/smtpServer.service";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {DecryptString, EncryptString} from "@coreModule/utilities/security/encryption";
+import {isSandboxCompany} from "@coreModule/utilities/company/isSandboxCompany";
 import type {SmtpAuthType, SmtpEncryptionType} from "armonia/src/modules/core/api/auxiliary/private/smtpServer/smtpServer.constants";
 import {
     apiValidationException,
@@ -291,7 +292,8 @@ async function resolveSender(
  * message), then falls back to .env EMAIL_* settings. See {@link resolveSender} for who it is sent as.
  *
  * Resolves with the transport's message id, so a caller that must match later replies or bounces can store it.
- * The id is absent when nothing was sent: email is turned off (`EMAIL_ENABLED=false`), or no server took the mail.
+ * The id is absent when nothing was sent: email is turned off (`EMAIL_ENABLED=false`), the company is a sample company
+ * (D178: its records hold demo people's addresses), or no server took the mail.
  */
 export async function sendMail(
     companyId: ObjectId | string | undefined | null,
@@ -307,6 +309,10 @@ export async function sendMail(
     }
 
     const companyKey = companyId.toString();
+    if (await isSandboxCompany(companyKey)) {
+        logger.debug(`Email not sent: company ${companyKey} is a sample company`);
+        return {};
+    }
     const {servers, prepare} = await resolveSender(companyKey, route);
     const mailOptions = prepare(message);
 
@@ -368,6 +374,8 @@ export async function createPooledMailSession(
     const {servers, prepare} = companyKey
         ? await resolveSender(companyKey, route)
         : {servers: [] as ISmtpServer[], prepare: (mail: MailDeliverySendOptions) => mail};
+    // A sample company's campaign reaches nobody (D178), like a single mail.
+    const sandbox = companyKey ? await isSandboxCompany(companyKey) : false;
 
     // Built lazily and reused: a server that never gets used costs no socket,
     // and one that does is verified exactly once.
@@ -394,7 +402,7 @@ export async function createPooledMailSession(
 
     return {
         async send(message: MailDeliverySendOptions): Promise<{messageId?: string}> {
-            if (!EMAIL.ENABLED) {
+            if (!EMAIL.ENABLED || sandbox) {
                 return {};
             }
             const mailOptions = prepare(message);

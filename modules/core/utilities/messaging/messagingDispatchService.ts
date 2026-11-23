@@ -15,6 +15,7 @@ import type {TestMessagingProviderConnectionResponse} from "armonia/src/modules/
 import type {IMessagingProvider} from "@coreModule/database/schemas/messagingProvider/messagingProvider";
 import {messagingProviderService} from "@coreModule/database/schemas/messagingProvider/messagingProvider.service";
 import {DecryptString, EncryptString} from "@coreModule/utilities/security/encryption";
+import {isSandboxCompany} from "@coreModule/utilities/company/isSandboxCompany";
 
 export interface SendMessageParams {
     to: string;       // E.164 phone number
@@ -106,9 +107,12 @@ export async function testMessagingProviderConnection(
     }
 }
 
+/** Sends one SMS or WhatsApp message; `null` when nothing was sent (no provider or sender, or a sample company, D178). */
 export async function sendMessagingNotification(params: SendMessageParams): Promise<SendMessageResult | null> {
     const {to, body, channel} = params;
     if (!to || !body) return null;
+    // A sample company's people are demo people with real-looking numbers: nothing it does may text them.
+    if (await isSandboxCompany(params.companyId)) return null;
 
     const provider = await getActiveProvider();
     if (!provider) return null;

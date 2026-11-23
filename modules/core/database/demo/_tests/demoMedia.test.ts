@@ -9,7 +9,7 @@ vi.mock("@coreModule/utilities/gridfs/gridfsStorage", () => ({
 
 import Media from "@coreModule/database/schemas/media/media";
 import {getLogger} from "@coreModule/loggers/serverLog";
-import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
 import {resolveDemoImagesFromUnsplash} from "@coreModule/database/demo/demoMedia";
 
@@ -48,5 +48,16 @@ describe("demo seed images per company (D104)", () => {
         expect(String(other.mainImageId)).not.toBe(String(first.mainImageId));
         const owners = await asCrossTenant("test reads both", () => Media.find({}).select("company").lean<{company: ObjectId}[]>());
         expect(owners.map((media) => String(media.company)).sort()).toEqual([String(companyA._id), String(companyB._id)].sort());
+    });
+
+    it("gives a company seeding in its own tenant (a sample company, D178) its own image, not the other company's id", async () => {
+        const first = await resolve(companyA);
+        const scoped = await withTenant(companyB._id as ObjectId, () =>
+            resolveDemoImagesFromUnsplash([photo], "listing-01", "Logo design", companyB, createdBy, logger, "listing", {width: 16, height: 16}));
+
+        expect(scoped.galleryIds).toHaveLength(1);
+        expect(String(scoped.mainImageId)).not.toBe(String(first.mainImageId));
+        const own = await asCrossTenant("test reads B's image", () => Media.findById(scoped.mainImageId).select("company").lean<{company: ObjectId}>());
+        expect(String(own?.company)).toBe(String(companyB._id));
     });
 });

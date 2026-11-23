@@ -2,8 +2,8 @@
  * Which companies the portal (and the shop apex) may show.
  *
  * Core rule, shared by every vertical: the company is active, not deleted, has the
- * module, and the platform owner has not hidden it. Each vertical adds its own opt-in
- * on top (`listedOnPortal` on its config, `Company.shopListedOnPortal` for the shop).
+ * module, the platform owner has not hidden it, and it is not a sample company (D178). Each vertical adds its own
+ * opt-in on top (`listedOnPortal` on its config, `Company.shopListedOnPortal` for the shop).
  *
  * @module portalCompanies
  */
@@ -25,9 +25,12 @@ import type {CountrySimple} from "armonia/src/modules/core/dto/country.dto";
 import type {PortalCompany, PortalCompanyAddress, PortalCompanyCard} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
 import type {Model} from "mongoose";
 
-/** Mongo clause for companies the portal may list for `moduleName`. */
+/**
+ * Mongo clause for companies the portal may list for `moduleName`. A sample company (D178) holds demo data, so neither
+ * the apex nor its own site ever shows it, whatever its modules' own settings say.
+ */
 export function portalCompanyClause(moduleName: string): Record<string, unknown> {
-    return {$and: [{isActive: true, deletedAt: null, hiddenFromPortal: {$ne: true}}, companyModuleClause(moduleName)]};
+    return {$and: [{isActive: true, deletedAt: null, hiddenFromPortal: {$ne: true}, isSandbox: {$ne: true}}, companyModuleClause(moduleName)]};
 }
 
 /**
@@ -42,10 +45,10 @@ export function isPortalApproved(company: Pick<ICompany, "portalApproval">): boo
 }
 
 export function isPortalListable(
-    company: Pick<ICompany, "isActive" | "hiddenFromPortal" | "modules"> & {deletedAt?: Date | null},
+    company: Pick<ICompany, "isActive" | "hiddenFromPortal" | "isSandbox" | "modules"> & {deletedAt?: Date | null},
     moduleName: string,
 ): boolean {
-    return company.isActive && !company.deletedAt && company.hiddenFromPortal !== true
+    return company.isActive && !company.deletedAt && company.hiddenFromPortal !== true && company.isSandbox !== true
         && isModuleEnabledForCompany(company, moduleName);
 }
 
