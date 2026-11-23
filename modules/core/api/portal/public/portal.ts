@@ -17,6 +17,7 @@ import {
 } from "@coreModule/utilities/marketing/portalCompanies";
 import {portalSiteSlug} from "@coreModule/utilities/marketing/portalOrigin";
 import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {markVerifiedCompanies} from "@coreModule/domain/portal/portalVerified";
 import {browsePortal, sectionCompanies} from "@coreModule/domain/portal/portalBrowse";
 import {portalCompaniesFormSchema} from "armonia/src/modules/core/api/portal/public/portal/portal.form.validators";
 import type {PortalCompaniesFormType} from "armonia/src/modules/core/api/portal/public/portal/portal.forms";
@@ -92,9 +93,12 @@ async function portalSite(company: ICompany, scope: PortalScope, languageCode: s
     const cities = [...new Set(offered.flatMap((section) => section.cities))]
         .sort((left, right) => left.localeCompare(right, languageCode));
     const description = company.description?.trim();
+    // A company site names the platform it runs on (its "Powered by" link, D178); the apex is the platform itself.
+    const platformName = scope.companyId ? (await findPlatformCompany(languageCode)).name : company.name;
     return {
         data: {
             scope: scope.companyId ? "company" : "platform",
+            platform: {name: platformName},
             company: {
                 ...await portalCompanyProfile(company),
                 slug: portalSlug({_id: company._id, siteSlug: company.siteSlug}),
@@ -135,6 +139,9 @@ router.post(
     asyncHandler(async (params: NotAuthenticatedMWType & PortalBrowseFormType): Promise<PortalBrowseResponse> => {
         const {origin, languageCode} = params;
         const {scope} = await hostCompany(origin, languageCode);
-        return {data: await inPortalScope(scope, () => browsePortal(scope, params, languageCode))};
+        const groups = await inPortalScope(scope, () => browsePortal(scope, params, languageCode));
+        // The platform verified these companies' NIPT/VAT (D178).
+        await markVerifiedCompanies(groups.flatMap((group) => group.items));
+        return {data: groups};
     }),
 );

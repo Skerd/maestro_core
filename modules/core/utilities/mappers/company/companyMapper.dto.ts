@@ -76,6 +76,12 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
             }
             : undefined,
         verifiedAt: company.verifiedAt?.toISOString(),
+        signupSource: company.signupSource
+            ? {
+                via: company.signupSource.via,
+                refCompany: mapSnippet<CompanyBlank>()(company.signupSource.refCompany, CompanyBlankSnippet),
+            }
+            : undefined,
         shopListedOnPortal: company.shopListedOnPortal,
         publicAiChat: company.publicAiChat ? {
             enabled: company.publicAiChat.enabled,

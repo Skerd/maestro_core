@@ -146,6 +146,11 @@ export function companySiteUrl(company: {_id: ObjectId; siteSlug?: string | null
     return `${url.origin}${path}`;
 }
 
+/** The person's account on the portal apex: their bookings and orders at every company in one place (D178). */
+export function portalAccountUrl(): string {
+    return `${clientHostFor("portal")}/account`;
+}
+
 /** Cards for `companyIds`, sorted by name. */
 export async function portalCompanyCards(
     companyIds: ObjectId[],

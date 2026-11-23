@@ -132,6 +132,38 @@ describe("PUT /api/portal/business (D178)", {timeout: 60000}, () => {
         });
     });
 
+    it("records a sign-up without a ref as coming from the portal", async () => {
+        const res = await createBusiness(businessForm());
+        expect(res.body.error_code ? res.body : "ok").toBe("ok");
+        const business = await Company.collection.findOne({name: "Adriatic Wheels"});
+        expect(business!.signupSource).toMatchObject({via: "selfServe"});
+        expect(business!.signupSource.refCompany).toBeUndefined();
+    });
+
+    it("records the company whose site's link brought the person (P23.9)", async () => {
+        const referrerId = new ObjectId();
+        await Company.collection.insertOne({
+            _id: referrerId, company: platformId, name: "Rental Co", siteSlug: "rental-co", allowedDomains: ["none.none.com"], isActive: true, deletedAt: null,
+        });
+        const res = await createBusiness(businessForm({ref: "Rental-Co"}));
+        expect(res.body.error_code ? res.body : "ok").toBe("ok");
+        const business = await Company.collection.findOne({name: "Adriatic Wheels"});
+        expect(business!.signupSource).toMatchObject({via: "selfServe", refCompany: referrerId});
+    });
+
+    it("ignores a ref no active company has, without refusing the sign-up", async () => {
+        await Company.collection.insertOne({
+            _id: new ObjectId(), company: platformId, name: "Closed Co", siteSlug: "closed-co", allowedDomains: ["none.none.com"], isActive: false, deletedAt: null,
+        });
+        for (const [name, ref] of [["Unknown Ref", "nobody-here"], ["Inactive Ref", "closed-co"]]) {
+            const res = await createBusiness(businessForm({name, ref}));
+            expect(res.body.error_code ? res.body : "ok").toBe("ok");
+            const business = await Company.collection.findOne({name});
+            expect(business!.signupSource).toMatchObject({via: "selfServe"});
+            expect(business!.signupSource.refCompany).toBeUndefined();
+        }
+    });
+
     it("refuses a business type no module offers", async () => {
         const res = await createBusiness(businessForm({businessType: "spaceTravel"}));
         expect(res.body.error_code).toBe("business_type_not_offered");

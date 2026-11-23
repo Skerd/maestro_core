@@ -30,6 +30,15 @@ export function priceRange(priceMin?: number, priceMax?: number): Record<string,
 }
 
 /** Catalog items of company-owned rows, each labelled with its company (rows of a gone company are dropped). */
+/**
+ * A catalog item's rating from a stored average and count (D178): `{rating}` to spread into the item when there are
+ * reviews, nothing otherwise. The average keeps one decimal, as the cards show it.
+ */
+export function catalogRating(average: number | undefined, count: number | undefined): {rating?: {average: number; count: number}} {
+    if (!count || count <= 0 || average == null || !Number.isFinite(average)) return {};
+    return {rating: {average: Math.round(average * 10) / 10, count}};
+}
+
 export async function catalogItems<Row extends {company: ObjectId}>(
     rows: Row[],
     toItem: (row: Row) => Omit<PortalCatalogItem, "company">,

@@ -46,6 +46,7 @@ import {
     type PortalApprovalStatus,
 } from "armonia/src/modules/core/api/company/private/company/portalApproval";
 import {COMPANY_TIMEZONE_MAX, CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
+import type {CompanySignupSource} from "armonia/src/modules/core/api/company/private/company/company.dto";
 import {
     SITE_PROVISION_STATUSES,
     SITE_SLUG_MAX,
@@ -131,6 +132,14 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     /** When the platform checked the company's NIPT/VAT (D178); cleared when the VAT changes. */
     verifiedAt?: Date;
     verifiedBy?: ObjectId;
+    /**
+     * How the company came to the platform (D178, P23.9): set by self-serve sign-up only, with the company whose site's
+     * "Powered by" link brought it; absent for companies the platform created.
+     */
+    signupSource?: {
+        via: CompanySignupSource["via"];
+        refCompany?: ObjectId | ICompany;
+    };
     /**
      * A company the platform cannot run without (the platform owner, the marketplace operator): it cannot be
      * deactivated, hidden from the portal or lose a module. Set only by the seed.
@@ -397,6 +406,18 @@ const CompanySchema: Schema = new Schema(
         verifiedBy: {
             type: SchemaTypes.ObjectId,
             ref: "User",
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
+        },
+        // Set by self-serve sign-up only (D178, P23.9); the platform reads it on its company list.
+        signupSource: {
+            type: {
+                via: {type: SchemaTypes.String, enum: ["selfServe"] satisfies CompanySignupSource["via"][], required: true},
+                refCompany: {type: SchemaTypes.ObjectId, ref: "Company", refAllowlist: CompanyBlankSnippet},
+            },
+            required: false,
             permissions: {
                 self: {write: "no-permission"},
                 others: {write: "no-permission"},

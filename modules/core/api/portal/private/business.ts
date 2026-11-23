@@ -26,6 +26,7 @@ import {notifyCompanySignedUp} from "@coreModule/domain/company/companySignupNot
  * Self-serve business sign-up (D178): a signed-in person creates their own company from the portal. It belongs to the
  * platform company, starts with the modules of the business type they picked, and its own site is live at once; the
  * portal apex lists it only after the platform approves it (`portalApproval`). The person becomes its admin.
+ * `signupSource` records that it signed up here, and from which company's site when a `ref` came along (P23.9).
  *
  * Signing in already required a verified email (an activated account or a Google/Apple sign-in).
  */
@@ -45,7 +46,7 @@ router.put(
 type CreateSelfServeBusinessParams = TransactionRequiredParams & SelfServeBusinessFormType & MediaUploaded;
 
 async function createSelfServeBusiness(params: CreateSelfServeBusinessParams): Promise<SelfServeBusinessCreatedResponse> {
-    const {businessType, name, phoneNumber, vat, siteSlug, address, languageCode, logger, session, actionUserCtx, fileIds, company} = params;
+    const {businessType, name, phoneNumber, vat, siteSlug, address, ref, languageCode, logger, session, actionUserCtx, fileIds, company} = params;
 
     const type = findSelfServeBusinessType(businessType);
     if (!type) {
@@ -60,6 +61,11 @@ async function createSelfServeBusiness(params: CreateSelfServeBusinessParams): P
 
     logger.start(`Creating self-serve business '${name}' (${type.key})...`);
     const platform = await findPlatformCompany(languageCode);
+    // The company whose site's "Powered by" link brought the person (P23.9), by site slug. Anyone can edit a link, so
+    // an unknown or inactive company is ignored rather than refused.
+    const referrer = ref
+        ? await companyService.findOne({siteSlug: ref.trim().toLowerCase(), isActive: true, deletedAt: null}, {session, logger, languageCode}, undefined, "_id")
+        : null;
     const panelUrl = clientHostFor("core") || undefined;
     const business = await createCompany(
         {
@@ -75,6 +81,8 @@ async function createSelfServeBusiness(params: CreateSelfServeBusinessParams): P
             uploadedInCompanyId: company._id,
             modules: type.modules,
             portalApproval: {status: "pending"},
+            // How the company came (D178): only self-serve sign-up records it; no form can write it.
+            signupSource: {via: "selfServe", ...(referrer ? {refCompany: referrer._id} : {})},
         },
         {session, logger, languageCode, auditUserId: creator},
     );

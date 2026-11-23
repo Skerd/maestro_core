@@ -133,6 +133,7 @@ export type CreateCompanyInput = Omit<CreateCompanyFormType, "logo" | "parentCom
     /** Modules besides core the company starts with; default none (the platform grants more later). */
     modules?: string[];
     portalApproval?: ICompany["portalApproval"];
+    signupSource?: ICompany["signupSource"];
 };
 
 export type CreateCompanyContext = CompanyWriteContext & {auditUserId: ObjectId | string};
@@ -190,6 +191,7 @@ export async function createCompany(input: CreateCompanyInput, ctx: CreateCompan
             modules: ["core", ...(input.modules ?? [])],
             ...(input.publicAiChat ? {publicAiChat: publicAiChatInput(input.publicAiChat)} : {}),
             ...(input.portalApproval ? {portalApproval: input.portalApproval} : {}),
+            ...(input.signupSource ? {signupSource: input.signupSource} : {}),
         },
         {session, logger, languageCode, auditUserId: ctx.auditUserId},
     ));
