@@ -56,7 +56,8 @@ import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
-import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {asCrossTenant, setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
+import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
 import {addExistingUserToCompany, buildCompanyRoleData} from "@coreModule/database/schemas/user/user.helper";
 import type {IUser} from "@coreModule/database/schemas/user/user";
 import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
@@ -135,13 +136,32 @@ router.post(
 async function findLoginCompany(
     companyIds: ObjectId[],
     origin: string,
+    userId: ObjectId,
     opts: { session: ClientSession; logger: serverLogger; languageCode: string },
 ): Promise<ICompany> {
     if (isPortalZoneOrigin(origin)) {
         return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, isPlatformOwner: true }, opts);
     }
-    return await companyService.findOne({ _id: { $in: companyIds }, isActive: true, allowedDomains: origin }, opts)
-        ?? await companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, allowedDomains: "*" }, opts);
+    // Every business of the person this host may open: those naming it, and those open on any host.
+    const candidates = await companyService.find({ _id: { $in: companyIds }, isActive: true, allowedDomains: { $in: [origin, "*"] } }, opts);
+    if (candidates.length === 0) {
+        return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, allowedDomains: "*" }, opts);
+    }
+    if (candidates.length === 1) return candidates[0];
+    // Several answer (TD-B255): the one they last signed in to or switched to, whose session is the newest, not
+    // whichever the database lists first; without a session, one that names this host.
+    const latest = await asCrossTenant("sign-in picks the business the person last worked in", () => userSessionService.find(
+        { user: userId, company: { $in: candidates.map((company) => company._id) } },
+        opts,
+        undefined,
+        "company lastActiveAt",
+        { lastActiveAt: -1 },
+        1,
+    ));
+    const lastCompany = latest[0]?.company;
+    return candidates.find((company) => lastCompany && company._id.equals(lastCompany))
+        ?? candidates.find((company) => company.allowedDomains?.includes(origin))
+        ?? candidates[0];
 }
 
 /**
@@ -200,7 +220,7 @@ async function Login(
 
     try{
         const companyIds = user.companies.map((c: any) => c._id || c);
-        company = await findLoginCompany(companyIds, origin, { session, logger, languageCode });
+        company = await findLoginCompany(companyIds, origin, user._id, { session, logger, languageCode });
         // The sign-in works on the company it signs into (D16).
         setRequestTenant(company._id, languageCode);
 
@@ -407,7 +427,7 @@ async function LoginThirdParty(
 
         // Get user profile and find company
         const companyIds = user.companies.map((c: any) => c._id || c);
-        company = await findLoginCompany(companyIds, origin, { session, logger, languageCode });
+        company = await findLoginCompany(companyIds, origin, user._id, { session, logger, languageCode });
         // The sign-in works on the company it signs into (D16).
         setRequestTenant(company._id, languageCode);
 

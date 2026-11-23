@@ -16,6 +16,7 @@ import {
 } from "@coreModule/utilities/marketing/portalCompanies";
 import {markVerifiedCompanies} from "@coreModule/domain/portal/portalVerified";
 import {browsePortal, hostCompany, inPortalScope, sectionCompanies} from "@coreModule/domain/portal/portalBrowse";
+import {portalLandings} from "@coreModule/domain/portal/portalLandings";
 import {portalCompaniesFormSchema} from "armonia/src/modules/core/api/portal/public/portal/portal.form.validators";
 import type {PortalCompaniesFormType} from "armonia/src/modules/core/api/portal/public/portal/portal.forms";
 import {
@@ -34,7 +35,7 @@ import type {
  * Read-only views across the portal zone, section by section (shop, car rental,
  * dentists, properties). Sections come from the modules (see `registerAllPortalProviders`);
  * each decides which companies it shows on the apex and on a company's own site.
- * - POST /site      — what this host is: the apex or one company's site, its profile, sections and cities
+ * - POST /site      — what this host is: the apex or one company's site, its profile, sections, cities and city landing pages
  * - POST /companies — one section's companies, optionally in one city, or the one a slug names
  * - POST /browse    — the home catalog: one kind a page at a time, or a few of every kind
  *
@@ -89,6 +90,7 @@ async function portalSite(company: ICompany, scope: PortalScope, languageCode: s
             },
             cities,
             sections: offered.map((section) => section.key),
+            landings: await portalLandings(scope, languageCode),
         },
     };
 }

@@ -28,6 +28,7 @@ import PortalSavedSearch from "@coreModule/database/schemas/portalSavedSearch/po
 import * as savedRoute from "@coreModule/api/portal/private/saved";
 import * as stopRoute from "@coreModule/api/portal/public/savedSearchAlerts";
 import type {PortalCatalogItem} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
+import {fixtureSectionNames} from "@coreModule/domain/portal/_tests/fixtureSectionNames";
 
 /* D178, P23.7: what a portal account keeps, one list per person across hosts, stored in the platform company. */
 
@@ -80,6 +81,7 @@ beforeEach(() => raw(async () => {
     registerPortalProvider({
         key: "fixture",
         order: 10,
+        ...fixtureSectionNames(),
         kinds: ["gadget"],
         companyIds: async () => [shop],
         citiesByCompany: async () => new Map(),

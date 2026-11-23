@@ -235,6 +235,22 @@ export const PORTAL_ROOT_DOMAIN = (process.env.PORTAL_ROOT_DOMAIN || "")
     .replace(/^\*\./, "")
     .replace(/\.$/, "");
 
+/**
+ * The portal app's built page (its `index.html`) as the API reaches it inside the deployment, e.g.
+ * `http://<portal container>/index.html`. The API fills it with each portal page's head and a plain copy of its content
+ * for search engines (D181). Empty = the gateway serves the app as it is.
+ */
+export const PORTAL_INDEX_HTML_URL = (process.env.PORTAL_INDEX_HTML_URL || "").trim();
+
+/**
+ * Whether search engines may index the portal (D181, P23.11). Off until the platform has its first businesses: robots.txt
+ * then disallows everything and every page says `noindex`.
+ */
+export const PORTAL_SEARCH_INDEXING = process.env.PORTAL_SEARCH_INDEXING === "true";
+
+/** The listings a section needs in one city before the city gets a landing page and a sitemap entry (D181, P23.11). */
+export const PORTAL_LANDING_MIN_LISTINGS = Number(process.env.PORTAL_LANDING_MIN_LISTINGS || 5);
+
 /** Browser origin for a deployed Sinfonia app. Falls back to CLIENT_HOST (core/panel). */
 export function clientHostFor(appId: string = "core"): string {
     const mapped = CLIENT_SIDE.URLS[appId];

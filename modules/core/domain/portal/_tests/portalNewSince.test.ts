@@ -9,6 +9,7 @@ import {newSinceClause} from "../portalCatalog";
 import {clearPortalProviders, registerPortalProvider} from "../portalProviderRegistry";
 import type {PortalNewSinceContext, PortalProvider} from "../portalProvider.types";
 import type {PortalCatalogItem} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
+import {fixtureSectionNames} from "@coreModule/domain/portal/_tests/fixtureSectionNames";
 
 /* D178, P23.7: portal sections may answer "what was listed after a date" (the `newSince` seam, CORE-03). */
 
@@ -29,6 +30,7 @@ function fixtureSection(key: string, kinds: string[], listed: Record<string, Dat
     const provider: PortalProvider = {
         key,
         order: 10,
+        ...fixtureSectionNames(key),
         kinds,
         companyIds: async (scope) => scope.companyId ? [scope.companyId] : [tirana, vlore],
         citiesByCompany: async () => new Map([[tirana.toString(), ["Tirana"]], [vlore.toString(), ["Vlorë"]]]),

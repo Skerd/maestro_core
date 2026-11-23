@@ -113,5 +113,9 @@ describe("unsubscribe tokens", () => {
             expect(() => validateUnsubscribeToken("not-a-token")).toThrow();
             expect(() => validateUnsubscribeToken("")).toThrow();
         });
+
+        it("a broken link with its own code, never the expired-session one (TD-B256)", () => {
+            expect(() => validateUnsubscribeToken("not-a-token")).toThrow(expect.objectContaining({error_code: "link_no_longer_valid"}));
+        });
     });
 });

@@ -72,7 +72,7 @@ export function generateRecordAccessToken(params: {
 
 /**
  * Validate and decode a record access token for `purpose`. Throws
- * `token_verification_failed` for anything else, including a token minted for
+ * `link_no_longer_valid` for anything else, including a token minted for
  * another kind of record. The caller still checks `version` against the record.
  */
 export function validateRecordAccessToken(
@@ -97,6 +97,7 @@ export function validateRecordAccessToken(
         return decoded as RecordAccessTokenPayload;
     }
     catch {
-        throw apiValidationException("token_verification_failed", null, null, languageCode);
+        // A mailed link's own failure: `token_verification_failed` would read as an expired session and sign the visitor out (TD-B256).
+        throw apiValidationException("link_no_longer_valid", null, null, languageCode);
     }
 }

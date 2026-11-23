@@ -41,13 +41,16 @@ const POST_POPULATE = [
 
 const router = Router();
 
-type PublicBlogParams = NotAuthenticatedMWType & {
+/** What reading the public blog needs from a request; the portal's page heads read it too (D181). */
+type PublicBlogReader = Pick<NotAuthenticatedMWType, "origin" | "languageCode" | "logger">;
+
+type PublicBlogParams = PublicBlogReader & {
     categorySlug?: string;
     limit?: number;
     page?: number;
 };
 
-type PublicBlogSingleParams = NotAuthenticatedMWType & {
+type PublicBlogSingleParams = PublicBlogReader & {
     slug: string;
 };
 
@@ -145,7 +148,7 @@ async function publicBlogCompanyFilter(origin: string, languageCode: string): Pr
 }
 
 /** The apex blog reads every active company's posts (D16); a company host is scoped by `resolveCompanyByOrigin`. */
-function inBlogScope<T>(origin: string, read: () => Promise<T>): Promise<T> {
+export function inBlogScope<T>(origin: string, read: () => Promise<T>): Promise<T> {
     return blogSpansCompanies(origin) ? asCrossTenant("the apex blog lists every company's posts", read) : read();
 }
 
@@ -166,7 +169,7 @@ function dedupeCategoriesBySlug(categories: IBlogCategory[]): IBlogCategory[] {
     return unique;
 }
 
-async function listPublicBlog(params: PublicBlogParams): Promise<PublicBlogFormResponseType> {
+export async function listPublicBlog(params: PublicBlogParams): Promise<PublicBlogFormResponseType> {
     const {origin, languageCode, logger, categorySlug, limit, page = 1} = params;
     logger.start("Loading public blog posts...");
 
@@ -220,7 +223,7 @@ async function listPublicBlog(params: PublicBlogParams): Promise<PublicBlogFormR
     };
 }
 
-async function publicBlogSingle(params: PublicBlogSingleParams): Promise<PublicBlogSingleFormResponseType> {
+export async function publicBlogSingle(params: PublicBlogSingleParams): Promise<PublicBlogSingleFormResponseType> {
     const {origin, languageCode, logger, slug} = params;
     logger.start(`Loading public blog post [${slug}]...`);
 

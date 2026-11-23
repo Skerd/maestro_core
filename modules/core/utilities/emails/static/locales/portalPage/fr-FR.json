@@ -1,0 +1,13 @@
+{
+  "tagline": "Boutiques, services, location de voitures, dentistes et biens immobiliers des entreprises locales, au même endroit.",
+  "companyTagline": "{company} sur {site}.",
+  "blog": "Blog",
+  "blogDescription": "Actualités, guides et histoires de {site}.",
+  "business": "Créez gratuitement le site de votre entreprise",
+  "businessDescription": "Mettez en ligne votre boutique, location de voitures, cabinet, services ou biens avec {site} : votre propre site, réservations et commandes en ligne, et une place sur le portail. Gratuit.",
+  "landing": "{section} à {city}",
+  "landingDescription": "{count} offres à {city}. {sectionDescription}",
+  "listings": "Offres",
+  "businesses": "Entreprises",
+  "cities": "Par ville"
+}

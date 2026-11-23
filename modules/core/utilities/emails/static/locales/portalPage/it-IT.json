@@ -1,0 +1,13 @@
+{
+  "tagline": "Negozi, servizi, noleggio auto, dentisti e immobili delle attività locali, in un unico posto.",
+  "companyTagline": "{company} su {site}.",
+  "blog": "Blog",
+  "blogDescription": "Notizie, guide e storie da {site}.",
+  "business": "Crea gratis il sito della tua attività",
+  "businessDescription": "Porta online il tuo negozio, noleggio auto, studio, servizi o immobili con {site}: un sito tuo, prenotazioni e ordini online e un posto sul portale. Gratis.",
+  "landing": "{section} a {city}",
+  "landingDescription": "{count} offerte a {city}. {sectionDescription}",
+  "listings": "Offerte",
+  "businesses": "Attività",
+  "cities": "Per città"
+}

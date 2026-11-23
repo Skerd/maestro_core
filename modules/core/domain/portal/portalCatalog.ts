@@ -93,3 +93,19 @@ export function samePriceCurrencyCompanies(
     const currency = picked ?? common;
     return companyIds.filter((id) => currencies.get(id.toString()) === currency);
 }
+
+/** An item page's path read back (D181): its segments and its query (`/categories/suv?x=1` → `["categories", "suv"]`). */
+export function itemPagePath(path: string): {segments: string[]; query: URLSearchParams} {
+    const [pathname, search = ""] = path.split("?");
+    return {segments: pathname.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment)), query: new URLSearchParams(search)};
+}
+
+/** The clause for a row an item page names by its slug or its id, as the section's own links write it (D181). */
+export function slugOrIdClause(value: string): Record<string, unknown> {
+    return {$or: [{slug: value}, ...(ObjectId.isValid(value) ? [{_id: new ObjectId(value)}] : [])]};
+}
+
+/** The clause for a row an item page names by its id; null when the value is not one (D181). */
+export function idClause(value: string | null | undefined): Record<string, unknown> | null {
+    return value && ObjectId.isValid(value) ? {_id: new ObjectId(value)} : null;
+}

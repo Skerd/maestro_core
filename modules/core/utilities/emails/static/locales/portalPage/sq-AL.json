@@ -1,0 +1,13 @@
+{
+  "tagline": "Dyqane, shërbime, makina me qira, dentistë dhe prona nga bizneset vendase, në një vend.",
+  "companyTagline": "{company} në {site}.",
+  "blog": "Blogu",
+  "blogDescription": "Lajme, udhëzues dhe histori nga {site}.",
+  "business": "Krijoni faqen falas të biznesit tuaj",
+  "businessDescription": "Vendoseni online dyqanin, qiranë e makinave, klinikën, shërbimet ose pronat tuaja me {site}: faqja juaj, rezervime dhe porosi online, dhe një vend në portal. Falas.",
+  "landing": "{section} në {city}",
+  "landingDescription": "{count} oferta në {city}. {sectionDescription}",
+  "listings": "Ofertat",
+  "businesses": "Bizneset",
+  "cities": "Sipas qytetit"
+}

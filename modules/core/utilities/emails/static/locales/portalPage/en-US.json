@@ -1,0 +1,13 @@
+{
+  "tagline": "Shops, services, car rentals, dentists and homes from local businesses, in one place.",
+  "companyTagline": "{company} on {site}.",
+  "blog": "Blog",
+  "blogDescription": "News, guides and stories from {site}.",
+  "business": "Create your free business site",
+  "businessDescription": "Put your shop, car rental, clinic, services or properties online with {site}: your own site, online bookings and orders, and a place on the portal. Free.",
+  "landing": "{section} in {city}",
+  "landingDescription": "{count} listings in {city}. {sectionDescription}",
+  "listings": "Listings",
+  "businesses": "Businesses",
+  "cities": "By city"
+}

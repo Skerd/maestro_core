@@ -103,6 +103,7 @@ export function validateUnsubscribeToken(
         return decoded as UnsubscribeTokenPayload;
     }
     catch {
-        throw apiValidationException("token_verification_failed", null, null, languageCode);
+        // A mailed link's own failure, never read as an expired session (TD-B256).
+        throw apiValidationException("link_no_longer_valid", null, null, languageCode);
     }
 }

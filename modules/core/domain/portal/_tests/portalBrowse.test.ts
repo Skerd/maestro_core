@@ -3,6 +3,7 @@ import {ObjectId} from "mongodb";
 import {browsePortal} from "../portalBrowse";
 import {clearPortalProviders, registerPortalProvider} from "../portalProviderRegistry";
 import type {PortalBrowseParams, PortalProvider} from "../portalProvider.types";
+import {fixtureSectionNames} from "@coreModule/domain/portal/_tests/fixtureSectionNames";
 
 const tirana = new ObjectId();
 const vlore = new ObjectId();
@@ -17,6 +18,7 @@ function fakeProvider(key: string, kinds: string[], order: number) {
     const provider: PortalProvider = {
         key,
         order,
+        ...fixtureSectionNames(key),
         kinds,
         companyIds: async (scope) => scope.companyId ? [scope.companyId] : [tirana, vlore],
         citiesByCompany: async () => new Map([[tirana.toString(), ["Tirana"]], [vlore.toString(), ["Vlorë"]]]),

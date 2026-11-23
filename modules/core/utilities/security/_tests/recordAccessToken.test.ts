@@ -35,6 +35,12 @@ describe("record access tokens", () => {
         expect(() => validateRecordAccessToken(token, "rentalReservation")).toThrow();
     });
 
+    it("answers a broken link with its own code, never the expired-session one (TD-B256)", () => {
+        const token = generateRecordAccessToken({purpose: "appointment", companyId: COMPANY, recordId: RECORD, version: 1});
+        expect(() => validateRecordAccessToken(token, "rentalReservation")).toThrow(expect.objectContaining({error_code: "link_no_longer_valid"}));
+        expect(() => validateRecordAccessToken("not-a-token", "appointment")).toThrow(expect.objectContaining({error_code: "link_no_longer_valid"}));
+    });
+
     it("never authenticates an API call", () => {
         const token = generateRecordAccessToken({purpose: "appointment", companyId: COMPANY, recordId: RECORD, version: 1});
         expect(() => validateJWTToken(token)).toThrow();

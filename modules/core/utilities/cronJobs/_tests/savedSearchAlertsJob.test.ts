@@ -17,6 +17,7 @@ import {runSavedSearchAlerts, SAVED_SEARCH_STOP_PURPOSE} from "@coreModule/utili
 import {buildSavedSearchAlertMail, type SavedSearchDigest} from "@coreModule/utilities/emails/savedSearchAlertMail";
 import {validateRecordAccessToken} from "@coreModule/utilities/security/recordAccessToken";
 import type {PortalCatalogItem} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
+import {fixtureSectionNames} from "@coreModule/domain/portal/_tests/fixtureSectionNames";
 
 /* D178, P23.7: the daily saved-search alert asks the portal's sections what is new and emails each person a digest. */
 
@@ -66,6 +67,7 @@ beforeEach(() => raw(async () => {
     registerPortalProvider({
         key: "fixture",
         order: 10,
+        ...fixtureSectionNames(),
         kinds: ["gadget"],
         companyIds: async (scope) => scope.companyId ? [scope.companyId] : [adria],
         citiesByCompany: async () => new Map([[adria.toString(), ["Tirana"]]]),

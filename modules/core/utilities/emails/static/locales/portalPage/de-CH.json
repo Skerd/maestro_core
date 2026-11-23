@@ -1,0 +1,13 @@
+{
+  "tagline": "Shops, Dienstleistungen, Autovermietungen, Zahnärzte und Immobilien von lokalen Firmen, an einem Ort.",
+  "companyTagline": "{company} auf {site}.",
+  "blog": "Blog",
+  "blogDescription": "News, Ratgeber und Geschichten von {site}.",
+  "business": "Erstellen Sie kostenlos die Website Ihrer Firma",
+  "businessDescription": "Bringen Sie Ihren Shop, Ihre Autovermietung, Praxis, Dienstleistungen oder Immobilien mit {site} online: eine eigene Website, Onlinebuchungen und -bestellungen und einen Platz im Portal. Kostenlos.",
+  "landing": "{section} in {city}",
+  "landingDescription": "{count} Angebote in {city}. {sectionDescription}",
+  "listings": "Angebote",
+  "businesses": "Firmen",
+  "cities": "Nach Ort"
+}

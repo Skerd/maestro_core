@@ -25,7 +25,9 @@ import {
     DeactivateCompanyFormType
 } from "armonia/src/modules/core/api/company/private/company/deactivateCompany.form.type";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
-import Company from "@coreModule/database/schemas/company/company";
+import Company, {type ICompany} from "@coreModule/database/schemas/company/company";
+import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
+import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
 import {MediaUploaded, mediaUploadMW} from "@coreModule/utilities/middlewares/mediaUploadMW";
 import {getGridFSStorage} from "@coreModule/utilities/gridfs/gridfsStorage";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
@@ -273,6 +275,25 @@ type UpdateCompanyType = TransactionRequiredParams & EditCompanyFormType & Media
  * @param params - Transaction, form, media upload, and authenticated parameters
  * @returns Success message
  */
+/** Companies above any company: deeper than this is a loop already stored, not a real tree. */
+const PARENT_CHAIN_MAX = 64;
+
+/**
+ * Refuses a parent that is the company itself or one of its own descendants (TD-B263): walking up from the new parent
+ * must never reach the company, or the companies would be each other's parents.
+ */
+async function assertNoParentLoop(companyId: ObjectId, newParent: ICompany, options: CrudOptions & {languageCode: string}): Promise<void> {
+    let current: ICompany | null = newParent;
+    for (let depth = 0; current && depth < PARENT_CHAIN_MAX; depth++) {
+        if (current._id.equals(companyId)) {
+            throw apiValidationException("parent_company_loop", "parentCompany", null, options.languageCode);
+        }
+        // The parent is stored as a reference, populated or not.
+        const above = nestedEntityToRef(current.parentCompany);
+        current = above ? await companyService.findById(above, options) : null;
+    }
+}
+
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
     const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, timezone, allowedDomains, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
@@ -292,6 +313,7 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
         if (!parentCompanyInfo) {
             throw apiValidationException("parent_company_does_not_exist", null, null, languageCode);
         }
+        await assertNoParentLoop(existingCompany._id, parentCompanyInfo, {session, logger, languageCode});
         existingCompany.parentCompany = parentCompanyInfo;
     }
 
