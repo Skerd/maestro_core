@@ -137,6 +137,17 @@ describe("the daily saved-search alert (P23.7)", () => {
         expect((await raw(() => PortalSavedSearch.findById(lamps).lean().exec()))?.lastAlertAt.getTime()).toBe(lastAlert.getTime());
     });
 
+    it("leaves every search as it was in a process with no portal section registered (P23.12)", async () => {
+        const lamps = new ObjectId();
+        await raw(() => PortalSavedSearch.collection.insertOne(search({_id: lamps, user: ada, label: "Lamps", query: "lamp"})));
+        clearPortalProviders();
+        const deliver = vi.fn(async () => undefined);
+
+        expect(await raw(() => runSavedSearchAlerts(platform, {now, deliver}))).toEqual({searches: 0, people: 0, sent: 0, failed: 0, items: 0});
+        expect(deliver).not.toHaveBeenCalled();
+        expect((await raw(() => PortalSavedSearch.findById(lamps).lean().exec()))?.lastAlertAt.getTime()).toBe(lastAlert.getTime());
+    });
+
     it("finds nothing to send in a company that stores no saved searches", async () => {
         await raw(() => PortalSavedSearch.collection.insertOne(search({user: ada, label: "Lamps"})));
         const deliver = vi.fn(async () => undefined);

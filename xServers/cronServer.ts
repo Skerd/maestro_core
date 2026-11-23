@@ -13,6 +13,7 @@ import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {CRON, KAFKA} from "@coreModule/environment";
 import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
 import {registerAllNotificationHandlers} from "@coreModule/domain/notifications/registerAllNotificationHandlers";
+import {registerAllPortalProviders} from "@coreModule/domain/portal/registerAllPortalProviders";
 import {seedPlatformCronJobs} from "@coreModule/cronjobs/bootstrap/seedPlatformJobs";
 import {schedulerEngine} from "@coreModule/cronjobs/engine/schedulerEngine";
 import "@coreModule/database/schemas/cronJob/cronJob";
@@ -47,6 +48,8 @@ async function setCronUp(logger: serverLogger): Promise<void> {
         await loadAllCronHandlers(logger);
         // Jobs emit notification events in this process; without the handlers here they would be dropped.
         await registerAllNotificationHandlers(logger);
+        // The saved-search alerts ask the portal's sections what is new; without them here every alert found nothing.
+        await registerAllPortalProviders(logger);
         if (CRON.SEED_PLATFORM_JOBS) {
             await seedPlatformCronJobs();
         }

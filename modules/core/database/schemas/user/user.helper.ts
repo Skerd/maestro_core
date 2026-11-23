@@ -1,13 +1,18 @@
 /**
  * Company memberships of an existing account: the embedded company role a user gets when joining a company, and the
  * write that adds it. Shared by a company adding an existing user (`api/company/private/users.ts`) and the portal
- * sign-in that joins the platform company (D101, `api/user/public/login.ts`).
+ * sign-in that joins the platform company (D101, `api/user/public/login.ts`). Also the guest records an account
+ * claims once its email is verified (P23.9).
  */
 import {ObjectId} from "mongodb";
 import type {IUser} from "@coreModule/database/schemas/user/user";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
+import {getEnabledModuleNames} from "@coreModule/utilities/modules/enabledModules";
+import {moduleBootstrapHook, type AccountVerifiedContext} from "@coreModule/utilities/modules/moduleCompanyDefaults";
+import {runAfterCommit} from "@coreModule/utilities/middlewares/transactionUtils";
+import {runInTransaction} from "@coreModule/utilities/middlewares/runInTransaction";
 
 /**
  * Builds the embedded company-role subdocument added to a user when they join a company.
@@ -56,5 +61,33 @@ export async function addExistingUserToCompany(existingUser: IUser, companyId: O
         logger: opts.logger,
         languageCode: opts.languageCode,
         auditUserId: opts.auditUserId,
+    });
+}
+
+/**
+ * P23.9: a person who booked as a guest and later holds an account with that email, verified, finds those bookings in
+ * the account. Every module this server runs gets the account (its `onAccountVerified`) and claims its own guest
+ * records. Called when an email gets verified and at each portal sign-in; nothing happens for an unverified account.
+ * The claim waits for the caller's transaction to commit and gives each module a transaction of its own, so it can
+ * never roll back the sign-in or activation: a module that fails is logged and skipped. It still finishes before the
+ * response, so the account's pages already list what it claimed.
+ */
+export async function claimGuestRecords(
+    user: Pick<IUser, "_id" | "username" | "isEmailVerified">,
+    context: Omit<AccountVerifiedContext, "userId" | "email">,
+): Promise<void> {
+    if (!user.isEmailVerified) return;
+    const email = user.username.trim().toLowerCase();
+    const {logger, languageCode} = context;
+    await runAfterCommit(context.session, async () => {
+        for (const moduleName of getEnabledModuleNames()) {
+            if (moduleName === "core") continue;
+            try {
+                const hook = await moduleBootstrapHook(moduleName, "onAccountVerified");
+                if (hook) await runInTransaction(logger, (session) => hook({userId: user._id, email, session, logger, languageCode}));
+            } catch (error) {
+                logger.err(`Module '${moduleName}' could not claim the guest records of account ${user._id}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
     });
 }

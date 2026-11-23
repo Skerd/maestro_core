@@ -61,6 +61,8 @@ export interface ActivationEmailEvent {
     companyId?: string;
     /** Browser host that requested signup (no protocol). Routes activate link to public app when matching. */
     origin?: string;
+    /** The site's own path to open after the first sign-in (`?next=` on a portal or public link), checked at sign-up. */
+    next?: string;
 }
 
 /**

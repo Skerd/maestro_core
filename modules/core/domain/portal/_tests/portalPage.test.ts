@@ -119,6 +119,17 @@ describe("describePortalPage (D181)", () => {
         expect(await page("/fixture/nobody")).toMatchObject({indexable: false});
     });
 
+    it("speaks the language the address names, keeps it in the canonical address, and links every language (D181)", async () => {
+        const albanian = await page("/fixture/in/tirane?lang=sq-AL");
+        expect(albanian).toMatchObject({language: "sq-AL", title: "Fixture fixture në Tiranë · Kudoo", canonical: "https://portal.test/fixture/in/tirane?lang=sq-AL", indexable: true});
+        expect(albanian?.alternates).toContainEqual({hreflang: "de-CH", href: "https://portal.test/fixture/in/tirane?lang=de-CH"});
+        expect(albanian?.alternates).toContainEqual({hreflang: "x-default", href: "https://portal.test/fixture/in/tirane"});
+        expect(albanian?.alternates).toHaveLength(6);
+        // A language is not a search: the catalog in Italian is still a page to list.
+        expect(await page("/?kind=gadget&lang=it-IT")).toMatchObject({language: "it-IT", canonical: "https://portal.test/?kind=gadget&lang=it-IT", indexable: true});
+        expect(await page("/?lang=xx-XX")).toMatchObject({language: "en-US", canonical: "https://portal.test/"});
+    });
+
     it("keeps private pages and unknown addresses out of search engines", async () => {
         expect(await page("/account/saved")).toMatchObject({indexable: false, title: "Kudoo"});
         expect(await page("/business/new")).toMatchObject({indexable: false});
@@ -157,6 +168,8 @@ describe("renderPortalPage (D181)", () => {
         expect(forPeople).not.toContain("<script>alert(1)");
         expect(forPeople).toContain("\\u003c/script>\\u003cscript>x()\\u003c/script>");
         expect(forPeople).toContain('<link rel="canonical" href="https://portal.test/blog" />');
+        expect(forPeople).toContain('<link rel="alternate" hreflang="sq-AL" href="https://portal.test/blog?lang=sq-AL" />');
+        expect(forPeople).toContain('<meta property="og:locale" content="en_US" />');
         expect(forPeople).toContain('<div id="root"></div>');
 
         const forCrawlers = renderPortalPage(template, evil, true);
@@ -191,5 +204,8 @@ describe("portalRobots and portalSitemap (D181)", () => {
             expect(xml).toContain(`<loc>https://portal.test${path}</loc>`);
         }
         expect(xml).not.toContain("/fixture/in/vlore");
+        // Each page in every language, each naming the others.
+        expect(xml).toContain("<loc>https://portal.test/fixture/in/tirane?lang=sq-AL</loc>");
+        expect(xml).toContain('<xhtml:link rel="alternate" hreflang="x-default" href="https://portal.test/fixture/in/tirane"/>');
     });
 });

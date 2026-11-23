@@ -8,7 +8,7 @@
  */
 
 import type {PortalCatalogItem, PortalLanding} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
-import type {SupportedLocale} from "armonia/src/modules/core/constants";
+import {SUPPORTED_LOCALES, type SupportedLocale} from "armonia/src/modules/core/constants";
 import {portalCitySlug} from "armonia/src/modules/core/helpers/slug";
 import type {PublicBlogFormResponseType} from "armonia/src/modules/core/api/auxiliary/public/blog/blog.form.response.type";
 import type {PublicBlogSingleFormResponseType} from "armonia/src/modules/core/api/auxiliary/public/blog/blogSingle.form.response.type";
@@ -30,8 +30,10 @@ export type PortalPage = {
     /** The whole `<title>`. */
     title: string;
     description: string;
-    /** The page's absolute address as search engines should list it. */
+    /** The page's absolute address as search engines should list it (with `?lang=` when the address chose the language). */
     canonical: string;
+    /** The page in every language (`?lang=`), and `x-default` without it (D181): hreflang links. */
+    alternates: {hreflang: string; href: string}[];
     /** Absolute address of the share preview's picture. */
     image?: string;
     siteName: string;
@@ -73,21 +75,40 @@ type PageContext = {
     company: ICompany;
     scope: PortalScope;
     language: SupportedLocale;
+    /** The language the address asks for (`?lang=`), which its canonical keeps; absent when the browser's language was taken. */
+    addressLanguage?: SupportedLocale;
     words: Record<string, string>;
     siteName: string;
     blog: PortalBlogReader;
 };
 
+/** The locale `?lang=` names, when it names one the portal speaks. */
+export function addressLanguageOf(path: string): SupportedLocale | undefined {
+    const asked = new URL(path, "http://portal").searchParams.get("lang");
+    return SUPPORTED_LOCALES.find((locale) => locale === asked);
+}
+
+/** `path` (query included) in `language`, or without any `lang` for the default address. */
+export function withAddressLanguage(path: string, language?: SupportedLocale): string {
+    const url = new URL(path, "http://portal");
+    url.searchParams.delete("lang");
+    if (language) url.searchParams.set("lang", language);
+    return `${url.pathname}${url.search}`;
+}
+
 /** The page at `request.path`, or null when the host is not a portal site (the gateway then serves the app as it is). */
 export async function describePortalPage(request: PortalPageRequest, blog: PortalBlogReader): Promise<PortalPage | null> {
     const host = await hostCompany(request.host, request.languageCode).catch(() => null);
     if (!host) return null;
-    const language = resolveEmailLocaleTag(request.languageCode);
+    // An address naming its language (`?lang=sq-AL`, D181) wins over the browser's: that is the page search engines list.
+    const addressLanguage = addressLanguageOf(request.path);
+    const language = addressLanguage ?? resolveEmailLocaleTag(request.languageCode);
     const context: PageContext = {
         request,
         company: host.company,
         scope: host.scope,
         language,
+        addressLanguage,
         words: loadEmailStrings(["portalPage"], language),
         siteName: host.company.name,
         blog,
@@ -114,11 +135,16 @@ async function routePage(context: PageContext): Promise<PortalPage> {
     return companySitePage(context, provider, listed, rest.slice(1), url.search);
 }
 
-function base(context: PageContext, pathname: string): Pick<PortalPage, "language" | "siteName" | "canonical" | "indexable" | "type" | "jsonLd" | "links"> {
+function base(context: PageContext, pathname: string): Pick<PortalPage, "language" | "siteName" | "canonical" | "alternates" | "indexable" | "type" | "jsonLd" | "links"> {
+    const {baseUrl} = context.request;
     return {
         language: context.language,
         siteName: context.siteName,
-        canonical: `${context.request.baseUrl}${pathname}`,
+        canonical: `${baseUrl}${withAddressLanguage(pathname, context.addressLanguage)}`,
+        alternates: [
+            ...SUPPORTED_LOCALES.map((locale) => ({hreflang: locale, href: `${baseUrl}${withAddressLanguage(pathname, locale)}`})),
+            {hreflang: "x-default", href: `${baseUrl}${withAddressLanguage(pathname)}`},
+        ],
         indexable: PORTAL_SEARCH_INDEXING,
         type: "website",
         jsonLd: [],
@@ -164,7 +190,7 @@ async function homePage(context: PageContext, query: URLSearchParams): Promise<P
     const kind = query.get("kind");
     const provider = kind ? listPortalProviders().find((candidate) => candidate.kinds.includes(kind)) : undefined;
     // A search or a filter is one visitor's question, not a page to list.
-    const narrowed = [...query.keys()].some((key) => key !== "kind");
+    const narrowed = [...query.keys()].some((key) => key !== "kind" && key !== "lang");
     if (provider && kind) return {...await kindPage(context, provider, kind), ...(narrowed ? {indexable: false} : {})};
     const landings = await portalLandings(context.scope, context.language);
     const perSection = await Promise.all(listPortalProviders().map(async (candidate) => {

@@ -58,7 +58,7 @@ import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {asCrossTenant, setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {userSessionService} from "@coreModule/database/schemas/userSession/userSession.service";
-import {addExistingUserToCompany, buildCompanyRoleData} from "@coreModule/database/schemas/user/user.helper";
+import {addExistingUserToCompany, buildCompanyRoleData, claimGuestRecords} from "@coreModule/database/schemas/user/user.helper";
 import type {IUser} from "@coreModule/database/schemas/user/user";
 import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
 
@@ -273,6 +273,11 @@ async function Login(
         const { token, refreshToken } = await user.generateJWTToken(company._id, requestSource, userSessionRow._id.toString(), languageCode);
         setMediaAuthCookie(response, token);
 
+        // A portal sign-in finds the guest bookings made with the account's email since (P23.9); a panel one does not.
+        if (isPortalZoneOrigin(origin)) {
+            await claimGuestRecords(user, { session, logger, languageCode });
+        }
+
         // One notice per sign-in (TD-B237): a new device gets the louder one instead of both.
         emitNotificationEvent(isNewDevice ? NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE : NotificationEventCodes.USER_LOGGED_IN, {
             receiverIds: [user._id.toString()],
@@ -358,12 +363,7 @@ async function LoginThirdParty(
         throw apiValidationException("third_party_login_not_allowed", null, null, languageCode);
     }
 
-    let userInfo: {
-        email: string;
-        name: string;
-        surname: string;
-        sub: string;
-    };
+    let userInfo: ThirdPartyProfile;
 
     // const googleParams = new URLSearchParams({
     //     client_id: process.env.GOOGLE_CLIENT_ID!,
@@ -402,12 +402,20 @@ async function LoginThirdParty(
         logger.err(`Failed to authenticate with ${platform}: ${error.message}`);
         throw apiValidationException("third_party_login_failed", null, null, languageCode);
     }
+    // The account is found by this email, and its guest bookings are claimed by it (P23.9): an address the provider has
+    // not verified proves nothing about who holds it.
+    if (!userInfo.email || !userInfo.emailVerified) {
+        logger.err(`Refused a ${platform} sign-in: the provider has not verified the email`);
+        throw apiValidationException("third_party_email_not_verified", null, null, languageCode);
+    }
 
     // const username = `${userInfo.name}#${userInfo.sub}`;
     const password = `${platform}Password@10${generator.generate({ length: 32, numbers: true, strict: true })}`;
 
     // Find or create user
     let user = await userService.findOne({ username: userInfo.email }, { session, logger, languageCode });
+    // A new account's email is verified by the provider as it is created.
+    const isNewAccount = !user;
 
     if (user) {
         user = await joinPlatformOnPortalSignIn(user, origin, undefined, { session, logger, languageCode });
@@ -457,6 +465,12 @@ async function LoginThirdParty(
         const { token, refreshToken } = await user.generateJWTToken(company._id, requestSource, userSessionRow._id.toString(), languageCode);
         setMediaAuthCookie(response, token);
 
+        // The guest bookings made with the email become the account's (P23.9): at a portal sign-in, and when the
+        // provider has just verified the email of a new account, wherever it signs up.
+        if (isNewAccount || isPortalZoneOrigin(origin)) {
+            await claimGuestRecords(user, { session, logger, languageCode });
+        }
+
         // One notice per sign-in (TD-B237): a new device gets the louder one instead of both.
         emitNotificationEvent(isNewDevice ? NotificationEventCodes.USER_LOGGED_IN_NEW_DEVICE : NotificationEventCodes.USER_LOGGED_IN, {
             receiverIds: [user._id.toString()],
@@ -479,6 +493,9 @@ async function LoginThirdParty(
     }
 }
 
+/** What a sign-in provider says about the person: `emailVerified` is the provider's own check of the address. */
+type ThirdPartyProfile = { email: string; emailVerified: boolean; name: string; surname: string; sub: string };
+
 /**
  * Authenticate with Google OAuth
  *
@@ -490,7 +507,7 @@ async function authenticateWithGoogle(
     code: string,
     languageCode: string,
     origin: string
-): Promise<{ email: string; name: string; surname: string; sub: string }> {
+): Promise<ThirdPartyProfile> {
 
     const CLIENT_ID = AUTHENTICATION.GOOGLE_CLIENT_ID;
     const CLIENT_SECRET = AUTHENTICATION.GOOGLE_CLIENT_SECRET;
@@ -525,6 +542,7 @@ async function authenticateWithGoogle(
 
     return {
         email: userInfoResponse.data.email,
+        emailVerified: userInfoResponse.data.email_verified === true,
         name: userInfoResponse.data.given_name || "",
         surname: userInfoResponse.data.family_name || "",
         sub: userInfoResponse.data.sub
@@ -544,7 +562,7 @@ async function authenticateWithApple(
     appleUserData: AppleUserData | undefined,
     languageCode: string,
     origin: string
-): Promise<{ email: string; name: string; surname: string; sub: string }> {
+): Promise<ThirdPartyProfile> {
 
     const KEY_ID = AUTHENTICATION.APPLE_KEY_ID;
     const CLIENT_ID = AUTHENTICATION.APPLE_CLIENT_ID;         // Services ID
@@ -605,7 +623,10 @@ async function authenticateWithApple(
     const name = payload.name?.firstName || appleUserData?.name.firstName || "";
     const surname = payload.name?.lastName || appleUserData?.name.lastName || "";
 
-    return { email, name, surname, sub };
+    // Apple's ID token sends it as a boolean or as the string "true".
+    const emailVerified = payload.email_verified === true || payload.email_verified === "true";
+
+    return { email, emailVerified, name, surname, sub };
 }
 
 /**

@@ -58,7 +58,7 @@ export async function AddToLoginHistory(data: LoginHistoryEvent, session?: Clien
 }
 
 export async function SendActivationEmail(data: ActivationEmailEvent, session?: ClientSession): Promise<void> {
-    const {email, fullName, languageCode, activationCode, userId, companyId, origin} = data;
+    const {email, fullName, languageCode, activationCode, userId, companyId, origin, next} = data;
     const resolvedCompanyId = await resolveCompanyIdForEmail(userId, companyId);
     await sendSignUpMail(
         resolvedCompanyId,
@@ -67,6 +67,7 @@ export async function SendActivationEmail(data: ActivationEmailEvent, session?: 
         activationCode,
         languageCode,
         origin,
+        next,
     );
 
 }

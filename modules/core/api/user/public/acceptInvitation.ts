@@ -44,6 +44,7 @@ import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
+import {claimGuestRecords} from "@coreModule/database/schemas/user/user.helper";
 
 const router = Router();
 
@@ -77,7 +78,8 @@ router.post(
 );
 /**
  * Accepts invitation: validates code, sets password, marks invitation accepted and email verified.
- * Activates the account. Uses user's own ID for audit (self-action).
+ * Activates the account and claims the guest records made with its email (P23.9). Uses user's own ID for audit
+ * (self-action).
  *
  * @param params - Transaction, form (invitationCode, password), logger, languageCode, session.
  * @returns Success message (user can log in).
@@ -165,6 +167,9 @@ async function acceptInvitation(params: TransactionRequiredParams & AcceptInvita
             auditUserId: user._id
         }));
     }
+
+    // The invitation proved the address it was sent to: guest bookings made with it become the account's (P23.9).
+    await claimGuestRecords({_id: user._id, username: user.username, isEmailVerified: true}, {session, logger, languageCode});
 
     if (notificationCompanyId) {
         emitNotificationEvent(NotificationEventCodes.ACCOUNT_ACTIVATED, {

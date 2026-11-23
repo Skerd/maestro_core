@@ -95,11 +95,12 @@ async function getCompanies(params: GetCompaniesType): Promise<TableResponse<Com
 
 /**
  * One company as the session may read it: the fields its role in THAT company grants (the session company's own
- * permissions when it is the one asked for).
+ * permissions when it is the one asked for, and for `asPlatform`, a platform admin reading a company they hold no role
+ * in, as the platform's company list reads every company).
  */
-async function readCompany(companyId: ObjectId, params: AuthenticatedMWType): Promise<CompanyData> {
+async function readCompany(companyId: ObjectId, params: AuthenticatedMWType, asPlatform = false): Promise<CompanyData> {
     const {logger, languageCode, actionUserCtx, actionUserInfo} = params;
-    const permissions = companyId.toString() === actionUserCtx.orgId ? actionUserCtx.permissions : await actionUserInfo.getCompanyRolePermissions(companyId);
+    const permissions = asPlatform || companyId.toString() === actionUserCtx.orgId ? actionUserCtx.permissions : await actionUserInfo.getCompanyRolePermissions(companyId);
     const ctx = {...actionUserCtx, permissions};
     const companyFields = COLLECTED_DATA["companies"]?.readFields || {};
     const perCompanyFields = SchemaGuard.sanitizeFields(Company, companyFields, "read", ctx, languageCode);
@@ -131,10 +132,11 @@ async function getCompany(params: AuthenticatedMWType & {_id: string}): Promise<
     const companyId = new ObjectId(params._id);
     const ownIds = userInfo.companies.map((c: {_id?: ObjectId}) => String(c._id ?? c));
     const platformAdmin = isPlatformCompany(params.company) && params.actionUserCtx.isAdmin;
-    if (!platformAdmin && !ownIds.includes(companyId.toString())) {
+    const member = ownIds.includes(companyId.toString());
+    if (!platformAdmin && !member) {
         throw apiValidationException("company_not_found", "", null, languageCode);
     }
-    return readCompany(companyId, params);
+    return readCompany(companyId, params, platformAdmin && !member);
 }
 
 /**

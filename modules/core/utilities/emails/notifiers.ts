@@ -73,9 +73,12 @@ function originBaseUrl(origin: string | undefined, mappedHost: string): string {
 
 /**
  * Public signup/forgot-password emails should deep-link into the SPA that
- * originated the request: the public app, another client (the portal, on any of its hosts), or the panel.
+ * originated the request: the public app, another client (the portal, on any of its hosts), or the panel. `next`
+ * (a same-site path, checked at sign-up) rides along on a public or portal link, so the person ends where they started
+ * signing up (P23.12); the panel's link has no use for it.
  */
-function resolveAuthLinkUrl(origin: string | undefined, publicPath: "activate" | "reset-password", code: string): string {
+function resolveAuthLinkUrl(origin: string | undefined, publicPath: "activate" | "reset-password", code: string, next?: string): string {
+    const query = next ? `?${new URLSearchParams({next})}` : "";
     const publicHost = clientHostFor("public");
     const publicHostOnly = hostOnly(publicHost);
     const originHost = hostOnly(origin ?? "");
@@ -83,13 +86,13 @@ function resolveAuthLinkUrl(origin: string | undefined, publicPath: "activate" |
     const coreHostOnly = hostOnly(coreHost);
 
     if (originHost && publicHostOnly && originHost === publicHostOnly) {
-        return `${originBaseUrl(origin, publicHost)}/${publicPath}/${code}`;
+        return `${originBaseUrl(origin, publicHost)}/${publicPath}/${code}${query}`;
     }
 
     if (originHost && originHost !== coreHostOnly) {
         const portalHost = clientHostFor("portal");
         const mapped = hostOnly(portalHost) === originHost ? portalHost : "";
-        return `${originBaseUrl(origin, mapped)}/${publicPath}/${code}`;
+        return `${originBaseUrl(origin, mapped)}/${publicPath}/${code}${query}`;
     }
 
     if (publicPath === "activate") {
@@ -174,6 +177,7 @@ export async function sendSignUpMail(
     activationCode: string,
     languageCode: string = CONSTANTS.DEFAULT_LANGUAGE ?? fallbackLanguageCode,
     origin?: string,
+    next?: string,
 ): Promise<void> {
     if (!canSendEmails()) {
         return;
@@ -186,7 +190,7 @@ export async function sendSignUpMail(
 
     emailTemplate = applyPlaceholders(emailTemplate, layoutStrings(strings));
 
-    const activationUrl = resolveAuthLinkUrl(origin, "activate", activationCode);
+    const activationUrl = resolveAuthLinkUrl(origin, "activate", activationCode, next);
     emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, activationUrl);
 
     const values = {

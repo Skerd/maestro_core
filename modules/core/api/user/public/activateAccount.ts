@@ -31,6 +31,7 @@ import {
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
+import {claimGuestRecords} from "@coreModule/database/schemas/user/user.helper";
 
 const router = Router();
 
@@ -66,7 +67,8 @@ router.put(
 );
 /**
  * Activates account: validates code, sets username from activation request if present, marks email
- * verified, clears activation request. Uses user's own ID for audit (self-action).
+ * verified, clears activation request, and claims the guest records made with that email (P23.9). Uses user's own ID
+ * for audit (self-action).
  *
  * @param params - Transaction, form (code), logger, languageCode, session.
  * @returns Success message.
@@ -86,7 +88,7 @@ async function ActivateAccount(params: TransactionRequiredParams & ActivateAccou
         throw apiValidationException("activation_code_not_valid", null, null, languageCode)
     }
 
-    await userService.updateByIdOrThrow(
+    const activated = await userService.updateByIdOrThrow(
         user._id,
         {
             $set: {
@@ -100,6 +102,8 @@ async function ActivateAccount(params: TransactionRequiredParams & ActivateAccou
         },
         { session, logger, languageCode, auditUserId: user._id.toString() }
     );
+    // The address is now proven: guest bookings made with it become the account's (P23.9).
+    await claimGuestRecords(activated, { session, logger, languageCode });
 
     const companyRef = user.companies?.[0];
     const notificationCompanyId = companyRef

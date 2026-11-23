@@ -153,7 +153,7 @@ router.get(
 );
 
 /** What a node shows; each is read only when the caller's permissions allow it (SEC-09). */
-const COMPANY_TREE_FIELDS = {name: {}, logo: {}, vat: {}, parentCompany: {}, isActive: {}};
+const COMPANY_TREE_FIELDS = {name: {}, logo: {}, vat: {}, parentCompany: {}, isActive: {}, signupSource: {}};
 
 async function getCompanyTree(params: AuthenticatedMWType): Promise<CompanyTreeResponse> {
     assertPlatformAdmin(params);
@@ -176,6 +176,11 @@ async function getCompanyTree(params: AuthenticatedMWType): Promise<CompanyTreeR
         ...(readable.has("isActive") ? {isActive: company.isActive} : {}),
         isPlatformOwner: company.isPlatformOwner === true,
         ...(company.portalApproval?.status ? {portalApprovalStatus: company.portalApproval.status} : {}),
+        // The source's id only: its name is on its own row, as with the parent.
+        ...(readable.has("signupSource") && company.signupSource ? {signupSource: {
+            via: company.signupSource.via,
+            ...(company.signupSource.refCompany ? {refCompany: nestedEntityToRef(company.signupSource.refCompany)?.toString()} : {}),
+        }} : {}),
     }));
 
     logger.finish(`Fetched the hierarchy of ${data.length} companies!`);

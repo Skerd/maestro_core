@@ -51,7 +51,7 @@ beforeEach(() => asCrossTenant("test fixtures span companies", async () => {
     await Company.collection.insertMany([
         {_id: platform, company: platform, name: "Platform", vat: "P-1", isPlatformOwner: true, isActive: true, modules: ["core"], parentCompany: null, deletedAt: null},
         {_id: group, company: platform, name: "Group", vat: "G-1", logo, isActive: true, modules: ["core"], parentCompany: platform, portalApproval: {status: "pending"}, deletedAt: null},
-        {_id: branch, company: group, name: "Branch", isActive: false, modules: ["core"], parentCompany: group, deletedAt: null},
+        {_id: branch, company: group, name: "Branch", isActive: false, modules: ["core"], parentCompany: group, signupSource: {via: "selfServe", refCompany: group}, deletedAt: null},
         {_id: removed, company: group, name: "Removed", isActive: true, modules: ["core"], parentCompany: group, deletedAt: new Date()},
     ]);
 }));
@@ -61,7 +61,10 @@ describe("the platform's company hierarchy", {timeout: 60000}, () => {
         const res = await tree(reader);
         expect([res.status, res.body.error_code]).toEqual([200, undefined]);
         expect(res.body.data as CompanyTreeNode[]).toEqual([
-            {_id: branch.toString(), name: "Branch", parentCompany: group.toString(), isActive: false, isPlatformOwner: false},
+            {
+                _id: branch.toString(), name: "Branch", parentCompany: group.toString(), isActive: false, isPlatformOwner: false,
+                signupSource: {via: "selfServe", refCompany: group.toString()},
+            },
             {
                 _id: group.toString(), name: "Group", vat: "G-1", logo: logo.toString(), parentCompany: platform.toString(),
                 isActive: true, isPlatformOwner: false, portalApprovalStatus: "pending",
@@ -71,12 +74,13 @@ describe("the platform's company hierarchy", {timeout: 60000}, () => {
     });
 
     it("leaves out what the caller may not read", async () => {
-        const partial: TestCaller = {...admin, permissions: reader.permissions!.filter((tag) => !["companies[read:vat]", "companies[read:logo]"].includes(tag))};
+        const partial: TestCaller = {...admin, permissions: reader.permissions!.filter((tag) => !["companies[read:vat]", "companies[read:logo]", "companies[read:signupSource]"].includes(tag))};
         const res = await tree(partial);
         expect([res.status, res.body.error_code]).toEqual([200, undefined]);
         expect((res.body.data as CompanyTreeNode[]).find((node) => node.name === "Group")).toEqual({
             _id: group.toString(), name: "Group", parentCompany: platform.toString(), isActive: true, isPlatformOwner: false, portalApprovalStatus: "pending",
         });
+        expect((res.body.data as CompanyTreeNode[]).find((node) => node.name === "Branch")).not.toHaveProperty("signupSource");
     });
 
     it("is refused to anyone but a platform admin", async () => {

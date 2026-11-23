@@ -11,13 +11,14 @@ import {PORTAL_SEARCH_INDEXING} from "@coreModule/environment";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 import {portalCompanyRefs} from "@coreModule/utilities/marketing/portalCompanies";
 import {escapeHtml} from "./portalPageHtml";
-import {PORTAL_PRIVATE_PATHS, type PortalBlogReader} from "./portalPage";
+import {SUPPORTED_LOCALES} from "armonia/src/modules/core/constants";
+import {PORTAL_PRIVATE_PATHS, withAddressLanguage, type PortalBlogReader} from "./portalPage";
 import {hostCompany, inPortalScope, sectionCompanies} from "./portalBrowse";
 import {portalLandings} from "./portalLandings";
 import {listPortalProviders} from "./portalProviderRegistry";
 
-/** One sitemap file holds at most 50,000 addresses; the portal stays well under it. */
-const MAX_URLS = 10000;
+/** One sitemap file holds at most 50,000 addresses: each page is listed in 6 versions (5 languages and the default). */
+const MAX_URLS = 8000;
 const PAGE = 200;
 
 export function portalRobots(baseUrl: string): string {
@@ -76,6 +77,14 @@ export async function portalSitemap(request: SitemapRequest, blog: PortalBlogRea
         }
     });
 
-    const urls = [...paths].map((path) => `  <url><loc>${escapeHtml(`${request.baseUrl}${path}`)}</loc></url>`);
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
+    // Every page in each language (`?lang=`, D181) and its default address, each naming all the others (hreflang).
+    const urls = [...paths].flatMap((path) => {
+        const versions = [
+            ...SUPPORTED_LOCALES.map((locale) => ({hreflang: locale, href: `${request.baseUrl}${withAddressLanguage(path, locale)}`})),
+            {hreflang: "x-default", href: `${request.baseUrl}${withAddressLanguage(path)}`},
+        ];
+        const links = versions.map((version) => `<xhtml:link rel="alternate" hreflang="${version.hreflang}" href="${escapeHtml(version.href)}"/>`).join("");
+        return versions.map((version) => `  <url><loc>${escapeHtml(version.href)}</loc>${links}</url>`);
+    });
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls.join("\n")}\n</urlset>\n`;
 }

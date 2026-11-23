@@ -21,6 +21,7 @@ import type {IPortalSavedSearch} from "@coreModule/database/schemas/portalSavedS
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {inPortalScope} from "@coreModule/domain/portal/portalBrowse";
+import {listPortalProviders} from "@coreModule/domain/portal/portalProviderRegistry";
 import {newPortalItemsSince} from "@coreModule/domain/portal/portalNewSince";
 import {companySiteUrl} from "@coreModule/utilities/marketing/portalCompanies";
 import {generateRecordAccessToken} from "@coreModule/utilities/security/recordAccessToken";
@@ -94,6 +95,12 @@ export async function runSavedSearchAlerts(
     const deliver: Deliver = options.deliver ?? ((digest) => sendSavedSearchAlertMail(companyId, digest));
     const result: SavedSearchAlertsResult = {searches: 0, people: 0, sent: 0, failed: 0, items: 0};
 
+    // Without the sections every search would look as if nothing were new and move on, losing its alert: the process
+    // must have registered them (`registerAllPortalProviders`; the cron server once did not, P23.12).
+    if (listPortalProviders().length === 0) {
+        logger.warn("No portal section is registered in this process: saved searches are left for a run that has them");
+        return result;
+    }
     const searches = await portalSavedSearchService.findAlerting(companyId, {logger});
     if (searches.length === 0) return result;
     result.searches = searches.length;

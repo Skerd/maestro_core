@@ -13,7 +13,9 @@ vi.mock("@coreModule/utilities/middlewares/authMW", async () => {
                 const companyId = String(req.body.company._id);
                 req.body.company = {...req.body.company, isPlatformOwner: companyId === ids.platform};
                 req.body.userInfo = {companies: [{_id: new Id(companyId)}]};
-                req.body.actionUserInfo = {getCompanyRolePermissions: async () => req.body.actionUserCtx.permissions};
+                // A role only in the company signed in to: elsewhere the user has no permissions, as for a platform
+                // admin who is no member of the company opened.
+                req.body.actionUserInfo = {getCompanyRolePermissions: async (id: unknown) => (String(id) === companyId ? req.body.actionUserCtx.permissions : [])};
                 next();
             }),
     };
@@ -70,8 +72,9 @@ describe("POST /api/companies/single (a company opened from a reference, D160)",
     });
 
     it("gives an admin of the platform company any company, and a non-admin there only their own", async () => {
+        // Read with the admin's platform permissions: they hold no role in the shop (the Sign-ups view's sheet, P23.12).
         const opened = await single(caller(platform, true), shop);
-        expect([opened.status, opened.body.name]).toEqual([200, "Kudoo Market"]);
+        expect([opened.status, opened.body.error_code, opened.body.name, opened.body.vat]).toEqual([200, undefined, "Kudoo Market", "S-1"]);
 
         const refused = await single(caller(platform, false), shop);
         expect(refused.body.error_code).toBe("company_not_found");

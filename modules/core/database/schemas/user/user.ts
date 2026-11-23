@@ -181,7 +181,8 @@ export interface IUser extends Document, ILifeCyclePluginFields {
 
     // Methods
     addLoginHistory: (companyId: ObjectId, request: any, error: ActionException | null, session?: ClientSession) => Promise<void>,
-    sendActivationEmail: (emailAddress: string, languageCode: string, session?: ClientSession, logger?: serverLogger, origin?: string) => Promise<void>,
+    /** `next`: the site's path to open after the first sign-in, carried on the activation link (P23.12). */
+    sendActivationEmail: (emailAddress: string, languageCode: string, session?: ClientSession, logger?: serverLogger, origin?: string, next?: string) => Promise<void>,
     isMfaEnabled: () => boolean,
     verifyMfa: (companyId: ObjectId, mfaCode: string, languageCode?: string) => Promise<void>,
     verifyRequestMfa: (mfaCode: string) => boolean,
@@ -1118,7 +1119,7 @@ UserSchema.methods.addLoginHistory = async function (companyId: ObjectId, req: a
     }
 }
 
-UserSchema.methods.sendActivationEmail = async function (emailAddress: string, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, session?: ClientSession, logger?: serverLogger, origin?: string): Promise<void> {
+UserSchema.methods.sendActivationEmail = async function (emailAddress: string, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, session?: ClientSession, logger?: serverLogger, origin?: string, next?: string): Promise<void> {
 
     const now = new Date();
 
@@ -1181,6 +1182,7 @@ UserSchema.methods.sendActivationEmail = async function (emailAddress: string, l
         timestamp: Date.now(),
         companyId: activationCompanyId,
         ...(origin ? {origin} : {}),
+        ...(next ? {next} : {}),
     }
 
     await sendAccountEmailAfterCommit(session, logger, "activation", () => publishActivationEmailEvent(activationEmail), () => SendActivationEmail(activationEmail));

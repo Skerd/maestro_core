@@ -43,7 +43,8 @@ const router = Router();
  * @route POST /api/user/signup
  * @access Public
  * @requires Transaction
- * @body {SignUpFormType} - email, password, name, surname
+ * @body {SignUpFormType} - email, password, name, surname, and optionally `next`, the site's path the activation link
+ * takes the person back to after signing in (P23.12)
  * @returns {Promise<{message: string}>} Success message
  *
  * @throws {apiValidationException} If user with same email exists, or default signup company/role not found
@@ -69,7 +70,7 @@ router.post(
  */
 async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType & SignUpFormType): Promise<SignupFormResponseType> {
 
-    const {email, password, name, surname, languageCode, session, logger, origin} = params;
+    const {email, password, name, surname, next, languageCode, session, logger, origin} = params;
 
     logger.start(`Trying to sign user up ${email}...`);
 
@@ -124,7 +125,7 @@ async function SignUp(params: TransactionRequiredParams & NotAuthenticatedMWType
     // Set auditUserId for self-action (new user requesting activation email for their own account)
     createdUser.$locals = createdUser.$locals || {};
     createdUser.$locals.auditUserId = createdUser._id;
-    await createdUser.sendActivationEmail(email, languageCode, session, logger, origin);
+    await createdUser.sendActivationEmail(email, languageCode, session, logger, origin, next);
 
     // Give the new user their single AI-assistant channel with the default company bot.
     await ensureAiChannel({
