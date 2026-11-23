@@ -131,4 +131,15 @@ describe("the apex listing (D178)", {timeout: 60000}, () => {
         expect([res.status, res.body.error_code, res.body.message]).toEqual([200, undefined, undefined]);
         expect((res.body.data as {name: string}[]).map((row) => row.name)).toEqual(["New Rentals"]);
     });
+    it("filters the platform's list by how a company signed up (P23.9)", async () => {
+        await asCrossTenant("test fixtures span companies", () =>
+            Company.collection.updateOne({_id: pending}, {$set: {signupSource: {via: "selfServe", refCompany: created}}}));
+        const reader: TestCaller = {...admin, permissions: allPermissionTags([Company])};
+        const res = await request(app).post("/api/platform/companies").set(callerHeader(reader)).send({
+            offset: 0, limit: 10,
+            filter: {id: "root", operator: "and", groups: [], rules: [{id: "r1", field: "signupSource.via", operator: "in", value: ["selfServe"]}]},
+        });
+        expect([res.status, res.body.error_code, res.body.message]).toEqual([200, undefined, undefined]);
+        expect((res.body.data as {name: string}[]).map((row) => row.name)).toEqual(["New Rentals"]);
+    });
 });

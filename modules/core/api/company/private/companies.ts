@@ -20,7 +20,7 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
 import {companiesBasicInfoFormSchema} from "armonia/src/modules/core/api/company/private/company/companiesBasicInfo.form.validator";
 import {escapeRegex} from "@coreModule/utilities/helpers";
-import {SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
+import {schemaSanitizer, SchemaSanitizerMWType} from "@coreModule/utilities/middlewares/schemaSanitizerMW";
 
 /**
  * Companies Listing Endpoints (Private)
@@ -54,6 +54,8 @@ router.post(
     authMW("private"),
     rateLimiter({windowMs: 60000, max: 60}),
     validateFormZod(validateTableForm),
+    // The filter compiles against the fields the caller may read; without it every search and filter was refused (TD-B253).
+    schemaSanitizer({model: "companies", requiredModes: ["read"]}),
     dslFilterMW({ model: "companies" }),
     asyncHandler(getCompanies)
 );
