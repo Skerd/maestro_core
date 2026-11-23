@@ -148,10 +148,11 @@ async function findLoginCompany(
         return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, allowedDomains: "*" }, opts);
     }
     if (candidates.length === 1) return candidates[0];
-    // Several answer (TD-B255): the one they last signed in to or switched to, whose session is the newest, not
-    // whichever the database lists first; without a session, one that names this host.
+    // Several answer (TD-B255): the one they last signed in to or switched to on this same host, whose session is the
+    // newest (a portal visit, on its own host, never decides the panel), not whichever the database lists first; without
+    // a session here, one that names this host.
     const latest = await asCrossTenant("sign-in picks the business the person last worked in", () => userSessionService.find(
-        { user: userId, company: { $in: candidates.map((company) => company._id) } },
+        { user: userId, host: origin, company: { $in: candidates.map((company) => company._id) } },
         opts,
         undefined,
         "company lastActiveAt",
@@ -264,7 +265,8 @@ async function Login(
             userAgent ?? "",
             requestIp ?? "",
             response,
-            languageCode
+            languageCode,
+            origin,
         );
 
         // Generate JWT token and refresh token
@@ -447,7 +449,8 @@ async function LoginThirdParty(
             userAgent ?? "",
             requestIp ?? "",
             response,
-            languageCode
+            languageCode,
+            origin,
         );
 
         // Generate JWT token and refresh token

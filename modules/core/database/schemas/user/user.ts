@@ -191,7 +191,8 @@ export interface IUser extends Document, ILifeCyclePluginFields {
         userAgent: string,
         ipAddress: string,
         response: Response,
-        languageCode: string
+        languageCode: string,
+        host?: string,
     ) => Promise<{ session: IUserSession; isNewDevice: boolean }>,
     generateJWTToken: (companyId: ObjectId, audience: "client" | "panel", userSessionId: string, languageCode?: string) => Promise<{token: string, refreshToken: string}>,
     sendDisableMfaEmail: (languageCode: string, session?: ClientSession, logger?: serverLogger) => Promise<void>,
@@ -1232,7 +1233,7 @@ UserSchema.methods.verifyRequestMfa = function (mfaCode: string): boolean {
     });
 }
 
-UserSchema.methods.createOrUpdateSession = async function (companyId: ObjectId, deviceId: string, userAgent: string, ipAddress: string, response: Response, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE): Promise<{ session: IUserSession; isNewDevice: boolean }> {
+UserSchema.methods.createOrUpdateSession = async function (companyId: ObjectId, deviceId: string, userAgent: string, ipAddress: string, response: Response, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, host?: string): Promise<{ session: IUserSession; isNewDevice: boolean }> {
 
     const { userSessionService } = await getServices();
 
@@ -1268,6 +1269,7 @@ UserSchema.methods.createOrUpdateSession = async function (companyId: ObjectId, 
         // Update existing session
         userSession.lastActiveAt = now;
         userSession.expiresAt = expiresAt;
+        if (host) userSession.host = host;
         userSession.ipAddress = ipAddress;
         if( userSession.geolocation && geolocation ){
             userSession.geolocation.push(geolocation);
@@ -1298,6 +1300,7 @@ UserSchema.methods.createOrUpdateSession = async function (companyId: ObjectId, 
             lastActiveAt: now,
             expiresAt,
             isActive: true,
+            ...(host ? {host} : {}),
         });
     }
 

@@ -58,10 +58,10 @@ beforeEach(async () => {
     });
 });
 
-/** A session the person had in `company`, last active at `at` (sign-in and switching keep it current). */
-const sessionIn = (company: ObjectId, at: string) => UserSession.collection.insertOne({
+/** A session the person had in `company`, last active at `at` (sign-in and switching keep it current), on a host. */
+const sessionIn = (company: ObjectId, at: string, host = "localhost") => UserSession.collection.insertOne({
     user: userId, company, deviceId: "other-device", sessionId: new ObjectId().toString(), userAgent: "vitest", ipAddress: "127.0.0.1",
-    isActive: true, lastActiveAt: new Date(at), expiresAt: new Date("2099-01-01T00:00:00Z"), createdAt: new Date(at),
+    isActive: true, lastActiveAt: new Date(at), expiresAt: new Date("2099-01-01T00:00:00Z"), createdAt: new Date(at), host,
 });
 
 /** The business the sign-in opened, read from its token. */
@@ -96,5 +96,12 @@ describe("sign-in with several businesses on one panel (TD-B255)", {timeout: 300
         await sessionIn(rentals, "2026-11-20T10:00:00Z");
         await sessionIn(clinic, "2026-11-22T10:00:00Z");
         expect(await signedInto()).toBe(clinic.toString());
+    });
+
+    it("does not let a newer visit on another host (the portal) decide which business the panel opens", async () => {
+        await sessionIn(rentals, "2026-11-20T10:00:00Z");
+        // Signing in on the portal makes a session on the portal's host, newer than the panel's.
+        await sessionIn(clinic, "2026-11-22T10:00:00Z", "portal.localhost");
+        expect(await signedInto()).toBe(rentals.toString());
     });
 });

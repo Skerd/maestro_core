@@ -74,7 +74,7 @@ async function ReLoginDifferentCompany(
     _req: Request,
     response: Response,
 ): Promise<ReloginDifferentCompanyFormResponseType> {
-    const { logger, userInfo, companyId, languageCode, requestSource, deviceId, userAgent, requestIp } = params;
+    const { logger, userInfo, companyId, languageCode, requestSource, deviceId, userAgent, requestIp, origin } = params;
 
     logger.start(`Trying to re-authenticate...`);
 
@@ -101,7 +101,9 @@ async function ReLoginDifferentCompany(
         userAgent ?? "",
         requestIp ?? "",
         null as any,
-        languageCode
+        languageCode,
+        // Switching business here is what the next sign-in on this host remembers (TD-B255).
+        origin,
     );
 
     const { token, refreshToken } = await userInfo.generateJWTToken(

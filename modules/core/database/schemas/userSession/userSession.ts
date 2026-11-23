@@ -45,6 +45,8 @@ export interface IUserSession extends Document, IOwnershipPluginFields, ISoftDel
     lastActiveAt: Date;
     expiresAt: Date;
     isActive: boolean;
+    /** The host the session signed in from: a sign-in there opens the business of the newest session on it (TD-B255). */
+    host?: string;
 }
 
 const geolocationItemSchema = {
@@ -196,6 +198,14 @@ const UserSessionSchema = new Schema<IUserSession>(
         isActive: {
             type: SchemaTypes.Boolean,
             default: true,
+        },
+        host: {
+            type: SchemaTypes.String,
+            permissions: {
+                self: {
+                    write: "no-permission"
+                },
+            },
         },
     },
     {
