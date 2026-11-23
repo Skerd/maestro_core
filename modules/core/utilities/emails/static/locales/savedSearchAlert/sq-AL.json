@@ -1,0 +1,20 @@
+{
+  "htmlLang": "sq",
+  "heading": "Të reja për kërkimet tuaja të ruajtura",
+  "preheader": "Çfarë u publikua në {pageName} që nga njoftimi i fundit.",
+  "subject": "{count} të reja për kërkimet tuaja të ruajtura në {pageName}",
+  "subjectOne": "1 e re për kërkimet tuaja të ruajtura në {pageName}",
+  "greeting": "Përshëndetje {fullName},",
+  "intro": "Ja çfarë u publikua që nga njoftimi i fundit, më të rejat në fillim.",
+  "seeResults": "Shihni të {count} rezultatet e reja",
+  "seeResultOne": "Shihni rezultatin e ri",
+  "more": "dhe {count} të tjera",
+  "moreOne": "dhe 1 tjetër",
+  "stop": "Ndalni njoftimet për këtë kërkim",
+  "priceFrom": "nga {price}",
+  "priceUpTo": "deri në {price}",
+  "pricePerDay": "{price} / ditë",
+  "ignore": "Te «Të ruajturat» në llogarinë tuaj mund t'i hapni kërkimet e ruajtura, t'ua çaktivizoni njoftimet ose t'i fshini.",
+  "footerNote": "E morët këtë email sepse ruajtët një kërkim me njoftime në {pageName}.",
+  "copyright": "© {year} {pageName}. Të gjitha të drejtat e rezervuara."
+}

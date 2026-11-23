@@ -1,0 +1,20 @@
+{
+  "htmlLang": "en",
+  "heading": "New for your saved searches",
+  "preheader": "What was listed on {pageName} since your last alert.",
+  "subject": "{count} new for your saved searches on {pageName}",
+  "subjectOne": "1 new for your saved searches on {pageName}",
+  "greeting": "Hello {fullName},",
+  "intro": "Here is what was listed since your last alert, newest first.",
+  "seeResults": "See all {count} new results",
+  "seeResultOne": "See the new result",
+  "more": "and {count} more",
+  "moreOne": "and 1 more",
+  "stop": "Stop the alerts for this search",
+  "priceFrom": "from {price}",
+  "priceUpTo": "up to {price}",
+  "pricePerDay": "{price} / day",
+  "ignore": "Under Saved in your account you can open your saved searches, turn their alerts off or delete them.",
+  "footerNote": "You received this email because you saved a search on {pageName} with alerts on.",
+  "copyright": "© {year} {pageName}. All rights reserved."
+}

@@ -1,0 +1,20 @@
+{
+  "htmlLang": "fr",
+  "heading": "Du nouveau pour vos recherches enregistrées",
+  "preheader": "Ce qui a été publié sur {pageName} depuis votre dernière alerte.",
+  "subject": "{count} nouveautés pour vos recherches enregistrées sur {pageName}",
+  "subjectOne": "1 nouveauté pour vos recherches enregistrées sur {pageName}",
+  "greeting": "Bonjour {fullName},",
+  "intro": "Voici ce qui a été publié depuis votre dernière alerte, du plus récent au plus ancien.",
+  "seeResults": "Voir les {count} nouveaux résultats",
+  "seeResultOne": "Voir le nouveau résultat",
+  "more": "et {count} de plus",
+  "moreOne": "et 1 de plus",
+  "stop": "Arrêter les alertes pour cette recherche",
+  "priceFrom": "à partir de {price}",
+  "priceUpTo": "jusqu'à {price}",
+  "pricePerDay": "{price} / jour",
+  "ignore": "Sous « Enregistrés » dans votre compte, vous pouvez ouvrir vos recherches enregistrées, désactiver leurs alertes ou les supprimer.",
+  "footerNote": "Vous recevez cet e-mail parce que vous avez enregistré une recherche avec alertes sur {pageName}.",
+  "copyright": "© {year} {pageName}. Tous droits réservés."
+}

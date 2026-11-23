@@ -4,11 +4,12 @@
  * @module portalCatalog
  */
 
-import type {ObjectId} from "mongodb";
+import {ObjectId} from "mongodb";
 import type {Model} from "mongoose";
 import type {PortalCatalogItem} from "armonia/src/modules/core/api/portal/public/portal/portal.dto";
 import type {PortalBrowseFilters} from "armonia/src/modules/core/api/portal/public/portal/portalBrowse.form.validator";
 import {portalCompanyRefs} from "@coreModule/utilities/marketing/portalCompanies";
+import type {PortalNewSinceContext} from "./portalProvider.types";
 
 /** One value of a kind's filter, the first when several were sent. */
 export function filterValue(filters: PortalBrowseFilters, name: string): string | undefined {
@@ -29,7 +30,17 @@ export function priceRange(priceMin?: number, priceMax?: number): Record<string,
     return {...(priceMin != null && {$gte: priceMin}), ...(priceMax != null && {$lte: priceMax})};
 }
 
-/** Catalog items of company-owned rows, each labelled with its company (rows of a gone company are dropped). */
+/**
+ * The clause a section adds to its catalog query to answer "new since" (D178): rows created after `since`, and only the
+ * rows `ids` names when it names some.
+ */
+export function newSinceClause({since, ids}: Pick<PortalNewSinceContext, "since" | "ids">): Record<string, unknown> {
+    return {
+        createdAt: {$gt: since},
+        ...(ids ? {_id: {$in: ids.filter((id) => ObjectId.isValid(id)).map((id) => new ObjectId(id))}} : {}),
+    };
+}
+
 /**
  * A catalog item's rating from a stored average and count (D178): `{rating}` to spread into the item when there are
  * reviews, nothing otherwise. The average keeps one decimal, as the cards show it.
@@ -39,6 +50,7 @@ export function catalogRating(average: number | undefined, count: number | undef
     return {rating: {average: Math.round(average * 10) / 10, count}};
 }
 
+/** Catalog items of company-owned rows, each labelled with its company (rows of a gone company are dropped). */
 export async function catalogItems<Row extends {company: ObjectId}>(
     rows: Row[],
     toItem: (row: Row) => Omit<PortalCatalogItem, "company">,

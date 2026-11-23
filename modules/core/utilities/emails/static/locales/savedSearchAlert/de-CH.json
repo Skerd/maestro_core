@@ -1,0 +1,20 @@
+{
+  "htmlLang": "de",
+  "heading": "Neu für Ihre gespeicherten Suchen",
+  "preheader": "Was seit Ihrer letzten Benachrichtigung auf {pageName} neu ist.",
+  "subject": "{count} neue Treffer für Ihre gespeicherten Suchen auf {pageName}",
+  "subjectOne": "1 neuer Treffer für Ihre gespeicherten Suchen auf {pageName}",
+  "greeting": "Guten Tag {fullName},",
+  "intro": "Das ist seit Ihrer letzten Benachrichtigung neu, das Neueste zuerst.",
+  "seeResults": "Alle {count} neuen Treffer ansehen",
+  "seeResultOne": "Den neuen Treffer ansehen",
+  "more": "und {count} weitere",
+  "moreOne": "und 1 weiterer",
+  "stop": "Benachrichtigungen für diese Suche beenden",
+  "priceFrom": "ab {price}",
+  "priceUpTo": "bis {price}",
+  "pricePerDay": "{price} / Tag",
+  "ignore": "Unter «Gespeichert» in Ihrem Konto öffnen Sie Ihre gespeicherten Suchen, schalten ihre Benachrichtigungen aus oder löschen sie.",
+  "footerNote": "Sie erhalten diese E-Mail, weil Sie auf {pageName} eine Suche mit Benachrichtigungen gespeichert haben.",
+  "copyright": "© {year} {pageName}. Alle Rechte vorbehalten."
+}

@@ -1,0 +1,20 @@
+{
+  "htmlLang": "it",
+  "heading": "Novità per le tue ricerche salvate",
+  "preheader": "Cosa è stato pubblicato su {pageName} dall'ultimo avviso.",
+  "subject": "{count} novità per le tue ricerche salvate su {pageName}",
+  "subjectOne": "1 novità per le tue ricerche salvate su {pageName}",
+  "greeting": "Ciao {fullName},",
+  "intro": "Ecco cosa è stato pubblicato dall'ultimo avviso, dal più recente.",
+  "seeResults": "Vedi tutti i {count} nuovi risultati",
+  "seeResultOne": "Vedi il nuovo risultato",
+  "more": "e altri {count}",
+  "moreOne": "e un altro",
+  "stop": "Interrompi gli avvisi per questa ricerca",
+  "priceFrom": "da {price}",
+  "priceUpTo": "fino a {price}",
+  "pricePerDay": "{price} / giorno",
+  "ignore": "In «Salvati» nel tuo account puoi aprire le ricerche salvate, disattivarne gli avvisi o eliminarle.",
+  "footerNote": "Ricevi questa email perché hai salvato una ricerca con avvisi su {pageName}.",
+  "copyright": "© {year} {pageName}. Tutti i diritti riservati."
+}

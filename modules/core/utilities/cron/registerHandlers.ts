@@ -9,6 +9,7 @@ import {registerCronHandler} from "@coreModule/cronjobs/registry/handlerRegistry
 import {runPublicChatRetention} from "@coreModule/utilities/cronJobs/publicChatRetentionJob";
 import {runOrphanUploadCleanup} from "@coreModule/utilities/cronJobs/orphanUploadCleanupJob";
 import {runSiteHostProbe} from "@coreModule/utilities/cronJobs/siteHostProbeJob";
+import {runSavedSearchAlerts} from "@coreModule/utilities/cronJobs/savedSearchAlertsJob";
 
 export function registerCorePlatformCronHandlers(): void {
     registerCronHandler({
@@ -37,6 +38,24 @@ export function registerCorePlatformCronHandlers(): void {
             name: "Orphaned upload cleanup",
             cronExpression: "0 0 4 * * *",
             priority: 40,
+            timeoutSeconds: 1800,
+        },
+    });
+
+    registerCronHandler({
+        code: "core.savedSearchAlerts",
+        handler: async ctx => {
+            // Saved searches live in the platform company (P23.7): every other company's run finds none.
+            const result = await runSavedSearchAlerts(ctx.company, {logger: ctx.logger});
+            ctx.appendLog(
+                `checked ${result.searches} saved search(es) of ${result.people} person(s): sent ${result.sent}, failed ${result.failed}, ${result.items} new item(s)`,
+            );
+        },
+        defaultJob: {
+            // Once a day, in the morning: a digest of what was listed since the last one.
+            name: "Saved-search alerts",
+            cronExpression: "0 0 8 * * *",
+            priority: 30,
             timeoutSeconds: 1800,
         },
     });

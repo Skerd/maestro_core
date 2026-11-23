@@ -9,16 +9,13 @@ import {getPortalProvider, listPortalProviders} from "@coreModule/domain/portal/
 import type {PortalProvider} from "@coreModule/domain/portal/portalProvider.types";
 import {
     findPlatformCompany,
-    findPortalSiteCompany,
     portalCompanyCards,
     portalCompanyProfile,
     portalSlug,
     type PortalScope,
 } from "@coreModule/utilities/marketing/portalCompanies";
-import {portalSiteSlug} from "@coreModule/utilities/marketing/portalOrigin";
-import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {markVerifiedCompanies} from "@coreModule/domain/portal/portalVerified";
-import {browsePortal, sectionCompanies} from "@coreModule/domain/portal/portalBrowse";
+import {browsePortal, hostCompany, inPortalScope, sectionCompanies} from "@coreModule/domain/portal/portalBrowse";
 import {portalCompaniesFormSchema} from "armonia/src/modules/core/api/portal/public/portal/portal.form.validators";
 import type {PortalCompaniesFormType} from "armonia/src/modules/core/api/portal/public/portal/portal.forms";
 import {
@@ -52,24 +49,6 @@ function requireProvider(key: string, languageCode: string): PortalProvider {
     const provider = getPortalProvider(key);
     if (!provider) throw apiValidationException("not_found", "", null, languageCode);
     return provider;
-}
-
-/** The company a portal host is: the one its subdomain names, else the platform owner (the apex). */
-async function hostCompany(origin: string, languageCode: string): Promise<{company: ICompany; scope: PortalScope}> {
-    const slug = portalSiteSlug(origin);
-    if (!slug) return {company: await findPlatformCompany(languageCode), scope: {}};
-    const company = await findPortalSiteCompany(slug, "core", languageCode);
-    return {company, scope: {companyId: company._id}};
-}
-
-/**
- * Portal reads stay inside one company on its site and span every listed company on the apex (D16).
- * The providers filter by the listed company ids themselves; this only states the scope.
- */
-function inPortalScope<T>(scope: PortalScope, read: () => Promise<T>): Promise<T> {
-    return scope.companyId
-        ? withTenant(scope.companyId, read)
-        : asCrossTenant("the portal apex lists every listed company", read);
 }
 
 router.post(
