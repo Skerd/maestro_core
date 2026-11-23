@@ -1,6 +1,7 @@
 import {ObjectId} from "mongodb";
 import type {ClientSession, FilterQuery} from "mongoose";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import {runModuleCompanyDefaults} from "@coreModule/utilities/modules/moduleCompanyDefaults";
 import type {CreateCompanyFormType} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import {resolveSiteSlug, type SiteSlugError} from "armonia/src/modules/core/api/company/private/company/siteSlug";
 import type {ICompany} from "@coreModule/database/schemas/company/company";
@@ -167,7 +168,7 @@ export async function createCompany(input: CreateCompanyInput, ctx: CreateCompan
     }
     const vat = input.vat?.trim();
     // Its row, roles and public logo are the new company's own data (D16).
-    return withTenant(newCompanyId, () => companyService.create(
+    const company = await withTenant(newCompanyId, () => companyService.create(
         {
             _id: newCompanyId,
             name: input.name,
@@ -195,4 +196,7 @@ export async function createCompany(input: CreateCompanyInput, ctx: CreateCompan
         },
         {session, logger, languageCode, auditUserId: ctx.auditUserId},
     ));
+    // What each of its modules sets up for a new company (TD-B254), e.g. property's starter unit types.
+    await runModuleCompanyDefaults(company, company.modules ?? [], {session, logger, languageCode});
+    return company;
 }

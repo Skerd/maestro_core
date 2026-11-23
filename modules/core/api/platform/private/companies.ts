@@ -12,6 +12,7 @@ import {apiValidationException} from "armonia/src/modules/core/helpers/exception
 import {TableForm, TableResponse} from "armonia/src/modules/core/types/shared.types";
 import {validateTableForm} from "armonia/src/modules/core/utilities/zod/shared.validator";
 import {Company as CompanyData} from "armonia/src/modules/core/api/company/private/company/company.dto";
+import {runModuleCompanyDefaults} from "@coreModule/utilities/modules/moduleCompanyDefaults";
 import {SetCompanyModulesFormType} from "armonia/src/modules/core/api/platform/private/companies/setCompanyModules.form.type";
 import {setCompanyModulesSchema} from "armonia/src/modules/core/api/platform/private/companies/setCompanyModules.form.validator";
 import {
@@ -232,6 +233,8 @@ async function setCompanyModules(params: SetCompanyModulesType, routeParams: {id
             await target.createDefaultRoles(logger, session);
             await target.seedCronJobs(session);
             await skipMissedCronRuns(target._id, enabled, session);
+            // What each newly granted module sets up for a company (TD-B254), e.g. property's starter unit types.
+            await runModuleCompanyDefaults(target, enabled, {session, logger, languageCode});
         }
     });
     await runAfterCommit(session, () => invalidateCompanyModules(target._id));
