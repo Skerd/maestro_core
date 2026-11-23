@@ -204,11 +204,13 @@ async function kindPage(context: PageContext, provider: PortalProvider, kind: st
         ? {items: []}
         : await provider.browse({kind, scope: context.scope, companyIds: ids, skip: 0, limit: COPY_ITEMS, filters: {}, languageCode: context.language});
     const names = provider.names[context.language];
+    // Named as its catalog tab names it, as the browser titles the page.
+    const kindName = names.kinds[kind] ?? names.title;
     return {
         ...base(context, `/?${new URLSearchParams({kind})}`),
-        title: `${names.title} · ${context.siteName}`,
+        title: `${kindName} · ${context.siteName}`,
         description: names.description,
-        heading: names.title,
+        heading: kindName,
         intro: names.description,
         links: page.items.map((item) => itemLink(context, provider, item)),
     };

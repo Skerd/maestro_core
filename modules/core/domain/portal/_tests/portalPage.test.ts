@@ -93,7 +93,8 @@ describe("describePortalPage (D181)", () => {
     });
 
     it("lists one kind's catalog, and keeps a search out of search engines", async () => {
-        expect(await page("/?kind=gadget")).toMatchObject({title: "Fixture fixture · Kudoo", canonical: "https://portal.test/?kind=gadget", indexable: true});
+        // Named as its catalog tab names it, as the browser titles it.
+        expect(await page("/?kind=gadget")).toMatchObject({title: "Gadgets · Kudoo", heading: "Gadgets", canonical: "https://portal.test/?kind=gadget", indexable: true});
         expect(await page("/?kind=gadget&q=blue")).toMatchObject({indexable: false});
         expect(await page("/?q=blue")).toMatchObject({indexable: false});
     });

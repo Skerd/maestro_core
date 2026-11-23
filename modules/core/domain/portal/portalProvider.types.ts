@@ -77,8 +77,11 @@ export type PortalProvider = {
     order: number;
     /** The section's address on the portal, e.g. `car-rental`: the same as its sinfonia portal contribution's `path` (D181). */
     sitePath: string;
-    /** The section's name and one-line description in each language, as the portal's section tabs show them (D181). */
-    names: Record<SupportedLocale, {title: string; description: string}>;
+    /**
+     * The section's name and one-line description in each language, and its kinds' names as the catalog's tabs show them
+     * (D181), e.g. `{title: "Car rental", …, kinds: {vehicleCategory: "Cars"}}`.
+     */
+    names: Record<SupportedLocale, {title: string; description: string; kinds: Record<string, string>}>;
     /** Item kinds the section lists in the home catalog. */
     kinds: readonly string[];
     /** Companies this section shows in `scope`: opted in on the apex, the company itself on its own site. */
