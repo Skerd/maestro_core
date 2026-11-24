@@ -31,6 +31,34 @@ export type TransactionRequiredParams = AuthenticatedMWType & {
 /** Work waiting for a session's transaction to commit (see {@link runAfterCommit}). */
 const commitTasks = new WeakMap<ClientSession, (() => Promise<void>)[]>();
 
+/** How long a stopping server waits for after-commit work before it closes its connections (D188). */
+export const SHUTDOWN_AFTER_COMMIT_WAIT_MS = 10_000;
+
+/** After-commit work still running (emails, Kafka publishes): stopping a server waits for it (D188). */
+const pendingAfterCommit = new Set<Promise<unknown>>();
+
+/** Keeps `work` until it settles, so {@link settleAfterCommitWork} waits for it; for work started without being awaited. */
+export function keepUntilSettled(work: Promise<unknown>): void {
+    pendingAfterCommit.add(work);
+    work.finally(() => pendingAfterCommit.delete(work)).catch(() => undefined);
+}
+
+/**
+ * Waits, at most `timeoutMs`, for the after-commit work still running, so stopping the API or cron server does not cut
+ * an email off between its commit and its send or publish (D188). Work started meanwhile is not waited for.
+ */
+export async function settleAfterCommitWork(timeoutMs: number): Promise<void> {
+    if (pendingAfterCommit.size === 0) return;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+        Promise.allSettled([...pendingAfterCommit]),
+        new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, timeoutMs);
+        }),
+    ]);
+    clearTimeout(timer);
+}
+
 /**
  * Runs `task` only once the session's transaction has committed, or right away
  * when there is no transaction. Use it for side effects that must not happen
@@ -68,12 +96,16 @@ export async function flushAfterCommitTasks(
 ): Promise<void> {
     const tasks = commitTasks.get(session) ?? [];
     commitTasks.delete(session);
-    if (!committed) return;
-    for (const task of tasks) {
-        try {
-            await task();
-        } catch (error) {
-            onError(error);
+    if (!committed || tasks.length === 0) return;
+    const run = (async () => {
+        for (const task of tasks) {
+            try {
+                await task();
+            } catch (error) {
+                onError(error);
+            }
         }
-    }
+    })();
+    keepUntilSettled(run);
+    await run;
 }

@@ -19,6 +19,7 @@
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "preview:emails": "ts-node --transpile-only -r tsconfig-paths/register scripts/emails/renderEmailPreviews.ts",
+    "emails:test": "ts-node --transpile-only -r tsconfig-paths/register scripts/emails/sendTestEmails.ts",
     "sync:demo-companies": "ts-node --transpile-only -r tsconfig-paths/register scripts/syncDemoCompanies.ts",
     "kafka:replay-dlq": "ts-node --transpile-only -r tsconfig-paths/register scripts/replayKafkaDeadLetters.ts",
     "health:rewrap-keys": "ts-node --transpile-only -r tsconfig-paths/register scripts/rewrapHealthDataKeys.ts",

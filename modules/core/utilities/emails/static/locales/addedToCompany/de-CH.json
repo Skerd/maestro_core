@@ -1,0 +1,15 @@
+{
+  "htmlLang": "de",
+  "subject": "{inviterName} hat Sie zu {companyName} hinzugefügt",
+  "preheader": "Melden Sie sich mit Ihrem Konto an, um in {companyName} zu arbeiten.",
+  "heading": "Willkommen bei {companyName}",
+  "greeting": "Hallo {username},",
+  "body": "{inviterName} hat Sie auf {pageName} als {roleName} zu {companyName} hinzugefügt. Melden Sie sich mit Ihrem bestehenden Konto an, um loszulegen.",
+  "welcomeMessageLabel": "Eine Nachricht von {inviterName}",
+  "ctaLabel": "Anmelden",
+  "fallbackLabel": "Funktioniert der Button nicht? Kopieren Sie diesen Link in Ihren Browser:",
+  "note": "Nach der Anmeldung können Sie in Ihrer Liste der Unternehmen zu {companyName} wechseln.",
+  "ignore": "Falls Sie dies nicht erwartet haben, können Sie diese E-Mail ignorieren oder sich an {companyName} wenden.",
+  "footerNote": "Sie erhalten diese E-Mail, weil {inviterName} Sie zu {companyName} auf {pageName} hinzugefügt hat.",
+  "copyright": "© {year} {pageName}. Alle Rechte vorbehalten."
+}

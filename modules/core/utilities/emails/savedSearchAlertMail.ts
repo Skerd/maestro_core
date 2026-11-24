@@ -6,6 +6,9 @@ import {CLIENT_SIDE, EMAIL} from "@coreModule/environment";
 import {applyPlaceholders, loadEmailStrings, type EmailStrings} from "@coreModule/utilities/emails/emailLocale";
 import {currentYear, EMAIL_FONT, escapeHtml, layoutStrings, localized, summaryCardHtml} from "@coreModule/utilities/emails/emailLayout";
 import {sendMail} from "@coreModule/utilities/emails/mailDeliveryService";
+import {publishSavedSearchAlertEmailEvent} from "@coreModule/kafka/kafkaProducer";
+import type {SavedSearchAlertEmailEvent} from "@coreModule/kafka/types";
+import type {serverLogger} from "@coreModule/loggers/serverLog";
 
 const TEMPLATE_DIR = path.join(__dirname, "templates", "savedSearchAlert");
 
@@ -100,4 +103,13 @@ export async function sendSavedSearchAlertMail(platformId: ObjectId, digest: Sav
     if (!EMAIL.ENABLED) return;
     const {subject, html} = buildSavedSearchAlertMail(digest);
     await sendMail(platformId, {to: digest.email, subject, html});
+}
+
+/**
+ * Hands the digest to Kafka, so it survives a restart and is retried (D188); sends it directly when Kafka is off or the
+ * publish fails. A direct send that fails throws, so the job keeps the searches for the next run.
+ */
+export async function dispatchSavedSearchAlertEmail(platformId: ObjectId, digest: SavedSearchDigest, logger?: serverLogger): Promise<void> {
+    const event: SavedSearchAlertEmailEvent = {...digest, eventType: "saved_search_alert_email", timestamp: Date.now(), companyId: platformId.toString()};
+    if (!(await publishSavedSearchAlertEmailEvent(event, logger))) await sendSavedSearchAlertMail(platformId, digest);
 }

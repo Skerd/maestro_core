@@ -44,6 +44,10 @@ import {ensureAiChannel} from "@coreModule/database/schemas/channel/channel.help
 import {addExistingUserToCompany, buildCompanyRoleData} from "@coreModule/database/schemas/user/user.helper";
 import {transactionHandler} from "@coreModule/utilities/middlewares/transactionHandler";
 import {TransactionRequiredParams} from "@coreModule/utilities/middlewares/transactionUtils";
+import {SendAddedToCompanyEmail, sendAccountEmailAfterCommit} from "@coreModule/utilities/database/user";
+import {publishAddedToCompanyEmailEvent} from "@coreModule/kafka/kafkaProducer";
+import type {AddedToCompanyEmailEvent} from "@coreModule/kafka/types";
+import {receiverLanguage, roleNameIn} from "@coreModule/domain/notifications/notificationTexts";
 import type {CrudOptions} from "@coreModule/database/services/baseCrudService";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {escapeRegex, generateRandomString} from "@coreModule/utilities/helpers";
@@ -602,7 +606,7 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
  * @remarks
  * - Rate limited: 10 requests per minute
  * - Requires create permission on User model
- * - New users receive an invitation email; existing users are only added to the company
+ * - New users receive an invitation email; existing users are added to the company and told by email (D187)
  */
 router.put(
     "/invite",
@@ -615,7 +619,8 @@ router.put(
 type InviteUserType = TransactionRequiredParams & AuthenticatedMWType & SchemaSanitizerMWType;
 /**
  * Invites a user to the company by email. Creates a user with a temporary password if they do not exist,
- * or adds the company to an existing user. Sends an invitation email (when creating new user) with optional welcome message.
+ * or adds the company to an existing user. Either way an email goes out after commit, with the optional welcome message:
+ * the invitation to a new user, the added-to-company notice to an existing one (D187).
  * Requires create permission on User and a valid non-admin company role.
  *
  * @param params - email, name, surname, userRole, welcomeMessage, auth and transaction context.
@@ -659,6 +664,24 @@ async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<
             },
             session
         });
+        // An account needs no acceptance: the email only tells them, in their language, where they now work (D187).
+        const recipientLanguage = receiverLanguage(existingUser);
+        const fullName = [existingUser.name, existingUser.surname].filter(Boolean).join(" ") || existingUser.username;
+        const roleName = roleNameIn(invitedRoleDoc, recipientLanguage);
+        const addedEmail: AddedToCompanyEmailEvent = {
+            eventType: "added_to_company_email",
+            email: existingUser.username,
+            userId: existingUser._id.toString(),
+            fullName,
+            welcomeMessage: welcomeMessage || "",
+            inviterName,
+            companyName: company.name,
+            roleName,
+            languageCode: recipientLanguage,
+            timestamp: Date.now(),
+            companyId: company._id.toString(),
+        };
+        await sendAccountEmailAfterCommit(session, logger, "added to company", () => publishAddedToCompanyEmailEvent(addedEmail), () => SendAddedToCompanyEmail(addedEmail));
     }
     else {
         const newUser = await userService.create(

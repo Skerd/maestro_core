@@ -191,12 +191,16 @@ export function validateConfiguration(): void {
             validateString('KAFKA_TOPIC_MFA_DISABLE_EMAIL', process.env.KAFKA_TOPIC_MFA_DISABLE_EMAIL, true),
             validateString('KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL', process.env.KAFKA_TOPIC_FORGOT_PASSWORD_EMAIL, true),
             validateString('KAFKA_TOPIC_INVITATION_EMAIL', process.env.KAFKA_TOPIC_INVITATION_EMAIL, true),
+            validateString('KAFKA_TOPIC_ADDED_TO_COMPANY_EMAIL', process.env.KAFKA_TOPIC_ADDED_TO_COMPANY_EMAIL, true),
+            validateString('KAFKA_TOPIC_SAVED_SEARCH_ALERT_EMAIL', process.env.KAFKA_TOPIC_SAVED_SEARCH_ALERT_EMAIL, true),
             validateString('KAFKA_TOPIC_API_ACCESS', process.env.KAFKA_TOPIC_API_ACCESS, true),
             validateString('KAFKA_CONSUMER_GROUP_LOGIN_HISTORY', process.env.KAFKA_CONSUMER_GROUP_LOGIN_HISTORY, true),
             validateString('KAFKA_CONSUMER_GROUP_ACTIVATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_ACTIVATION_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL', process.env.KAFKA_CONSUMER_GROUP_MFA_DISABLE_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_FORGOT_PASSWORD_EMAIL', process.env.KAFKA_CONSUMER_GROUP_FORGOT_PASSWORD_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_INVITATION_EMAIL', process.env.KAFKA_CONSUMER_GROUP_INVITATION_EMAIL, true),
+            validateString('KAFKA_CONSUMER_GROUP_ADDED_TO_COMPANY_EMAIL', process.env.KAFKA_CONSUMER_GROUP_ADDED_TO_COMPANY_EMAIL, true),
+            validateString('KAFKA_CONSUMER_GROUP_SAVED_SEARCH_ALERT_EMAIL', process.env.KAFKA_CONSUMER_GROUP_SAVED_SEARCH_ALERT_EMAIL, true),
             validateString('KAFKA_CONSUMER_GROUP_API_ACCESS', process.env.KAFKA_CONSUMER_GROUP_API_ACCESS, true),
         ].filter((e): e is ValidationError => e !== null));
 
@@ -484,6 +488,19 @@ export interface ModuleEnvironmentContext {
     validateNumber: typeof validateNumber;
     validateBoolean: typeof validateBoolean;
     validateArray: typeof validateArray;
+}
+
+/**
+ * A module's Kafka topics and consumer groups (keyed like `{TOPICS: {RENTAL_CONFIRMED_EMAIL}}` for
+ * `KAFKA_TOPIC_RENTAL_CONFIRMED_EMAIL` and `KAFKA_CONSUMER_GROUP_RENTAL_CONFIRMED_EMAIL`), required while Kafka is on:
+ * the API refuses to boot without them rather than drop those emails' topics (D188).
+ */
+export function kafkaTopicErrors({env, kafkaEnabled, validateString: check}: ModuleEnvironmentContext, kafka: {TOPICS: Record<string, unknown>}): ValidationError[] {
+    if (!kafkaEnabled) return [];
+    return Object.keys(kafka.TOPICS)
+        .flatMap((key) => [`KAFKA_TOPIC_${key}`, `KAFKA_CONSUMER_GROUP_${key}`])
+        .map((name) => check(name, env[name], true))
+        .filter((error): error is ValidationError => error !== null);
 }
 
 /** A module's `environment.validator.ts` exports this as `validateEnvironment`: its own variables' errors. */

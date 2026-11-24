@@ -66,6 +66,11 @@ export function notificationText(code: string, params: Record<string, string | n
     return loadTexts().notificationMessage({code, params: loadRoleLabels().translateRoleParams(params, locale)}, locale);
 }
 
+/** A role's name in `locale`, as a role notice names it (D129): a default role by its label, any other by its own name. */
+export function roleNameIn(role: {slug?: string; name: string}, locale: string): string {
+    return loadRoleLabels().translateDefaultRole(role, locale).name;
+}
+
 /**
  * The panel path a notification opens (D145), from the same files the panel reads: the code's `link` filled from the
  * notification's `content`. An email about the notice links to it on the panel host. `null` when there is none.

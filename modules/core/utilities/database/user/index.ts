@@ -4,18 +4,22 @@ import LoginHistory from "@coreModule/database/schemas/loginHistory/loginHistory
 import {ClientSession, ObjectId} from "mongodb";
 import {
     ActivationEmailEvent,
+    AddedToCompanyEmailEvent,
     ForgotPasswordEmailEvent,
     InvitationEmailEvent,
     LoginHistoryEvent,
-    MFADisableEmailEvent
+    MFADisableEmailEvent,
+    SavedSearchAlertEmailEvent
 } from "@coreModule/kafka/types";
 import {
+    sendAddedToCompanyMail,
     sendForgetPasswordMail,
     sendInvitationMail,
     sendMfaDeactivationMail,
     sendSignUpMail
 } from "@coreModule/utilities/emails/notifiers";
 import {resolveCompanyIdForEmail} from "@coreModule/utilities/emails/mailDeliveryService";
+import {sendSavedSearchAlertMail} from "@coreModule/utilities/emails/savedSearchAlertMail";
 import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {isKafkaConnected} from "@coreModule/connections/connectToKafka";
 
@@ -114,6 +118,18 @@ export async function SendInvitationEmail(data: InvitationEmailEvent, session?: 
     );
 }
 
+/** Sends a saved-search digest that came through Kafka (D188); throws on failure, so the consumer retries it. */
+export async function SendSavedSearchAlertEmail(data: SavedSearchAlertEmailEvent): Promise<void> {
+    const {email, fullName, languageCode, blocks} = data;
+    await sendSavedSearchAlertMail(new ObjectId(data.companyId), {email, fullName, languageCode, blocks});
+}
+
+/** Tells an existing account it was added to a company (D187), from the event Kafka delivered or the direct fallback. */
+export async function SendAddedToCompanyEmail(data: AddedToCompanyEmailEvent): Promise<void> {
+    const {companyId, email, fullName, welcomeMessage, inviterName, companyName, roleName, languageCode} = data;
+    await sendAddedToCompanyMail(companyId, email, fullName, welcomeMessage, inviterName, companyName, roleName, languageCode);
+}
+
 
 /**
  * Sends an account email (activation, invitation, password reset, MFA deactivation) once the write that stored its
@@ -135,9 +151,12 @@ export async function sendAccountEmailAfterCommit(
     const reportFailure = (error: unknown) => log.err(`Could not send the ${kind} email`, error);
     const deliver = async (): Promise<void> => {
         if (isKafkaConnected()) {
-            publish()
+            const delivery = publish()
                 .then(async (published) => { if (!published) await sendDirectly(); })
                 .catch(reportFailure);
+            // Not awaited, but a stopping server still waits for it (D188).
+            const {keepUntilSettled} = await import("@coreModule/utilities/middlewares/transactionUtils");
+            keepUntilSettled(delivery);
             return;
         }
         try {

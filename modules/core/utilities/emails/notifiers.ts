@@ -128,46 +128,62 @@ export async function sendInvitationMail(
         return;
     }
 
-    const pageName = CLIENT_SIDE.NAME ?? "";
-    const templateDir = path.join(__dirname, "./templates/invitation");
-    const strings = loadEmailStrings(["invitation"], languageCode);
-    let emailTemplate = readTemplateHtml(templateDir, "invitation.html");
-
-    const trimmedWelcomeMessage = welcomeMessage?.trim() ?? "";
-    emailTemplate = trimmedWelcomeMessage
-        ? keepOptionalBlock(emailTemplate, "welcomeMessage")
-        : removeOptionalBlock(emailTemplate, "welcomeMessage");
-
-    emailTemplate = applyPlaceholders(emailTemplate, {
-        ...layoutStrings(strings),
-        welcomeMessageLabel: strings.welcomeMessageLabel ?? "",
-    });
-
     const activationUrl = clientHostFor("core") + "/authenticate/acceptInvitation/" + invitationCode;
-    emailTemplate = emailTemplate.replace(/http:\/\/1234\.html/g, activationUrl);
-
-    const values = {
+    const {subject, html} = renderInvitationLayout(["invitation"], languageCode, activationUrl, welcomeMessage, {
         username: fullName,
-        welcomeMessage: trimmedWelcomeMessage,
         inviterName,
         companyName,
-        pageName,
-        year: currentYear(),
-    };
-    emailTemplate = applyPlaceholders(emailTemplate, values);
+    });
+    await deliverOrThrow(companyId, {to: email, subject, html}, languageCode, "invitation_email");
+}
 
-    const subject = applyPlaceholders(strings.subject ?? "", values);
+/**
+ * Tells someone who already has an account that they were added to a company: an invite of an existing user, which
+ * needs no acceptance, so the button opens the sign-in page. Written in their own language, naming the role in it.
+ */
+export async function sendAddedToCompanyMail(
+    companyId: string,
+    email: string,
+    fullName: string,
+    welcomeMessage: string,
+    inviterName: string,
+    companyName: string,
+    roleName: string,
+    languageCode: string,
+): Promise<void> {
+    if (!canSendEmails()) {
+        return;
+    }
 
-    await deliverOrThrow(
-        companyId,
-        {
-            to: email,
-            subject,
-            html: emailTemplate,
-        },
-        languageCode,
-        "invitation_email",
-    );
+    const signInUrl = clientHostFor("core") + "/authenticate/login";
+    const {subject, html} = renderInvitationLayout(["addedToCompany"], languageCode, signInUrl, welcomeMessage, {
+        username: fullName,
+        inviterName,
+        companyName,
+        roleName,
+    });
+    await deliverOrThrow(companyId, {to: email, subject, html}, languageCode, "email");
+}
+
+/**
+ * The invitation layout in the texts at `stringsPath`: its button and fallback link open `url`, and the
+ * welcome-message box shows only when there is a message.
+ */
+function renderInvitationLayout(
+    stringsPath: string[],
+    languageCode: string,
+    url: string,
+    welcomeMessage: string,
+    names: Record<string, string>,
+): {subject: string; html: string} {
+    const strings = loadEmailStrings(stringsPath, languageCode);
+    const trimmedWelcomeMessage = welcomeMessage?.trim() ?? "";
+    let html = readTemplateHtml(path.join(__dirname, "./templates/invitation"), "invitation.html");
+    html = trimmedWelcomeMessage ? keepOptionalBlock(html, "welcomeMessage") : removeOptionalBlock(html, "welcomeMessage");
+    html = applyPlaceholders(html, {...layoutStrings(strings), welcomeMessageLabel: strings.welcomeMessageLabel ?? ""});
+    html = html.replace(/http:\/\/1234\.html/g, url);
+    const values = {...names, welcomeMessage: trimmedWelcomeMessage, pageName: CLIENT_SIDE.NAME ?? "", year: currentYear()};
+    return {subject: applyPlaceholders(strings.subject ?? "", values), html: applyPlaceholders(html, values)};
 }
 
 export async function sendSignUpMail(

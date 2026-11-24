@@ -27,7 +27,7 @@ import {companySiteUrl} from "@coreModule/utilities/marketing/portalCompanies";
 import {generateRecordAccessToken} from "@coreModule/utilities/security/recordAccessToken";
 import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
 import {
-    sendSavedSearchAlertMail,
+    dispatchSavedSearchAlertEmail,
     type SavedSearchAlertBlock,
     type SavedSearchDigest,
 } from "@coreModule/utilities/emails/savedSearchAlertMail";
@@ -92,7 +92,7 @@ export async function runSavedSearchAlerts(
 ): Promise<SavedSearchAlertsResult> {
     const logger = getLogger("saved_search_alerts", options.logger);
     const now = options.now ?? new Date();
-    const deliver: Deliver = options.deliver ?? ((digest) => sendSavedSearchAlertMail(companyId, digest));
+    const deliver: Deliver = options.deliver ?? ((digest) => dispatchSavedSearchAlertEmail(companyId, digest, logger));
     const result: SavedSearchAlertsResult = {searches: 0, people: 0, sent: 0, failed: 0, items: 0};
 
     // Without the sections every search would look as if nothing were new and move on, losing its alert: the process

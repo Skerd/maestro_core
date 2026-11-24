@@ -37,12 +37,14 @@ import {KAFKA} from "@coreModule/environment";
 import {kafkaCircuitBreaker} from "@coreModule/utilities/circuitBreaker";
 import {
     ActivationEmailEvent,
+    AddedToCompanyEmailEvent,
     AiChannelMessageEvent,
     ApiAccessEvent,
     ForgotPasswordEmailEvent,
     InvitationEmailEvent,
     LoginHistoryEvent,
-    MFADisableEmailEvent
+    MFADisableEmailEvent,
+    SavedSearchAlertEmailEvent
 } from "@coreModule/kafka/types";
 import type {Message} from "kafkajs";
 
@@ -180,6 +182,14 @@ export async function publishEvent(topic: string | undefined, key: string, event
 }
 
 /**
+ * The `eventType` of an email on its kind's own topic (D188): the topic's env key in lower case, so the
+ * `KAFKA_TOPIC_RENTAL_CONFIRMED_EMAIL` topic carries `rental_confirmed_email` events.
+ */
+export function emailEventType(topicKey: string): string {
+    return topicKey.toLowerCase();
+}
+
+/**
  * Publish login history event (login/authentication attempt, for audit).
  * @returns false when not published; see {@link publishEvent}
  */
@@ -230,6 +240,22 @@ export function publishForgotPasswordEmailEvent(params: ForgotPasswordEmailEvent
  */
 export function publishInvitationEmailEvent(params: InvitationEmailEvent): Promise<boolean> {
     return publishEvent(KAFKA.TOPICS.INVITATION_EMAIL, params.userId.toString(), params);
+}
+
+/**
+ * Publish the email telling an existing account it was added to a company (D187, D188).
+ * @returns false when not published; see {@link publishEvent}
+ */
+export function publishAddedToCompanyEmailEvent(params: AddedToCompanyEmailEvent): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.ADDED_TO_COMPANY_EMAIL, params.userId, params);
+}
+
+/**
+ * Publish one person's saved-search digest (D178, D188).
+ * @returns false when not published; see {@link publishEvent}
+ */
+export function publishSavedSearchAlertEmailEvent(params: SavedSearchAlertEmailEvent, log?: serverLogger): Promise<boolean> {
+    return publishEvent(KAFKA.TOPICS.SAVED_SEARCH_ALERT_EMAIL, params.email, params, log);
 }
 
 /**

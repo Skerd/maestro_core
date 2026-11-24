@@ -38,18 +38,22 @@ import {getLogger, serverLogger} from "@coreModule/loggers/serverLog";
 import {KAFKA} from "@coreModule/environment";
 import {
     ActivationEmailEvent,
+    AddedToCompanyEmailEvent,
     ApiAccessEvent,
     ForgotPasswordEmailEvent,
     InvitationEmailEvent,
     LoginHistoryEvent,
-    MFADisableEmailEvent
+    MFADisableEmailEvent,
+    SavedSearchAlertEmailEvent
 } from "@coreModule/kafka/types";
 import {
     AddToLoginHistory,
     SendActivationEmail,
+    SendAddedToCompanyEmail,
     SendForgotPasswordEmail,
     SendInvitationEmail,
-    SendMfaDisableEmail
+    SendMfaDisableEmail,
+    SendSavedSearchAlertEmail
 } from "@coreModule/utilities/database/user";
 import {ObjectId} from "mongodb";
 import ApiAccess from "@coreModule/database/schemas/apiAccess/apiAccess";
@@ -58,6 +62,7 @@ import {KafkaConsumerRegistration} from "@coreModule/kafka/consumerRegistry";
 import {metricsAggregator} from "@coreModule/utilities/timing/metricsAggregator";
 import type {EachMessagePayload} from "kafkajs";
 import {sendToDeadLetterQueue} from "@coreModule/kafka/deadLetters";
+import {emailEventType} from "@coreModule/kafka/kafkaProducer";
 import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const logger = getLogger("kafka_consumer");
@@ -303,6 +308,22 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
             processEvent: (d) => SendForgotPasswordEmail(d as ForgotPasswordEmailEvent)
         },
         {
+            registryKey: "addedToCompanyEmail",
+            displayName: "Added to company email",
+            groupId: KAFKA.CONSUMER_GROUP.ADDED_TO_COMPANY_EMAIL,
+            topic: KAFKA.TOPICS.ADDED_TO_COMPANY_EMAIL,
+            expectedEventType: "added_to_company_email",
+            processEvent: (d) => SendAddedToCompanyEmail(d as AddedToCompanyEmailEvent)
+        },
+        {
+            registryKey: "savedSearchAlertEmail",
+            displayName: "Saved search alert email",
+            groupId: KAFKA.CONSUMER_GROUP.SAVED_SEARCH_ALERT_EMAIL,
+            topic: KAFKA.TOPICS.SAVED_SEARCH_ALERT_EMAIL,
+            expectedEventType: "saved_search_alert_email",
+            processEvent: (d) => SendSavedSearchAlertEmail(d as SavedSearchAlertEmailEvent)
+        },
+        {
             registryKey: "apiAccessPersistence",
             displayName: "API access persistence",
             groupId: KAFKA.CONSUMER_GROUP.API_ACCESS,
@@ -320,15 +341,44 @@ export async function startCoreKafkaConsumers(parentLogger?: serverLogger): Prom
         },
     ];
 
-    const results = await Promise.allSettled(
-        specs.map((spec) => addKafkaTopicConsumer(parentLogger, spec))
-    );
+    await startKafkaTopicConsumers(parentLogger, umbrellaLog, specs);
 
+    umbrellaLog.finish("Kafka user-event topic consumers startup pass complete");
+}
+
+/**
+ * Starts every spec's consumer concurrently (`Promise.allSettled`): one that fails to start is logged on `umbrellaLog`
+ * and leaves the others running. Shared by core and the feature modules' `start*KafkaConsumers`.
+ */
+export async function startKafkaTopicConsumers(parentLogger: serverLogger | undefined, umbrellaLog: serverLogger, specs: KafkaUserTopicSpec[]): Promise<void> {
+    const results = await Promise.allSettled(specs.map((spec) => addKafkaTopicConsumer(parentLogger, spec)));
     results.forEach((r, i) => {
         if (r.status === "rejected") {
             umbrellaLog.err(`Consumer "${specs[i].registryKey}" exited with error: ${r.reason}`);
         }
     });
+}
 
-    umbrellaLog.finish("Kafka user-event topic consumers startup pass complete");
+/** A module's Kafka topics and consumer groups, keyed like their env vars without `KAFKA_TOPIC_` / `KAFKA_CONSUMER_GROUP_`. */
+export type ModuleKafkaTopics = {
+    TOPICS: Record<string, string | undefined>;
+    CONSUMER_GROUP: Record<string, string | undefined>;
+};
+
+/**
+ * The consumer of one email kind's own topic (D188), named after its env key: `RENTAL_CONFIRMED_EMAIL` registers as
+ * `rentalConfirmedEmail`, shows as "Rental confirmed email" on the Performance page and expects the
+ * `rental_confirmed_email` events {@link emailEventType} names.
+ */
+export function emailTopicSpec(kafka: ModuleKafkaTopics, topicKey: string, processEvent: (eventData: any) => Promise<void>): KafkaUserTopicSpec {
+    const [first, ...rest] = topicKey.toLowerCase().split("_");
+    const capitalize = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+    return {
+        registryKey: first + rest.map(capitalize).join(""),
+        displayName: [capitalize(first), ...rest].join(" "),
+        groupId: kafka.CONSUMER_GROUP[topicKey],
+        topic: kafka.TOPICS[topicKey],
+        expectedEventType: emailEventType(topicKey),
+        processEvent,
+    };
 }

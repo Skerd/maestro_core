@@ -1,0 +1,15 @@
+{
+  "htmlLang": "sq",
+  "subject": "{inviterName} ju shtoi në {companyName}",
+  "preheader": "Hyni me llogarinë tuaj për të filluar punën në {companyName}.",
+  "heading": "Mirë se vini në {companyName}",
+  "greeting": "Përshëndetje {username},",
+  "body": "{inviterName} ju ka shtuar në {companyName} në {pageName} si {roleName}. Hyni me llogarinë tuaj ekzistuese për të filluar.",
+  "welcomeMessageLabel": "Një mesazh nga {inviterName}",
+  "ctaLabel": "Hyni",
+  "fallbackLabel": "Nuk funksionon butoni? Kopjoni dhe ngjisni këtë link në shfletuesin tuaj:",
+  "note": "Pasi të hyni, mund të kaloni te {companyName} nga lista juaj e kompanive.",
+  "ignore": "Nëse nuk e prisnit këtë, mund ta shpërfillni këtë email ose të kontaktoni {companyName}.",
+  "footerNote": "E keni marrë këtë email sepse {inviterName} ju shtoi në {companyName} në {pageName}.",
+  "copyright": "© {year} {pageName}. Të gjitha të drejtat e rezervuara."
+}

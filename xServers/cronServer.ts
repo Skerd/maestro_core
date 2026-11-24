@@ -9,6 +9,7 @@ import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {connectToRedis} from "@coreModule/connections/connectToRedis";
 import {connectToKafka} from "@coreModule/connections/connectToKafka";
 import {closeConnections} from "@coreModule/connections/closeConnections";
+import {settleAfterCommitWork, SHUTDOWN_AFTER_COMMIT_WAIT_MS} from "@coreModule/utilities/middlewares/transactionUtils";
 import {uptimeKeeper} from "@coreModule/utilities/uptime/uptimeKeeper";
 import {CRON, KAFKA} from "@coreModule/environment";
 import {loadAllCronHandlers} from "@coreModule/cronjobs/bootstrap/loadAllHandlers";
@@ -67,6 +68,8 @@ async function setCronUp(logger: serverLogger): Promise<void> {
 async function gracefulShutdown(logger: serverLogger): Promise<void> {
     logger.debug("Cron server shutting down...");
     await schedulerEngine.stop();
+    // Emails and publishes queued by jobs that already committed go out first (D188).
+    await settleAfterCommitWork(SHUTDOWN_AFTER_COMMIT_WAIT_MS);
     await uptimeKeeper.markStop("cronServer");
     await closeConnections(logger);
     process.exit(0);

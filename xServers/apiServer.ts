@@ -41,6 +41,7 @@ import {connectToMongoDb} from "@coreModule/connections/connectToMongoDb";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {connectToWebSocketServer} from "@coreModule/connections/connectToWebSocketServer";
 import {closeConnections} from "@coreModule/connections/closeConnections";
+import {settleAfterCommitWork, SHUTDOWN_AFTER_COMMIT_WAIT_MS} from "@coreModule/utilities/middlewares/transactionUtils";
 import {
     hydrateAllServiceCounters,
     startServiceCountersFlush
@@ -532,6 +533,8 @@ async function gracefulShutdown(): Promise<void> {
     const log = getLogger("api_server_shutdown");
     log.debug("API server shutting down...");
     stopApiHeartbeat();
+    // Emails and publishes queued by requests that already committed go out first (D188).
+    await settleAfterCommitWork(SHUTDOWN_AFTER_COMMIT_WAIT_MS);
     await uptimeKeeper.markStop("api");
     await closeConnections(log);
     process.exit(0);

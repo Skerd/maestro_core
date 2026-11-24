@@ -1,0 +1,15 @@
+{
+  "htmlLang": "en",
+  "subject": "{inviterName} added you to {companyName}",
+  "preheader": "Sign in with your account to start working in {companyName}.",
+  "heading": "Welcome to {companyName}",
+  "greeting": "Hi {username},",
+  "body": "{inviterName} has added you to {companyName} on {pageName} as {roleName}. Sign in with your existing account to get started.",
+  "welcomeMessageLabel": "A message from {inviterName}",
+  "ctaLabel": "Sign in",
+  "fallbackLabel": "Button not working? Copy and paste this link into your browser:",
+  "note": "Once signed in, you can switch to {companyName} from your list of companies.",
+  "ignore": "If you were not expecting this, you can ignore this email or contact {companyName}.",
+  "footerNote": "You received this email because {inviterName} added you to {companyName} on {pageName}.",
+  "copyright": "© {year} {pageName}. All rights reserved."
+}

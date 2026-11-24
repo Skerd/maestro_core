@@ -1,0 +1,15 @@
+{
+  "htmlLang": "it",
+  "subject": "{inviterName} la ha aggiunta a {companyName}",
+  "preheader": "Acceda con il suo account per iniziare a lavorare in {companyName}.",
+  "heading": "Benvenuto in {companyName}",
+  "greeting": "Buongiorno {username},",
+  "body": "{inviterName} la ha aggiunta a {companyName} su {pageName} come {roleName}. Acceda con il suo account esistente per iniziare.",
+  "welcomeMessageLabel": "Un messaggio da {inviterName}",
+  "ctaLabel": "Accedi",
+  "fallbackLabel": "Il pulsante non funziona? Copi e incolli questo link nel suo browser:",
+  "note": "Dopo l'accesso può passare a {companyName} dal suo elenco di aziende.",
+  "ignore": "Se non se lo aspettava, può ignorare questa e-mail o contattare {companyName}.",
+  "footerNote": "Riceve questa e-mail perché {inviterName} la ha aggiunta a {companyName} su {pageName}.",
+  "copyright": "© {year} {pageName}. Tutti i diritti riservati."
+}

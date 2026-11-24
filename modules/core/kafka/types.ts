@@ -8,6 +8,7 @@
  */
 
 import {ActionException} from "armonia/src/modules/core/types";
+import type {SavedSearchDigest} from "@coreModule/utilities/emails/savedSearchAlertMail";
 
 /**
  * Login history event - tracks user authentication attempts
@@ -206,3 +207,28 @@ export interface AiChannelMessageEvent {
     timestamp: number;
 }
 
+/**
+ * Published when someone who already has an account is added to a company (D187): the consumer tells them, in their
+ * language, who added them and as what (D188).
+ */
+export interface AddedToCompanyEmailEvent {
+    eventType: 'added_to_company_email';
+    email: string;
+    userId: string;
+    fullName: string;
+    welcomeMessage: string;
+    inviterName: string;
+    companyName: string;
+    /** The role's name in the recipient's language. */
+    roleName: string;
+    languageCode: string;
+    timestamp: number;
+    companyId: string;
+}
+
+/** One person's daily saved-search digest (D178), sent from the platform company `companyId` (D188). */
+export interface SavedSearchAlertEmailEvent extends SavedSearchDigest {
+    eventType: 'saved_search_alert_email';
+    timestamp: number;
+    companyId: string;
+}
