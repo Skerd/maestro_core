@@ -750,10 +750,15 @@ async function getProfilePhoto(params: TransactionRequiredParams & Authenticated
     // Get the media document
     const profilePhotoId = userInfo.photo instanceof ObjectId ? userInfo.photo : new ObjectId(userInfo.photo.toString());
 
-    const media = await mediaService.findByIdOrThrow(
+    const media = await mediaService.findById(
         profilePhotoId,
         { logger, languageCode, session }
     );
+
+    if (!media) {
+        logger.finish(`Profile photo media is missing; treating it as no photo`);
+        return null;
+    }
 
     logger.finish(`Profile photo successfully retrieved!`);
 
@@ -934,10 +939,15 @@ async function getCoverPhoto(params: TransactionRequiredParams & AuthenticatedMW
     // Get the media document
     const coverPhotoId = userInfo.cover instanceof ObjectId ? userInfo.cover : new ObjectId(userInfo.cover.toString());
 
-    const media = await mediaService.findByIdOrThrow(
+    const media = await mediaService.findById(
         coverPhotoId,
         { logger, languageCode, session }
     );
+
+    if (!media) {
+        logger.finish(`Cover photo media is missing; treating it as no cover`);
+        return null;
+    }
 
     logger.finish(`Cover photo successfully retrieved!`);
 
