@@ -86,6 +86,7 @@ export const defaultCompaniesValues: any = {
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
             "siteSlug": "store",
+            "bankAccount": {"holder": "Kudoo Market sh.p.k.", "iban": "AL47212110090000000235698741", "bic": "BKTRALTR", "bankName": "BKT"},
             "shopListedOnPortal": true,
             "allowedDomains": ["*", "store.localhost"],
             "modules": ["core", "finance", "eCommerce"],
@@ -126,7 +127,7 @@ export const defaultCompaniesValues: any = {
         {
             "name": "Tirana Pros",
             "email": "pros@kudoo.al",
-            "description": "Tirana Pros is a services marketplace in Tirana. Clients hire independent designers, developers, writers and translators at a fixed price, or post a job and compare their bids; the payment is held until the client accepts the work.",
+            "description": "Tirana Pros is a services marketplace in Tirana. Clients hire independent designers, developers, writers and translators at a fixed price, or post a job and compare their bids, and pay the provider directly.",
             "website": "https://pros.kudoo.al",
             "phoneNumber": "+355 4 223 0170",
             "linkedin": "https://www.linkedin.com/company/tiranapros",
@@ -138,6 +139,7 @@ export const defaultCompaniesValues: any = {
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
             "siteSlug": "pros",
+            "bankAccount": {"holder": "Tirana Pros sh.p.k.", "iban": "AL41213110290000000033001120", "bic": "NCBAALTX", "bankName": "Banka OTP Albania"},
             "allowedDomains": ["pros.localhost"],
             "modules": ["core", "finance", "marketplace"],
             "logoPhotoId": "1561070791-2526d30994b5",
@@ -164,6 +166,7 @@ export const defaultCompaniesValues: any = {
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
             "siteSlug": "fix",
+            "bankAccount": {"holder": "Adria Home Fix sh.p.k.", "iban": "AL94205110400000000040022110", "bic": "RZBAALTR", "bankName": "Raiffeisen Bank"},
             "allowedDomains": ["fix.localhost"],
             "modules": ["core", "finance", "marketplace"],
             "logoPhotoId": "1504148455328-c376907d081c",
@@ -190,6 +193,7 @@ export const defaultCompaniesValues: any = {
             "isPlatformOwner": false,
             "isDefaultForSignUp": false,
             "siteSlug": "clinic",
+            "bankAccount": {"holder": "Blloku Dental sh.p.k.", "iban": "AL35202111090000000001234567", "bic": "SGSBALTX", "bankName": "Credins Bank"},
             "allowedDomains": ["*", "clinic.localhost"],
             "modules": ["core", "finance", "dentalClinic"],
             "logoPhotoId": "1629909613654-28e377c37b09",
@@ -282,7 +286,7 @@ export const defaultCompaniesValues: any = {
 const PROFILE_KEYS = [
     "name", "email", "description", "website", "phoneNumber",
     "linkedin", "instagram", "facebook", "isActive", "allowedDomains",
-    "siteSlug", "timezone", "shopListedOnPortal", "isDefaultForSignUp", "isPlatformOwner", "isProtected",
+    "siteSlug", "timezone", "shopListedOnPortal", "isDefaultForSignUp", "isPlatformOwner", "isProtected", "bankAccount",
 ] as const;
 
 function actorId(createdBy: any): ObjectId | undefined {

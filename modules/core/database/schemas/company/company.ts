@@ -45,7 +45,7 @@ import {
     PORTAL_APPROVAL_STATUSES,
     type PortalApprovalStatus,
 } from "armonia/src/modules/core/api/company/private/company/portalApproval";
-import {COMPANY_TIMEZONE_MAX, CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
+import {COMPANY_BANK_TEXT_MAX, COMPANY_BIC_MAX, COMPANY_IBAN_MAX, COMPANY_TIMEZONE_MAX, CompanySchemaDef} from "armonia/src/modules/core/api/company/private/company/company.schema-def";
 import type {CompanySignupSource} from "armonia/src/modules/core/api/company/private/company/company.dto";
 import {
     SITE_PROVISION_STATUSES,
@@ -147,6 +147,13 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
     isProtected: boolean;
     /** The company's own opt-in to list its shop on the portal and the shop apex. */
     shopListedOnPortal: boolean;
+    /** Where customers pay the company by bank transfer (D190); the IBAN is stored without spaces, in capitals. */
+    bankAccount?: {
+        holder?: string;
+        iban?: string;
+        bic?: string;
+        bankName?: string;
+    };
     publicAiChat?: {
         enabled: boolean;
         greeting?: string;
@@ -440,6 +447,16 @@ const CompanySchema: Schema = new Schema(
         shopListedOnPortal: {
             type: SchemaTypes.Boolean,
             default: false,
+        },
+        bankAccount: {
+            type: {
+                holder: {type: SchemaTypes.String, trim: true, maxlength: COMPANY_BANK_TEXT_MAX},
+                iban: {type: SchemaTypes.String, trim: true, maxlength: COMPANY_IBAN_MAX},
+                bic: {type: SchemaTypes.String, trim: true, maxlength: COMPANY_BIC_MAX},
+                bankName: {type: SchemaTypes.String, trim: true, maxlength: COMPANY_BANK_TEXT_MAX},
+            },
+            required: false,
+            _id: false,
         },
         publicAiChat: {
             type: {

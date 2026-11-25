@@ -121,6 +121,24 @@ export async function validateAndMapAddresses(
     );
 }
 
+/**
+ * The bank account as stored (D190): trimmed, the IBAN without spaces and the BIC in capitals; undefined when every
+ * part is empty, so a cleared form removes it.
+ */
+export function companyBankAccountInput(account: CreateCompanyFormType["bankAccount"]): ICompany["bankAccount"] | undefined {
+    const holder = account?.holder?.trim();
+    const iban = account?.iban?.replace(/\s+/g, "").toUpperCase();
+    const bic = account?.bic?.replace(/\s+/g, "").toUpperCase();
+    const bankName = account?.bankName?.trim();
+    if (!holder && !iban && !bic && !bankName) return undefined;
+    return {
+        ...(holder ? {holder} : {}),
+        ...(iban ? {iban} : {}),
+        ...(bic ? {bic} : {}),
+        ...(bankName ? {bankName} : {}),
+    };
+}
+
 /** The form's chat settings with the schema's defaults for what it left out. */
 function publicAiChatInput(chat: NonNullable<CreateCompanyFormType["publicAiChat"]>): NonNullable<ICompany["publicAiChat"]> {
     return {
@@ -199,6 +217,7 @@ export async function createCompany(input: CreateCompanyInput, ctx: CreateCompan
             parentCompany: input.parentCompanyId,
             modules: ["core", ...(input.modules ?? [])],
             ...(input.publicAiChat ? {publicAiChat: publicAiChatInput(input.publicAiChat)} : {}),
+            ...(companyBankAccountInput(input.bankAccount) ? {bankAccount: companyBankAccountInput(input.bankAccount)} : {}),
             ...(input.portalApproval ? {portalApproval: input.portalApproval} : {}),
             ...(input.signupSource ? {signupSource: input.signupSource} : {}),
         },

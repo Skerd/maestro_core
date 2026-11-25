@@ -83,6 +83,12 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
             }
             : undefined,
         shopListedOnPortal: company.shopListedOnPortal,
+        bankAccount: company.bankAccount ? {
+            holder: company.bankAccount.holder,
+            iban: company.bankAccount.iban,
+            bic: company.bankAccount.bic,
+            bankName: company.bankAccount.bankName,
+        } : undefined,
         publicAiChat: company.publicAiChat ? {
             enabled: company.publicAiChat.enabled,
             greeting: company.publicAiChat.greeting,

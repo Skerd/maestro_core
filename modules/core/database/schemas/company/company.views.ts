@@ -112,6 +112,24 @@ export const companySheetView: ViewConfig = {
         },
         {
             render: "#SheetGroup",
+            props: {title: "bankAccount"},
+            dependentAny: ["bankAccount.iban", "bankAccount.holder"],
+            permissions: {read: "bankAccount"},
+            children: [
+                {
+                    render: "#SheetGrid",
+                    props: {columns: 2},
+                    children: [
+                        {render: "#DisplayCard", dependent: "bankAccount.holder", permissions: {read: "bankAccount"}, field: {name: "bankAccount.holder", widget: "#DisplayCard", label: "bankHolder", widgetProps: {icon: "#User"}}},
+                        {render: "#DisplayCard", dependent: "bankAccount.iban", permissions: {read: "bankAccount"}, field: {name: "bankAccount.iban", widget: "#DisplayCard", label: "iban", widgetProps: {icon: "#BuildingBank"}}},
+                        {render: "#DisplayCard", dependent: "bankAccount.bic", permissions: {read: "bankAccount"}, field: {name: "bankAccount.bic", widget: "#DisplayCard", label: "bic", widgetProps: {icon: "#Hash"}}},
+                        {render: "#DisplayCard", dependent: "bankAccount.bankName", permissions: {read: "bankAccount"}, field: {name: "bankAccount.bankName", widget: "#DisplayCard", label: "bankName", widgetProps: {icon: "#BuildingBank"}}},
+                    ],
+                },
+            ],
+        },
+        {
+            render: "#SheetGroup",
             props: {title: "siteHost"},
             dependentAny: ["siteHost", "siteProvision.status"],
             permissions: {read: "siteHost"},
@@ -336,7 +354,7 @@ const companyFormEditFields: ViewConfig["nodes"] = [
     {
         render: "#TitleWithCollapse",
         props: {title: "generalInfo"},
-        permissions: {writeAny: ["name", "siteSlug", "timezone", "shopListedOnPortal", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "allowedDomains", "vat"]},
+        permissions: {writeAny: ["name", "siteSlug", "timezone", "shopListedOnPortal", "email", "phoneNumber", "website", "linkedin", "instagram", "facebook", "vat"]},
         children: [
             {
                 render: "#FormGrid",
@@ -363,22 +381,24 @@ const companyFormEditFields: ViewConfig["nodes"] = [
                     {render: "#Field", field: {name: "instagram", widget: "#Input", label: "form.instagramLabel", placeholder: "form.instagramPlaceholder"}, permissions: {write: "instagram", read: "instagram"}},
                     {render: "#Field", field: {name: "facebook", widget: "#Input", label: "form.facebookLabel", placeholder: "form.facebookPlaceholder"}, permissions: {read: "facebook", write: "facebook"}},
                     {render: "#Field", field: {name: "vat", widget: "#Input", label: "form.vatLabel", placeholder: "form.vatPlaceholder"}, permissions: {read: "vat", write: "vat"}},
-                    {
-                        render: "div",
-                        props: {className: "md:col-span-2"},
-                        children: [
-                            {
-                                render: "#Field",
-                                field: {
-                                    name: "allowedDomains",
-                                    widget: "#StringArrayInput",
-                                    label: "form.allowedDomainsLabel",
-                                    placeholder: "form.allowedDomainsPlaceholder",
-                                    widgetProps: {removeTooltipKey: "remove"},
-                                }, permissions: {read: "allowedDomains", write: "allowedDomains"},
-                            },
-                        ],
-                    },
+                ],
+            },
+        ],
+    },
+    {
+        // Where customers pay by bank transfer (D190): the shop's checkout, a marketplace buyer, a clinic deposit.
+        render: "#TitleWithCollapse",
+        props: {title: "bankAccount"},
+        permissions: {write: "bankAccount"},
+        children: [
+            {
+                render: "#FormGrid",
+                props: {columns: 2},
+                children: [
+                    {render: "#Field", field: {name: "bankAccount.holder", widget: "#Input", label: "form.bankHolderLabel", placeholder: "form.bankHolderPlaceholder"}, permissions: {read: "bankAccount", write: "bankAccount"}},
+                    {render: "#Field", field: {name: "bankAccount.iban", widget: "#Input", label: "form.ibanLabel", placeholder: "form.ibanPlaceholder"}, permissions: {read: "bankAccount", write: "bankAccount"}},
+                    {render: "#Field", field: {name: "bankAccount.bic", widget: "#Input", label: "form.bicLabel", placeholder: "form.bicPlaceholder"}, permissions: {read: "bankAccount", write: "bankAccount"}},
+                    {render: "#Field", field: {name: "bankAccount.bankName", widget: "#Input", label: "form.bankNameLabel", placeholder: "form.bankNamePlaceholder"}, permissions: {read: "bankAccount", write: "bankAccount"}},
                 ],
             },
         ],

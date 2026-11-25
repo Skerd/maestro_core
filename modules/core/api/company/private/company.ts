@@ -43,6 +43,7 @@ import {resolveSiteSlug} from "armonia/src/modules/core/api/company/private/comp
 import {
     assertSiteSlugAvailable,
     assertVatAvailable,
+    companyBankAccountInput,
     companyTimeZoneInput,
     createCompany,
     SITE_SLUG_ERRORS,
@@ -213,7 +214,7 @@ type CreateNewCompanyType = TransactionRequiredParams & CreateCompanyFormType & 
  * @remarks Validates VAT uniqueness; creates addresses if provided; adds to userInfo.companies/roles/finance
  */
 async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone, publicAiChat, languageCode, logger, session, actionUserCtx, fileIds, company} = params;
+    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone, bankAccount, publicAiChat, languageCode, logger, session, actionUserCtx, fileIds, company} = params;
 
     logger.start(`Trying to create new company...`);
 
@@ -225,7 +226,7 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
     await createCompany(
         {
             name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone,
-            publicAiChat, logo: fileIds?.[0] ?? null, parentCompanyId: company._id,
+            bankAccount, publicAiChat, logo: fileIds?.[0] ?? null, parentCompanyId: company._id,
         },
         {session, logger, languageCode, auditUserId: actionUserCtx.userId},
     );
@@ -296,7 +297,7 @@ async function assertNoParentLoop(companyId: ObjectId, newParent: ICompany, opti
 }
 
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, timezone, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, timezone, shopListedOnPortal, bankAccount, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -366,6 +367,10 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     // Sent empty: the company falls back to the instance's zone.
     if (timezone !== undefined && sanitizedWriteFields.timezone) {
         existingCompany.set("timezone", companyTimeZoneInput(timezone, languageCode));
+    }
+    // Sent empty, the bank account is removed (D190).
+    if (bankAccount !== undefined && sanitizedWriteFields.bankAccount) {
+        existingCompany.set("bankAccount", companyBankAccountInput(bankAccount));
     }
     if (shopListedOnPortal !== undefined && sanitizedWriteFields.shopListedOnPortal) {
         existingCompany.shopListedOnPortal = shopListedOnPortal;
