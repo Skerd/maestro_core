@@ -11,22 +11,30 @@ import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import UploadRefusal from "@coreModule/database/schemas/uploadRefusal/uploadRefusal";
 import {REVIEW_UPLOADS_PERMISSION} from "@coreModule/domain/uploadReview/uploadReview";
 import {actionPermissionMW} from "@coreModule/utilities/security/actionPermissions";
-import {assertPlatformCompany} from "@coreModule/utilities/security/platformAccess";
+import {assertPlatformCompany, isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
+import type {ICompany} from "@coreModule/database/schemas/company/company";
+import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
 import {ServerError} from "armonia/src/modules/core/types";
 
 const router = Router();
 
-/** The session's company owns the file, or the owner shared it with that company. */
+/**
+ * The session's company owns the file, or the owner shared it with that company. The platform company is different:
+ * its members are portal accounts that do not know each other, so a file it holds that is not public opens only for
+ * the person who uploaded it (a patient's X-rays sent to clinics, D189); the companies it was shared with still open it.
+ */
 function companyOwnsMedia(
     _mediaId: unknown,
-    media: {company?: {_id?: unknown} | unknown; sharedWithCompanies?: unknown[]},
+    media: Pick<IMedia, "company" | "sharedWithCompanies" | "isPublic" | "createdBy">,
     context: Record<string, unknown>,
 ): Promise<boolean> {
-    const company = context.company as {_id?: unknown} | undefined;
+    const company = context.company as Pick<ICompany, "_id" | "isPlatformOwner"> | undefined;
     const sessionCompany = String(company?._id ?? "");
-    const mediaCompany = String((media.company as {_id?: unknown})?._id ?? media.company ?? "");
-    const sharedWith = (media.sharedWithCompanies ?? []).map(String);
-    return Promise.resolve(sessionCompany !== "" && (sessionCompany === mediaCompany || sharedWith.includes(sessionCompany)));
+    const mediaCompany = String(nestedEntityToRef(media.company) ?? "");
+    if (sessionCompany === "") return Promise.resolve(false);
+    if (sessionCompany !== mediaCompany) return Promise.resolve((media.sharedWithCompanies ?? []).map(String).includes(sessionCompany));
+    if (!isPlatformCompany(company) || media.isPublic === true) return Promise.resolve(true);
+    return Promise.resolve(String(nestedEntityToRef(media.createdBy) ?? "") === context.userId);
 }
 
 /** Another company's file the portal would serve: public, and not held by the content check (D177). */
@@ -100,10 +108,11 @@ async function serveMediaInfo(_params: AuthenticatedMWType, queryParams: any, re
         logger,
         languageCode,
         accessCheck,
-        context: {company: _params.company},
+        context: {company: _params.company, userId: _params.actionUserCtx.userId},
         deniedAsNotFound,
     });
-    return ownOrPublicMedia(info(companyOwnsMedia, false), info(isPublicMedia, true));
+    // A refused file answers like one that does not exist, so a stranger cannot learn it is there (D189)
+    return ownOrPublicMedia(info(companyOwnsMedia, true), info(isPublicMedia, true));
 }
 
 async function serveMediaFile(params: AuthenticatedMWType, queryParams: any, req: Request, res: Response) {
@@ -117,11 +126,11 @@ async function serveMediaFile(params: AuthenticatedMWType, queryParams: any, req
         languageCode,
         cacheControl: "private",
         accessCheck,
-        context: {company: params.company},
+        context: {company: params.company, userId: params.actionUserCtx.userId},
         deniedAsNotFound,
         blurHeldForReview: true,
     });
-    return ownOrPublicMedia(serve(companyOwnsMedia, false), serve(isPublicMedia, true));
+    return ownOrPublicMedia(serve(companyOwnsMedia, true), serve(isPublicMedia, true));
 }
 
 /** A file under review: any company's, never a health file (only its own company may open those, D102). */

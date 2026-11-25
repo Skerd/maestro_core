@@ -19,6 +19,7 @@ import {
     CompanyTreeNode,
     CompanyTreeResponse,
     PlatformModulesResponse,
+    SetCompanyDomainsResponse,
     SetCompanyModulesResponse,
     SetCompanyVerificationResponse,
     SetPortalApprovalResponse,
@@ -32,6 +33,11 @@ import {
     setCompanyVerificationSchema,
     type SetCompanyVerificationFormType,
 } from "armonia/src/modules/core/api/platform/private/companies/setCompanyVerification.form.validator";
+import {
+    setCompanyDomainsSchema,
+    type SetCompanyDomainsFormType,
+} from "armonia/src/modules/core/api/platform/private/companies/setCompanyDomains.form.validator";
+import {NO_COMPANY_DOMAIN, prepareCompanyDomains} from "@coreModule/utilities/company/companyDomains";
 import {SetPortalVisibilityFormType} from "armonia/src/modules/core/api/platform/private/companies/setPortalVisibility.form.type";
 import {setPortalVisibilitySchema} from "armonia/src/modules/core/api/platform/private/companies/setPortalVisibility.form.validator";
 import Company from "@coreModule/database/schemas/company/company";
@@ -60,6 +66,7 @@ import {notifyPortalApprovalDecided} from "@coreModule/domain/company/companySig
  * - GET  /tree        — every company with the company it was created under (the hierarchy view)
  * - PUT  /modules/:id — grant a company its modules
  * - PUT  /portalVisibility/:id — hide a company from (or show it on) the portal and shop apex
+ * - PUT  /domains/:id — set a company's own domains (D189)
  *
  * @module modules/core/api/platform/companies
  */
@@ -361,6 +368,42 @@ async function setCompanyVerification(params: SetCompanyVerificationType, routeP
     await withTenant(target._id, () => target.save({session}));
     logger.debug(`Company '${target.name}' ${verified ? "verified" : "no longer verified"}`);
     return {_id: target._id.toString(), verifiedAt: target.verifiedAt?.toISOString() ?? null};
+}
+
+/**
+ * PUT /api/platform/companies/domains/:id
+ *
+ * A company's own domains, set only by the platform (D189): a listed host serves that company's public pages, so a host
+ * belongs to one company (hosts the platform serves itself excepted). An empty list leaves the company on its portal
+ * address alone.
+ */
+router.put(
+    "/domains/:id",
+    authMW("private"),
+    rateLimiter({windowMs: 60000, max: 30}),
+    transactionHandler(),
+    validateFormZod(setCompanyDomainsSchema),
+    asyncHandler(setCompanyDomains)
+);
+type SetCompanyDomainsType = TransactionRequiredParams & SetCompanyDomainsFormType;
+
+async function setCompanyDomains(params: SetCompanyDomainsType, routeParams: {id: string}): Promise<SetCompanyDomainsResponse> {
+    assertPlatformAdmin(params);
+    const {logger, languageCode, session, actionUserCtx, allowedDomains} = params;
+    if (!ObjectId.isValid(routeParams.id)) {
+        throw apiValidationException("not_found", "", null, languageCode);
+    }
+    const target = await companyService.findById(new ObjectId(routeParams.id), {session});
+    if (!target) {
+        throw apiValidationException("not_found", "", null, languageCode);
+    }
+    const domains = await prepareCompanyDomains(allowedDomains, target._id, {session, logger, languageCode});
+    target.allowedDomains = domains.length > 0 ? domains : [NO_COMPANY_DOMAIN];
+    target.$locals = target.$locals || {};
+    target.$locals.auditUserId = actionUserCtx.userId;
+    await withTenant(target._id, () => target.save({session}));
+    logger.debug(`Company '${target.name}' domains: ${target.allowedDomains.join(", ")}`);
+    return {_id: target._id.toString(), allowedDomains: [...target.allowedDomains]};
 }
 
 export {router};

@@ -69,6 +69,18 @@ describe("Company PATCH siteSlug (TD-B51)", {timeout: 30000}, () => {
         expect((await stored())!.siteSlug).toBe("shop-bern");
     });
 
+    it("refuses a slug that carries the platform's own name, while the platform keeps its own (D189)", async () => {
+        const platformId = new ObjectId();
+        await Company.collection.insertOne({_id: platformId, company: platformId, name: "Kudoo", siteSlug: "kudoo", isPlatformOwner: true, allowedDomains: ["*"], isActive: true, deletedAt: null});
+        await seed({siteSlug: "shop-bern"});
+
+        const res = await edit({siteSlug: "kudoo-support"});
+
+        expect(res.body.error_code).toBe("company_site_slug_reserved");
+        expect((await stored())!.siteSlug).toBe("shop-bern");
+        expect((await edit({siteSlug: "bern-bakery"})).body.error_code ?? "ok").toBe("ok");
+    });
+
     it("builds the slug from the name when none is stored or sent", async () => {
         await seed({name: "Lakeside Bakery"});
 

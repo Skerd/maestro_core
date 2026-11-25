@@ -11,6 +11,7 @@ import {isPortalApexOrigin} from "@coreModule/utilities/marketing/portalOrigin";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
 import {asCrossTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
+import {PORTAL_APPROVED_CLAUSE, portalCompanyClause} from "@coreModule/utilities/marketing/portalCompanies";
 import {blogPostService} from "@coreModule/database/schemas/blogPost/blogPost.service";
 import {blogCategoryService} from "@coreModule/database/schemas/blogCategory/blogCategory.service";
 import {BlogCategorySimpleSnippet} from "@coreModule/database/schemas/blogCategory/blogCategory.snippets";
@@ -135,12 +136,13 @@ router.post(
 );
 
 /**
- * The apex with no named company spans every active company. A company host, or an apex
- * page that names one company (`x-site-company`), is that company only.
+ * The apex with no named company spans the companies the portal may list: active, not hidden by the platform and, for a
+ * self-serve company, approved (D189: the apex is the platform's own front page). A company host, or an apex page that
+ * names one company (`x-site-company`), is that company only.
  */
 async function publicBlogCompanyFilter(origin: string, languageCode: string): Promise<Record<string, unknown>> {
     if (blogSpansCompanies(origin)) {
-        const ids = await companyService.findIds({isActive: true});
+        const ids = await companyService.findIds({$and: [portalCompanyClause("core"), PORTAL_APPROVED_CLAUSE]});
         return {company: {$in: ids}};
     }
     const company = await resolveCompanyByOrigin(origin, languageCode);

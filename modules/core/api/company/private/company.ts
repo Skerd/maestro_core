@@ -46,7 +46,6 @@ import {
     companyTimeZoneInput,
     createCompany,
     SITE_SLUG_ERRORS,
-    trimDomains,
     validateAndMapAddresses,
 } from "@coreModule/domain/company/createCompany";
 import {PORTAL_ROOT_DOMAIN} from "@coreModule/environment";
@@ -214,18 +213,19 @@ type CreateNewCompanyType = TransactionRequiredParams & CreateCompanyFormType & 
  * @remarks Validates VAT uniqueness; creates addresses if provided; adds to userInfo.companies/roles/finance
  */
 async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone, allowedDomains, publicAiChat, languageCode, logger, session, actionUserCtx, fileIds, company} = params;
+    const {name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone, publicAiChat, languageCode, logger, session, actionUserCtx, fileIds, company} = params;
 
     logger.start(`Trying to create new company...`);
 
     // Check model-level permission first
     SchemaGuard.checkModelPermission(Company, "create", actionUserCtx);
 
-    // The platform owner grants further modules (PUT /api/platform/companies/modules/:id).
+    // The platform owner grants further modules (PUT /api/platform/companies/modules/:id) and sets the company's own
+    // domains (PUT /api/platform/companies/domains/:id, D189); a company never names them itself.
     await createCompany(
         {
             name, email, phoneNumber, addresses, description, website, linkedin, instagram, facebook, vat, siteSlug, timezone,
-            allowedDomains, publicAiChat, logo: fileIds?.[0] ?? null, parentCompanyId: company._id,
+            publicAiChat, logo: fileIds?.[0] ?? null, parentCompanyId: company._id,
         },
         {session, logger, languageCode, auditUserId: actionUserCtx.userId},
     );
@@ -248,7 +248,8 @@ async function createNewCompany(params: CreateNewCompanyType): Promise<ActionMes
  * @returns {Promise<ActionMessage>} Success message
  *
  * @remarks
- * - Supports updating: name, email, phone, description, website, social URLs, VAT, parentCompany, allowedDomains, publicAiChat
+ * - Supports updating: name, email, phone, description, website, social URLs, VAT, parentCompany, publicAiChat (own domains are
+ *   the platform's to set, D189)
  * - Can add, modify, or delete addresses in a single operation
  * - Logo upload replaces existing logo (old logo is deleted)
  * - `logo: null` clears the logo (same null-sentinel as CRUD `$unset`)
@@ -295,7 +296,7 @@ async function assertNoParentLoop(companyId: ObjectId, newParent: ICompany, opti
 }
 
 async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> {
-    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, timezone, allowedDomains, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
+    const {name, email, phoneNumber, addresses, description, parentCompany, website, linkedin, instagram, facebook, vat, siteSlug, timezone, shopListedOnPortal, publicAiChat, logo, languageCode, logger, session, company, actionUserCtx, actionUserInfo, fileIds, sanitizedWriteFields} = params;
 
     logger.start(`Trying to update company with id: [${company._id.toString()}]...`);
 
@@ -365,10 +366,6 @@ async function updateCompany(params: UpdateCompanyType): Promise<ActionMessage> 
     // Sent empty: the company falls back to the instance's zone.
     if (timezone !== undefined && sanitizedWriteFields.timezone) {
         existingCompany.set("timezone", companyTimeZoneInput(timezone, languageCode));
-    }
-    if (allowedDomains && sanitizedWriteFields.allowedDomains) {
-        const nextDomains = trimDomains(allowedDomains);
-        existingCompany.allowedDomains = nextDomains.length > 0 ? nextDomains : ["none.none.com"];
     }
     if (shopListedOnPortal !== undefined && sanitizedWriteFields.shopListedOnPortal) {
         existingCompany.shopListedOnPortal = shopListedOnPortal;

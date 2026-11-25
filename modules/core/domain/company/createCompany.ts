@@ -15,6 +15,7 @@ import {buildSiteHostAssignment} from "@coreModule/utilities/company/siteHost";
 import {isValidTimeZone} from "@coreModule/utilities/time/timeWindows";
 import {asCrossTenant, withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
+import {NO_COMPANY_DOMAIN} from "@coreModule/utilities/company/companyDomains";
 
 /**
  * Creating a company, shared by the panel's "add company" and self-serve sign-up on the portal (D178, BE-02): each
@@ -55,6 +56,13 @@ export async function assertSiteSlugAvailable(
     const taken = await companyService.findOne(filter, {session: ctx.session, logger: ctx.logger, languageCode});
     if (taken) {
         throw apiValidationException("company_site_slug_taken", "siteSlug", [slug], languageCode);
+    }
+    // No other company's address may carry the platform's own name ("kudoo-support.kudoo.al", D189). A platform slug
+    // shorter than 4 letters would match too many ordinary words, so it is left to the fixed reserved list.
+    const platform = await companyService.findOne({isPlatformOwner: true}, {session: ctx.session, logger: ctx.logger, languageCode}, null, "_id siteSlug");
+    const brand = platform?.siteSlug ?? "";
+    if (brand.length >= 4 && slug.includes(brand) && !(excludeId && platform && excludeId.equals(platform._id))) {
+        throw apiValidationException("company_site_slug_reserved", "siteSlug", [slug], languageCode);
     }
 }
 
@@ -186,7 +194,7 @@ export async function createCompany(input: CreateCompanyInput, ctx: CreateCompan
             siteHost: siteHostAssignment.siteHost,
             siteProvision: siteHostAssignment.siteProvision,
             ...(zone ? {timezone: zone} : {}),
-            allowedDomains: domains.length > 0 ? domains : ["none.none.com"],
+            allowedDomains: domains.length > 0 ? domains : [NO_COMPANY_DOMAIN],
             addresses: ownAddresses,
             parentCompany: input.parentCompanyId,
             modules: ["core", ...(input.modules ?? [])],

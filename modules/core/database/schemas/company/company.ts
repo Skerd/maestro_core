@@ -352,10 +352,16 @@ const CompanySchema: Schema = new Schema(
                 }
             }
         },
+        // Only the platform sets a company's own domains, through its Companies page (D189): a listed host serves
+        // that company's public pages, so no company may claim one itself.
         allowedDomains: {
             type: [SchemaTypes.String],
             default: [],
-            required: true
+            required: true,
+            permissions: {
+                self: {write: "no-permission"},
+                others: {write: "no-permission"},
+            },
         },
         modules: {
             type: [SchemaTypes.String],
