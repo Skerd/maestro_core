@@ -92,6 +92,10 @@ async function ReLoginDifferentCompany(
             throw apiValidationException("company_inactive", null, null, languageCode);
         }
     }
+    // Suspended by the platform (D191): nobody switches into it, its admins included.
+    if (company.suspendedAt) {
+        throw apiValidationException("company_suspended", "company", null, languageCode);
+    }
 
     // From here the request works on the company being switched to (D16).
     setRequestTenant(company._id, languageCode);

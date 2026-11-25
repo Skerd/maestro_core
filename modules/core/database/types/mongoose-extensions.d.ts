@@ -40,6 +40,8 @@ declare module "mongoose" {
         requestable?: boolean;
         // set by platformOnlyPlugin: only the platform company (and companies with a registered module) may use the model (D161)
         platformOnly?: boolean;
+        // set by platformHiddenPlugin: the platform's report desk may hide one company's record from the public (D191)
+        platformHidden?: boolean;
     }
 
 

@@ -9,7 +9,8 @@ import {userService} from "@coreModule/database/schemas/user/user.service";
 import {pushWebsocketMessage} from "@coreModule/connections/connectToWebSocketServer";
 import type {serverLogger} from "@coreModule/loggers/serverLog";
 
-function notifySessionRevoked(userId: string, sessionId: string, logger: serverLogger) {
+/** Tells the open panels of the session's user that it ended, so they sign out at once. */
+export function notifySessionRevoked(userId: string, sessionId: string, logger: serverLogger) {
     try {
         pushWebsocketMessage({
             code: WebSocketMessageCodes.SESSION_REVOKED,

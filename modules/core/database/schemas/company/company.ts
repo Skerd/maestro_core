@@ -25,6 +25,7 @@ import {CitySimpleSnippet} from "@coreModule/database/schemas/city/city.snippets
 import {StateSimpleSnippet} from "@coreModule/database/schemas/state/state.snippets";
 import {CountrySimpleSnippet} from "@coreModule/database/schemas/country/country.snippets";
 import {CompanyBlankSnippet} from "./company.snippets";
+import {COMPANY_SUSPENSION_REASON_MAX} from "armonia/src/modules/core/api/platform/private/companies/setCompanySuspension.form.validator";
 import {companyViews} from "./company.views";
 import {
     DEFAULT_ROLE_SLUG_PATTERN,
@@ -129,6 +130,13 @@ export interface ICompany extends Document, IOwnershipPluginFields, ISoftDeleteP
         decidedAt?: Date;
         reason?: string;
     };
+    /**
+     * Set when the platform suspends the company (D191): its own site and the portal leave it out, nobody works in it from
+     * the panel, and nothing is mailed or texted on its behalf; its data stays, and lifting the suspension restores it.
+     */
+    suspendedAt?: Date;
+    suspendedReason?: string;
+    suspendedBy?: ObjectId;
     /** When the platform checked the company's NIPT/VAT (D178); cleared when the VAT changes. */
     verifiedAt?: Date;
     verifiedBy?: ObjectId;
@@ -409,6 +417,9 @@ const CompanySchema: Schema = new Schema(
             },
         },
         // Set by the platform after checking the NIPT/VAT (D178).
+        suspendedAt: {type: SchemaTypes.Date, permissions: {self: {write: "no-permission"}, others: {write: "no-permission"}}},
+        suspendedReason: {type: SchemaTypes.String, trim: true, maxlength: COMPANY_SUSPENSION_REASON_MAX, permissions: {self: {write: "no-permission"}, others: {write: "no-permission"}}},
+        suspendedBy: {type: SchemaTypes.ObjectId, permissions: {self: {write: "no-permission"}, others: {write: "no-permission"}}},
         verifiedAt: {
             type: SchemaTypes.Date,
             permissions: {

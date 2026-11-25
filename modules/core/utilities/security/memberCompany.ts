@@ -25,12 +25,12 @@ export type MemberCompanyAction = {model: Model<any>; method: string};
 /** The company a request acts for, and the caller's access there. */
 export type MemberCompanyAccess = {company: ICompany; isAdmin: boolean; permissions: string[]; modules: string[]};
 
-const COMPANY_FIELDS = "name isActive modules isPlatformOwner timezone";
+const COMPANY_FIELDS = "name isActive modules isPlatformOwner timezone suspendedAt";
 
 /**
  * The company `actAs` names, checked for this user and action; refused with the same errors the panel gives
- * (`company_role_not_found`, `user_locked_out`, `user_not_active`, `company_is_inactive`, `module_not_enabled`,
- * `user_permissions_not_sufficient`).
+ * (`company_role_not_found`, `user_locked_out`, `user_not_active`, `account_banned`, `company_is_inactive`, `company_suspended`,
+ * `module_not_enabled`, `user_permissions_not_sufficient`).
  */
 export async function resolveMemberCompany(
     user: IUser,
@@ -45,6 +45,8 @@ export async function resolveMemberCompany(
     // A member whose membership is active and not locked out (the panel's own sign-in checks).
     await user.checkAccountAccessibility(company._id, languageCode);
     if (!company.isActive) throw apiValidationException("company_is_inactive", "company", null, languageCode);
+    // Suspended by the platform (D191): nobody acts for it, from the panel or the portal.
+    if (company.suspendedAt) throw apiValidationException("company_suspended", "company", null, languageCode);
     if (routeModule && !isModuleEnabledForCompany(company, routeModule)) throw apiValidationException("module_not_enabled", "module", null, languageCode);
     const modules = effectiveCompanyModules(company);
     const {isAdmin, permissions} = await user.getCompanyAccess(company._id, modules);

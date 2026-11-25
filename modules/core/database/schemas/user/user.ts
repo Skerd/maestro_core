@@ -116,6 +116,10 @@ export interface IUser extends Document, ILifeCyclePluginFields {
     online: boolean,
     isBot: boolean,
     isVisitor: boolean,
+    /** Set when the platform bans the account (D191): it can no longer sign in anywhere. */
+    bannedAt?: Date,
+    bannedReason?: string,
+    bannedBy?: ObjectId,
     requests: {
         mfaActivation: {
             secret: string
@@ -431,6 +435,28 @@ const UserSchema = new Schema<IUser>(
                 visible: false,
                 filterable: false
             }
+        },
+        // Written only by the platform's report desk (D191); read by sign-in and authMW, never sent to a client.
+        bannedAt: {
+            type: SchemaTypes.Date,
+            permissions: {
+                self: {read: "no-permission", write: "no-permission"},
+                others: {read: "no-permission", write: "no-permission"},
+            },
+        },
+        bannedReason: {
+            type: SchemaTypes.String,
+            permissions: {
+                self: {read: "no-permission", write: "no-permission"},
+                others: {read: "no-permission", write: "no-permission"},
+            },
+        },
+        bannedBy: {
+            type: SchemaTypes.ObjectId,
+            permissions: {
+                self: {read: "no-permission", write: "no-permission"},
+                others: {read: "no-permission", write: "no-permission"},
+            },
         },
         isVisitor: {
             type: SchemaTypes.Boolean,
@@ -1656,6 +1682,10 @@ UserSchema.methods.checkPassword =  async function (companyId: ObjectId, candida
 
 UserSchema.methods.checkAccountAccessibility = async function (companyId: ObjectId, languageCode: string = CONSTANTS.DEFAULT_LANGUAGE, session?: ClientSession, logger?: serverLogger){
 
+    // A banned account opens no company at all (D191).
+    if (this.bannedAt) {
+        throw apiValidationException("account_banned", null, null, languageCode);
+    }
     const companyRole = findCompanyRole(this.roles, companyId);
     if (!companyRole) {
         throw apiValidationException("company_role_not_found", null, null, languageCode);

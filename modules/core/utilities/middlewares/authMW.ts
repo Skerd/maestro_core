@@ -127,7 +127,7 @@ export default (type: "public" | "private", options: AuthMWOptions = {}) => asyn
         req.body.userInfo = user;
         req.body.actionUserInfo = user;
 
-        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive modules isPlatformOwner timezone");
+        const company = await companyService.findByIdOrThrow(new ObjectId( actionCompany || userFromToken.company?._id), {session}, [], "name isActive modules isPlatformOwner timezone suspendedAt");
         req.body.company = company;
         req.body.companyTimeZone = companyTimeZone(company);
         // From here on the request works on this company's data (D16); the checks below are about it.
@@ -138,6 +138,10 @@ export default (type: "public" | "private", options: AuthMWOptions = {}) => asyn
 
         if( !company.isActive && !isAdmin ){
             throw apiValidationException("company_is_inactive", "company", null, languageCode);
+        }
+        // Suspended by the platform (D191): nobody works in it, its own admins included.
+        if (company.suspendedAt) {
+            throw apiValidationException("company_suspended", "company", null, languageCode);
         }
 
         await validateActiveUserSession(userFromToken, user._id, company._id, {session, languageCode});

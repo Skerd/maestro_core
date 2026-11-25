@@ -21,6 +21,7 @@ import {
     PlatformModulesResponse,
     SetCompanyDomainsResponse,
     SetCompanyModulesResponse,
+    SetCompanySuspensionResponse,
     SetCompanyVerificationResponse,
     SetPortalApprovalResponse,
     SetPortalVisibilityResponse,
@@ -40,6 +41,11 @@ import {
 import {NO_COMPANY_DOMAIN, prepareCompanyDomains} from "@coreModule/utilities/company/companyDomains";
 import {SetPortalVisibilityFormType} from "armonia/src/modules/core/api/platform/private/companies/setPortalVisibility.form.type";
 import {setPortalVisibilitySchema} from "armonia/src/modules/core/api/platform/private/companies/setPortalVisibility.form.validator";
+import {
+    setCompanySuspensionSchema,
+    type SetCompanySuspensionFormType,
+} from "armonia/src/modules/core/api/platform/private/companies/setCompanySuspension.form.validator";
+import {setCompanyPortalHidden, setCompanySuspended} from "@coreModule/domain/company/companyStanding";
 import Company from "@coreModule/database/schemas/company/company";
 import {companyService} from "@coreModule/database/schemas/company/company.service";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
@@ -67,6 +73,7 @@ import {notifyPortalApprovalDecided} from "@coreModule/domain/company/companySig
  * - PUT  /modules/:id — grant a company its modules
  * - PUT  /portalVisibility/:id — hide a company from (or show it on) the portal and shop apex
  * - PUT  /domains/:id — set a company's own domains (D189)
+ * - PUT  /suspension/:id — suspend a company, or lift it (D191)
  *
  * @module modules/core/api/platform/companies
  */
@@ -277,18 +284,34 @@ async function setPortalVisibility(params: SetPortalVisibilityType, routeParams:
     if (!ObjectId.isValid(routeParams.id)) {
         throw apiValidationException("not_found", "", null, languageCode);
     }
-    const target = await companyService.findById(new ObjectId(routeParams.id), {session});
-    if (!target) {
+    const target = await setCompanyPortalHidden(new ObjectId(routeParams.id), hiddenFromPortal, {decidedBy: actionUserCtx.userId, session, logger, languageCode});
+    return {_id: target._id.toString(), hiddenFromPortal: target.hiddenFromPortal};
+}
+
+/**
+ * PUT /api/platform/companies/suspension/:id
+ *
+ * Suspends a company (D191), keeping the platform's reason, or lifts the suspension: nobody signs in or works in it,
+ * its sites and portal entries are gone and nothing is mailed on its behalf. A protected company refuses.
+ */
+router.put(
+    "/suspension/:id",
+    authMW("private"),
+    rateLimiter({windowMs: 60000, max: 30}),
+    transactionHandler(),
+    validateFormZod(setCompanySuspensionSchema),
+    asyncHandler(setSuspension)
+);
+type SetSuspensionType = TransactionRequiredParams & SetCompanySuspensionFormType;
+
+async function setSuspension(params: SetSuspensionType, routeParams: {id: string}): Promise<SetCompanySuspensionResponse> {
+    assertPlatformAdmin(params);
+    const {logger, languageCode, session, actionUserCtx, suspended, reason} = params;
+    if (!ObjectId.isValid(routeParams.id)) {
         throw apiValidationException("not_found", "", null, languageCode);
     }
-    assertCompanyChangeAllowed(target, {hideFromPortal: hiddenFromPortal}, languageCode);
-    target.hiddenFromPortal = hiddenFromPortal;
-    target.$locals = target.$locals || {};
-    target.$locals.auditUserId = actionUserCtx.userId;
-    // Saved in the target's tenant: its public-media plugin touches the target's logo (TD-B188).
-    await withTenant(target._id, () => target.save({session}));
-    logger.debug(`Company '${target.name}' ${hiddenFromPortal ? "hidden from" : "shown on"} the portal`);
-    return {_id: target._id.toString(), hiddenFromPortal: target.hiddenFromPortal};
+    const target = await setCompanySuspended(new ObjectId(routeParams.id), suspended, {decidedBy: actionUserCtx.userId, reason, session, logger, languageCode});
+    return {_id: target._id.toString(), suspended: Boolean(target.suspendedAt), suspendedReason: target.suspendedReason};
 }
 
 /**

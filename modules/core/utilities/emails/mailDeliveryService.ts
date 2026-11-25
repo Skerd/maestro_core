@@ -46,9 +46,12 @@ export type SmtpConnectionConfig = {
 export function invalidateCompanyMailCache(companyId?: ObjectId | string | null): void {
     if (companyId) {
         companyServerCache.delete(companyId.toString());
+        // The name, email and suspension mail is sent with (D191) change with the company too.
+        identityCache.delete(companyId.toString());
         return;
     }
     companyServerCache.clear();
+    identityCache.clear();
 }
 
 export function encryptSmtpPassword(plain: string): string {
@@ -226,7 +229,7 @@ export type MailDeliveryRoute = {
     ownServers?: boolean;
 };
 
-type CompanyIdentity = {name?: string; email?: string};
+type CompanyIdentity = {name?: string; email?: string; suspended?: boolean};
 type CachedValue<T> = {expiresAt: number; value: T};
 
 const identityCache = new Map<string, CachedValue<CompanyIdentity | null>>();
@@ -247,10 +250,19 @@ async function companyIdentity(companyKey: string): Promise<CompanyIdentity | nu
     const cached = identityCache.get(companyKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
     const {companyService} = await import("@coreModule/database/schemas/company/company.service");
-    const company = await companyService.findById(companyKey, {}, undefined, "name email");
-    const value = company ? {name: company.name, email: company.email} : null;
+    const company = await companyService.findById(companyKey, {}, undefined, "name email suspendedAt");
+    const value = company ? {name: company.name, email: company.email, suspended: Boolean(company.suspendedAt)} : null;
     identityCache.set(companyKey, {expiresAt: Date.now() + CACHE_TTL_MS, value});
     return value;
+}
+
+/**
+ * Whether nothing may be mailed on the company's behalf: the platform suspended it (D191). The platform's own mail is
+ * never held back.
+ */
+async function senderSuspended(companyKey: string): Promise<boolean> {
+    if (companyKey === await platformCompanyKey()) return false;
+    return (await companyIdentity(companyKey))?.suspended === true;
 }
 
 /**
@@ -307,6 +319,10 @@ export async function sendMail(
     }
 
     const companyKey = companyId.toString();
+    if (await senderSuspended(companyKey)) {
+        logger.warn(`Mail of suspended company ${companyKey} not sent (D191)`);
+        return {};
+    }
     const {servers, prepare} = await resolveSender(companyKey, route);
     const mailOptions = prepare(message);
 
@@ -365,6 +381,10 @@ export async function createPooledMailSession(
     route: MailDeliveryRoute = {},
 ): Promise<PooledMailSession> {
     const companyKey = companyId?.toString();
+    // A suspended company's campaigns stop (D191): failing here marks their sends failed, never sent.
+    if (companyKey && await senderSuspended(companyKey)) {
+        throw new Error(`Company ${companyKey} is suspended: its mail is not sent (D191)`);
+    }
     const {servers, prepare} = companyKey
         ? await resolveSender(companyKey, route)
         : {servers: [] as ISmtpServer[], prepare: (mail: MailDeliverySendOptions) => mail};

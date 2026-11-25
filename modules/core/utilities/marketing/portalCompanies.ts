@@ -27,7 +27,7 @@ import type {Model} from "mongoose";
 
 /** Mongo clause for companies the portal may list for `moduleName`. */
 export function portalCompanyClause(moduleName: string): Record<string, unknown> {
-    return {$and: [{isActive: true, deletedAt: null, hiddenFromPortal: {$ne: true}}, companyModuleClause(moduleName)]};
+    return {$and: [{isActive: true, deletedAt: null, hiddenFromPortal: {$ne: true}, suspendedAt: null}, companyModuleClause(moduleName)]};
 }
 
 /**
@@ -42,10 +42,10 @@ export function isPortalApproved(company: Pick<ICompany, "portalApproval">): boo
 }
 
 export function isPortalListable(
-    company: Pick<ICompany, "isActive" | "hiddenFromPortal" | "modules"> & {deletedAt?: Date | null},
+    company: Pick<ICompany, "isActive" | "hiddenFromPortal" | "modules" | "suspendedAt"> & {deletedAt?: Date | null},
     moduleName: string,
 ): boolean {
-    return company.isActive && !company.deletedAt && company.hiddenFromPortal !== true
+    return company.isActive && !company.deletedAt && company.hiddenFromPortal !== true && !company.suspendedAt
         && isModuleEnabledForCompany(company, moduleName);
 }
 

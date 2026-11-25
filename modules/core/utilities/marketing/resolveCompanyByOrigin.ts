@@ -67,8 +67,10 @@ async function findCompanyByOrigin(origin: string, languageCode: string): Promis
     const normalizedOrigin = (origin || "").toLowerCase().split(":")[0];
 
     if (normalizedOrigin) {
+        // A suspended company's own domain answers like an unknown host (D191).
         const specific = await companyService.findOne({
             isActive: true,
+            suspendedAt: null,
             allowedDomains: normalizedOrigin,
         });
         if (specific) {

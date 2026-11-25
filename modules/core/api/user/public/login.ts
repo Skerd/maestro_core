@@ -143,9 +143,10 @@ async function findLoginCompany(
         return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, isPlatformOwner: true }, opts);
     }
     // Every business of the person this host may open: those naming it, and those open on any host.
-    const candidates = await companyService.find({ _id: { $in: companyIds }, isActive: true, allowedDomains: { $in: [origin, "*"] } }, opts);
+    // A company the platform suspended is never opened (D191).
+    const candidates = await companyService.find({ _id: { $in: companyIds }, isActive: true, suspendedAt: null, allowedDomains: { $in: [origin, "*"] } }, opts);
     if (candidates.length === 0) {
-        return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, allowedDomains: "*" }, opts);
+        return companyService.findOneOrThrow({ _id: { $in: companyIds }, isActive: true, suspendedAt: null, allowedDomains: "*" }, opts);
     }
     if (candidates.length === 1) return candidates[0];
     // Several answer (TD-B255): the one they last signed in to or switched to on this same host, whose session is the

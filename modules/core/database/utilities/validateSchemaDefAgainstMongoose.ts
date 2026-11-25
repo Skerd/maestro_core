@@ -7,6 +7,7 @@ const EXCLUDED_PATHS = new Set([
     "createdBy", "company",       // ownershipPlugin
     "deletedAt", "deletedBy",     // softDeletePlugin
     "createdAt", "updatedAt",     // timestamps / auditPlugin
+    "hiddenByPlatform",           // platformHiddenPlugin (D191)
 ]);
 
 // Maps SchemaDef type → accepted Mongoose instance names (for type-compatibility check).

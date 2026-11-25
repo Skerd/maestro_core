@@ -1,12 +1,12 @@
 /**
- * Reusable mappers for Mongoose plugin data (softDeletePlugin, ownershipPlugin, requestablePlugin).
+ * Reusable mappers for Mongoose plugin data (softDeletePlugin, ownershipPlugin, requestablePlugin, platformHiddenPlugin).
  * Use these to avoid duplicating mapping logic across entity DTOs.
  */
 
 import type {ObjectId} from "mongodb";
 import type {CompanyBlank} from "armonia/src/modules/core/dto/company.dto";
 import type {SimpleBlankUser} from "armonia/src/modules/core/dto/user.dto";
-import type {RequestableData, RequestStatus} from "armonia/src/modules/core/types/shared.types";
+import type {PlatformHiddenData, RequestableData, RequestStatus} from "armonia/src/modules/core/types/shared.types";
 import {CompanyBlankSnippet} from "@coreModule/database/schemas/company/company.snippets";
 import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.snippets";
 import {mapSnippet} from "@coreModule/utilities/mappers/common.mapper";
@@ -127,4 +127,9 @@ export function mapRequestableToDTO<T extends RequestableDoc>(doc: T): Requestab
         ...(decidedBy ? {decidedBy} : {}),
         ...(doc.decisionNotes ? {decisionNotes: doc.decisionNotes} : {}),
     };
+}
+
+/** Whether the platform hid the record from the public (platformHiddenPlugin, D191). */
+export function mapPlatformHiddenToDTO(doc: {hiddenByPlatform?: boolean}): Required<PlatformHiddenData> {
+    return {hiddenByPlatform: doc.hiddenByPlatform === true};
 }

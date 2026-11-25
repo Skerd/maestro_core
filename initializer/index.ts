@@ -33,6 +33,8 @@ import {isModuleEnabled} from "@coreModule/utilities/modules/enabledModules";
 import {registerModelModules} from "@coreModule/utilities/modules/modelModules";
 import {registerPlatformOnlyUse} from "@coreModule/database/plugins/platformOnlyPlugin";
 import {registerSelfServeBusinessTypes, type SelfServeBusinessType} from "@coreModule/domain/company/selfServeBusinessTypes";
+import {registerReportables, type ReportableDefinition} from "@coreModule/domain/reports/reportables";
+import {coreReportables} from "@coreModule/domain/reports/coreReportables";
 import {createUsers} from "@coreModule/database/schemas/user/user.defaults";
 import {createCompanies} from "@coreModule/database/schemas/company/company.defaults";
 import {
@@ -54,6 +56,8 @@ type ModuleBootstrap = {
     platformOnlyUses?: string[];
     /** Kinds of business a person may create by themselves on the portal (D178), registered under the folder name. */
     selfServeBusinessTypes?: SelfServeBusinessType[];
+    /** The public things people can report to the platform, and how to hide one (D191); registered under the folder name. */
+    reportables?: ReportableDefinition[];
 };
 
 const coreModels: Model<any>[] = [
@@ -92,6 +96,8 @@ export async function loadOptionalModuleBootstraps(parentLogger?: serverLogger):
     }
 
     const bootstraps: ModuleBootstrap[] = [];
+    // Core has no moduleBootstrap: its own reportable kinds are registered here, before the modules' (D191).
+    registerReportables("core", coreReportables);
     const moduleDirs = fs.readdirSync(modulesPath, {withFileTypes: true}).filter(
         entry => entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "core",
     );
@@ -121,6 +127,7 @@ export async function loadOptionalModuleBootstraps(parentLogger?: serverLogger):
                 registerPlatformOnlyUse({model, module: moduleEntry.name});
             }
             registerSelfServeBusinessTypes(moduleEntry.name, bootstrap.selfServeBusinessTypes ?? []);
+            registerReportables(moduleEntry.name, bootstrap.reportables ?? []);
             logger.debug(`Loaded moduleBootstrap for [${moduleEntry.name}]`);
         } catch (error: any) {
             logger.err(`Failed to load moduleBootstrap for ${moduleEntry.name}`, error);

@@ -109,6 +109,10 @@ export async function testMessagingProviderConnection(
 export async function sendMessagingNotification(params: SendMessageParams): Promise<SendMessageResult | null> {
     const {to, body, channel} = params;
     if (!to || !body) return null;
+    // Nothing is texted on behalf of a company the platform suspended (D191).
+    const {companyService} = await import("@coreModule/database/schemas/company/company.service");
+    const company = await companyService.findById(params.companyId.toString(), {}, undefined, "suspendedAt");
+    if (company?.suspendedAt) return null;
 
     const provider = await getActiveProvider();
     if (!provider) return null;

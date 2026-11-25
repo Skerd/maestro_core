@@ -17,3 +17,5 @@ export interface ILifeCyclePluginFields {
     createdAt?: Date;
     updatedAt?: Date;
 }
+
+export type {IPlatformHiddenPluginFields} from "@coreModule/database/plugins/platformHiddenPlugin";

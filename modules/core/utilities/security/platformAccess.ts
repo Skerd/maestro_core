@@ -61,16 +61,16 @@ export function assertPlatformAdmin(params: PlatformAccessParams): void {
 }
 
 /**
- * A protected company (the platform owner, the marketplace operator) keeps running: it is never deactivated, hidden
- * from the portal or left without a module it has. `removedModules` are the grants the change would drop.
+ * A protected company (the platform owner, the marketplace operator) keeps running: it is never deactivated, suspended,
+ * hidden from the portal or left without a module it has. `removedModules` are the grants the change would drop.
  */
 export function assertCompanyChangeAllowed(
     company: Pick<ICompany, "isProtected">,
-    change: {deactivate?: boolean; hideFromPortal?: boolean; removedModules?: string[]},
+    change: {deactivate?: boolean; suspend?: boolean; hideFromPortal?: boolean; removedModules?: string[]},
     languageCode: string,
 ): void {
     if (company.isProtected !== true) return;
-    if (change.deactivate || change.hideFromPortal || (change.removedModules?.length ?? 0) > 0) {
+    if (change.deactivate || change.suspend || change.hideFromPortal || (change.removedModules?.length ?? 0) > 0) {
         throw apiValidationException("company_is_protected", "", null, languageCode);
     }
 }

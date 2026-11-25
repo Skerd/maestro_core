@@ -81,6 +81,8 @@ async function portalSite(company: ICompany, scope: PortalScope, languageCode: s
             platform: {name: platformName},
             company: {
                 ...await portalCompanyProfile(company),
+                // Its id, for the site's "Report this business" (D191).
+                _id: company._id.toString(),
                 slug: portalSlug({_id: company._id, siteSlug: company.siteSlug}),
                 ...(description ? {description} : {}),
                 cities: scope.companyId ? cities : [],

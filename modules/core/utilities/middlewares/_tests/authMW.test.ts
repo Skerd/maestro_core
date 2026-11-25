@@ -114,3 +114,15 @@ describe("authMW portal buyer module gate (D143, TD-B189)", () => {
         expect(findTarget).not.toHaveBeenCalled();
     });
 });
+
+describe("authMW and the platform's suspension (D191)", () => {
+    it("refuses every request in a company the platform suspended, its admins' too", async () => {
+        findCompany.mockResolvedValueOnce({_id: companyId, name: "Lakeside", isActive: true, modules: ["core"], suspendedAt: new Date()});
+        const headers: Record<string, string> = {"x-auth-token": "token"};
+        const req = {body: {}, originalUrl: "/api/x", socket: {remoteAddress: "127.0.0.1"}, headers: {}, header: (name: string) => headers[name], get: () => undefined};
+        const next = vi.fn();
+        await authMW("private")(req, {}, next);
+        expect(findCompany.mock.calls.at(-1)![3]).toContain("suspendedAt");
+        expect(next.mock.calls[0]?.[0]).toMatchObject({error_code: "company_suspended"});
+    });
+});

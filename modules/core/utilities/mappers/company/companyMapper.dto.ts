@@ -14,7 +14,7 @@ import {mapLifeCycleToDTO, mapOwnershipToDTO, mapSoftDeleteToDTO} from "@coreMod
 
 /** Platform-managed fields `companyToDTO` maps; add them to any projected company read. */
 // Sub-paths, not `portalApproval`: a parent beside the read fields' own sub-paths is a projection path collision.
-export const COMPANY_MODULE_FIELDS = "modules isPlatformOwner hiddenFromPortal isProtected portalApproval.status portalApproval.reason portalApproval.decidedAt verifiedAt";
+export const COMPANY_MODULE_FIELDS = "modules isPlatformOwner hiddenFromPortal isProtected portalApproval.status portalApproval.reason portalApproval.decidedAt verifiedAt suspendedAt suspendedReason";
 /** What a member always sees of the companies they belong to: the company switcher's name, description and logo. */
 export const COMPANY_BASIC_INFO_SELECT = "name description logo";
 
@@ -76,6 +76,8 @@ export function companyToDTO(company: ICompany | null | undefined): Company | nu
             }
             : undefined,
         verifiedAt: company.verifiedAt?.toISOString(),
+        suspendedAt: company.suspendedAt?.toISOString(),
+        suspendedReason: company.suspendedAt ? company.suspendedReason : undefined,
         signupSource: company.signupSource
             ? {
                 via: company.signupSource.via,
