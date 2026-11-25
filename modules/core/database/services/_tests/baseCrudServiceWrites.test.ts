@@ -22,8 +22,9 @@ const GadgetSchema = new Schema<IGadget>({
 });
 auditPlugin(GadgetSchema);
 const Gadget = mongoose.model<IGadget>("CrudWriteGadget", GadgetSchema);
-// Named after a model whose `<model>_already_exists` code has a message
-const gadgets = new BaseCrudService<IGadget, typeof Gadget>(Gadget, "Warehouse");
+// Named after a core model whose `<model>_already_exists` code has a message: a vertical's is missing from a deploy
+// without that vertical
+const gadgets = new BaseCrudService<IGadget, typeof Gadget>(Gadget, "Country");
 
 const company = new ObjectId();
 const actor = new ObjectId();
@@ -75,7 +76,7 @@ describe("BaseCrudService.updateById with operators (E-14)", {timeout: 30000}, (
         const second = await Gadget.create({code: "B", company});
 
         await expect(gadgets.updateById(second._id, {$set: {code: "A"}}, {auditUserId: actor}))
-            .rejects.toMatchObject({error_code: "warehouse_already_exists", status: 400});
+            .rejects.toMatchObject({error_code: "country_already_exists", status: 409});
 
         const before = await gadgets.updateById(second._id, {$set: {color: "blue"}}, {auditUserId: actor, returnNew: false});
         expect(before!.color).toBeUndefined();

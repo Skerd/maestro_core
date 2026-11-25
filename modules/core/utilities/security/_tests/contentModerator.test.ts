@@ -41,7 +41,8 @@ describe("worstScores", () => {
 
 describe("LocalContentModerator", () => {
     it("loads the model on the WebAssembly backend and scores an ordinary photo as neutral", async () => {
-        const photo = path.join(__dirname, "../../../database/demo/media/1549317661-bd32c8ce0db2-1200x750.jpg");
+        // A small copy of a demo photo: the demo media folder is not tracked, so a clone (the deploy image) has none.
+        const photo = path.join(__dirname, "neutralPhoto.jpg");
         const rgb = await sharp(photo).resize(MODERATION_FRAME_SIZE, MODERATION_FRAME_SIZE, {fit: "fill"}).removeAlpha().raw().toBuffer();
 
         const result = await new LocalContentModerator().scoreFrame(rgb);

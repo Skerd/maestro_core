@@ -63,8 +63,8 @@ describe("notificationText (D128)", () => {
 
     it("writes for the receiver's own language, else the instance default", () => {
         expect(receiverLanguage({preferredLanguage: "fr-FR"})).toBe("fr-FR");
-        expect(receiverLanguage({})).toBe(CONSTANTS.DEFAULT_LANGUAGE ?? "en-US");
-        expect(receiverLanguage(null)).toBe(CONSTANTS.DEFAULT_LANGUAGE ?? "en-US");
+        expect(receiverLanguage({})).toBe(CONSTANTS.DEFAULT_LANGUAGE || "en-US");
+        expect(receiverLanguage(null)).toBe(CONSTANTS.DEFAULT_LANGUAGE || "en-US");
     });
 });
 
@@ -91,7 +91,7 @@ describe("SMS and Telegram in the receiver's language (D128)", {timeout: 60000},
     it("uses the instance default for a receiver who never picked a language", async () => {
         await notify(unset);
 
-        const body = notificationText("ROLE_ASSIGNED", {assigner: "Ada", role: "Sales"}, CONSTANTS.DEFAULT_LANGUAGE ?? "en-US");
+        const body = notificationText("ROLE_ASSIGNED", {assigner: "Ada", role: "Sales"}, CONSTANTS.DEFAULT_LANGUAGE || "en-US");
         expect(mocks.sms).toHaveBeenCalledWith(expect.objectContaining({body}));
         expect(mocks.telegram).toHaveBeenCalledWith({chatId: 4242, body});
     });

@@ -1,28 +1,50 @@
+import fs from "fs";
+import path from "path";
 import {describe, expect, it} from "vitest";
 import {notificationLink} from "@coreModule/domain/notifications/notificationTexts";
+
+// A vertical's notification codes ship with its armonia folder, which a deploy without that vertical does not have.
+const armoniaModules = path.join(path.dirname(require.resolve("armonia/package.json")), "src", "modules");
+const has = (module: string): boolean => fs.existsSync(path.join(armoniaModules, module));
 
 // TD-F113: clicking a notification ("Order ORD-… has been refunded") opened nothing. A notice to staff now opens its
 // record's sheet on the panel list; one to a customer, who has no panel page for it, stays without a link.
 describe("notification links", () => {
     it("opens the record a staff notice names, in every language", () => {
-        for (const locale of ["en-US", "de-CH", "fr-FR", "it-IT", "sq-AL"]) {
-            expect(notificationLink("PRODUCT_ORDER_NEW_MERCHANT", {orderId: "o1"}, locale)).toBe("/eCommerce/productorders?open=o1");
+        if (has("eCommerce")) {
+            for (const locale of ["en-US", "de-CH", "fr-FR", "it-IT", "sq-AL"]) {
+                expect(notificationLink("PRODUCT_ORDER_NEW_MERCHANT", {orderId: "o1"}, locale)).toBe("/eCommerce/productorders?open=o1");
+            }
         }
-        expect(notificationLink("VEHICLE_SERVICE_DUE", {vehicleId: "v1"}, "en-US")).toBe("/carRental/vehicles?open=v1");
-        expect(notificationLink("VEHICLE_FINE_DUE", {vehicleId: "v1", recordId: "f1"}, "en-US")).toBe("/carRental/fines?open=f1");
-        expect(notificationLink("INQUIRY_NEW", {inquiryId: "i1"}, "en-US")).toBe("/dentalClinic/inquiries?open=i1");
-        expect(notificationLink("SALE_CREATED_STAFF", {saleId: "s1"}, "en-US")).toBe("/realEstate/sales?open=s1");
-        // TD-B243: the SLA breach now goes to staff, so it opens the request.
-        expect(notificationLink("MODIFICATION_REQUEST_SLA_BREACHED", {modificationRequestId: "m1"}, "en-US")).toBe("/realEstate/modificationRequests?open=m1");
-        expect(notificationLink("PERMIT_EXPIRING", {permitId: "p1"}, "en-US")).toBe("/propertyDevelopment/permits?open=p1");
-        expect(notificationLink("ORDER_CREATED_FROM_LISTING", {orderId: "m1"}, "en-US")).toBe("/marketplace/orders?open=m1");
+        if (has("carRental")) {
+            expect(notificationLink("VEHICLE_SERVICE_DUE", {vehicleId: "v1"}, "en-US")).toBe("/carRental/vehicles?open=v1");
+            expect(notificationLink("VEHICLE_FINE_DUE", {vehicleId: "v1", recordId: "f1"}, "en-US")).toBe("/carRental/fines?open=f1");
+        }
+        if (has("dentalClinic")) {
+            expect(notificationLink("INQUIRY_NEW", {inquiryId: "i1"}, "en-US")).toBe("/dentalClinic/inquiries?open=i1");
+        }
+        if (has("propertyManagement")) {
+            expect(notificationLink("SALE_CREATED_STAFF", {saleId: "s1"}, "en-US")).toBe("/realEstate/sales?open=s1");
+            // TD-B243: the SLA breach now goes to staff, so it opens the request.
+            expect(notificationLink("MODIFICATION_REQUEST_SLA_BREACHED", {modificationRequestId: "m1"}, "en-US")).toBe("/realEstate/modificationRequests?open=m1");
+        }
+        if (has("propertyDevelopment")) {
+            expect(notificationLink("PERMIT_EXPIRING", {permitId: "p1"}, "en-US")).toBe("/propertyDevelopment/permits?open=p1");
+        }
+        if (has("marketplace")) {
+            expect(notificationLink("ORDER_CREATED_FROM_LISTING", {orderId: "m1"}, "en-US")).toBe("/marketplace/orders?open=m1");
+        }
         expect(notificationLink("PUBLIC_CHAT_HANDOFF_REQUESTED", {channelId: "c1"}, "en-US")).toBe("/company/websiteChats/waiting?channelId=c1");
     });
 
     it("opens a mixed notice's record only from the staff copy, and a mention in the team chat (TD-F133)", () => {
-        expect(notificationLink("SALE_APPROVED", {saleId: "s1", staffSaleId: "s1"}, "en-US")).toBe("/realEstate/sales?open=s1");
+        if (has("propertyManagement")) {
+            expect(notificationLink("SALE_APPROVED", {saleId: "s1", staffSaleId: "s1"}, "en-US")).toBe("/realEstate/sales?open=s1");
+        }
         expect(notificationLink("SALE_APPROVED", {saleId: "s1"}, "en-US")).toBeNull();
-        expect(notificationLink("DISPUTE_OPENED", {disputeId: "d1", providerDisputeId: "d1"}, "en-US")).toBe("/marketplace/disputes?open=d1");
+        if (has("marketplace")) {
+            expect(notificationLink("DISPUTE_OPENED", {disputeId: "d1", providerDisputeId: "d1"}, "en-US")).toBe("/marketplace/disputes?open=d1");
+        }
         expect(notificationLink("ORDER_CANCELLED", {orderId: "o1"}, "en-US")).toBeNull();
         expect(notificationLink("MESSAGE_MENTIONED", {channelId: "c1"}, "en-US")).toBe("/company/chats?channelId=c1");
     });
