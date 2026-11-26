@@ -74,7 +74,7 @@ export const defaultCompaniesValues: any = {
         {
             "name": "Kudoo Market",
             "email": "ecommerce@kudoo.al",
-            "description": "Kudoo Market is a Tirana shop. It sells ready-to-ship goods, with checkout, delivery, and client messages in one place.",
+            "description": "Kudoo Market is a Tirana fashion shop. It sells clothes, shoes and accessories for women, men and kids, with checkout, delivery, and client messages in one place.",
             "website": "https://market.kudoo.al",
             "phoneNumber": "+355 4 223 0140",
             "linkedin": "https://www.linkedin.com/company/kudoomarket",
