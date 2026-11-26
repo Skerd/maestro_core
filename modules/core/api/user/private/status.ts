@@ -38,6 +38,7 @@ import {
 } from "armonia/src/modules/core/api/user/private/status/userStatus.form.response.type";
 import {userService} from "@coreModule/database/schemas/user/user.service";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
+import {assertMayChangeMember} from "@coreModule/domain/roles/adminRoles";
 import User from "@coreModule/database/schemas/user/user";
 import {ObjectId} from "mongodb";
 import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
@@ -232,6 +233,8 @@ async function updateUserAccountStatus(params: TransactionRequiredParams & Updat
     
     // Verify write permission for roles.active field
     SchemaGuard.sanitizeFields(User, {roles: {keys: {active: {}}}}, "write", actionUserCtx, languageCode);
+    // Only a SysAdmin deactivates or reactivates someone who holds an admin role (D194).
+    await assertMayChangeMember(userInfo, company, actionUserCtx.userId, {session, logger, languageCode});
 
     // Set auditUserId before calling method that saves
     userInfo.$locals = userInfo.$locals || {};

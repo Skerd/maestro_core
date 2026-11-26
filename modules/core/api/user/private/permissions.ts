@@ -32,6 +32,7 @@ import {userService} from "@coreModule/database/schemas/user/user.service";
 import {ensureAiChannel, hideAiChannel} from "@coreModule/database/schemas/channel/channel.helper";
 import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import Role, {IRole} from "@coreModule/database/schemas/role/role";
+import {assertAssignableRoles, assertMayChangeMember, assignableGeneralAdministratorRole} from "@coreModule/domain/roles/adminRoles";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {AccessibleRolesFormType} from "armonia/src/modules/core/api/user/private/permissions/accessibleRoles.form.type";
 import {
@@ -98,7 +99,8 @@ const router = Router();
  * POST /api/user/permissions/accessible/roles/select
  *
  * Returns company roles as options for dropdowns/selects (value: role id, label: role name, slug).
- * Only non-admin roles; optional name search and administration filter.
+ * The roles the caller may give: non-admin roles, plus General Administrator for a SysAdmin (D194); optional name search
+ * and administration filter.
  *
  * @route POST /api/user/permissions/accessible/roles/select
  * @access Private
@@ -119,7 +121,7 @@ router.post(
 
 /**
  * Fetches accessible company roles for select components. Paginated; filterable by name and administration.
- * Only non-admin roles are returned.
+ * Non-admin roles, plus General Administrator when the caller may give it (D194).
  *
  * @param params - Auth context, company, page, limit, optional name and administration.
  * @returns Paginated list of { value: role id, label: role name } and total count.
@@ -132,13 +134,15 @@ async function GetAccessibleRoles(params: AuthenticatedMWType & AccessibleRolesF
     const sanitizeFields = SchemaGuard.sanitizeFields(Role, {name: {}, slug: {}}, "read", actionUserCtx, languageCode);
     const populate = SchemaGuard.generatePopulate(sanitizeFields, Role.schema);
 
+    const opts = { logger, languageCode };
+    const generalAdministrator = await assignableGeneralAdministratorRole(company, actionUserCtx.userId, opts);
     const filter: FilterQuery<IRole> = {
         company: company._id,
-        isAdmin: false,
+        ...(generalAdministrator ? {$or: [{isAdmin: false}, {_id: generalAdministrator._id}]} : {isAdmin: false}),
     };
 
-    // `ids` labels stored roles (a value past page 1, a disabled select): only those, still this company's non-admin
-    // roles, without the search or the staff/customer narrowing the picker posts (TD-B225).
+    // `ids` labels stored roles (a value past page 1, a disabled select): only those, still roles this caller may give,
+    // without the search or the staff/customer narrowing the picker posts (TD-B225).
     const ids = selectIdsOf(params);
     if (ids.length > 0) {
         filter._id = { $in: ids };
@@ -152,8 +156,6 @@ async function GetAccessibleRoles(params: AuthenticatedMWType & AccessibleRolesF
             filter["isSignupDefault"] = !administration;
         }
     }
-
-    const opts = { logger, languageCode };
 
     const [roles, total] = await Promise.all([
         roleService.find(
@@ -188,7 +190,8 @@ async function GetAccessibleRoles(params: AuthenticatedMWType & AccessibleRolesF
  * @body {ChangeUserRolesFormType} - roles (string[])
  * @returns {Promise<ChangeUserRolesFormResponseType[]>} Updated roles with clearanceLevel, name, _id, permissions
  *
- * @throws {apiValidationException} If parentBypass missing, or a role does not exist, or company role not found
+ * @throws {apiValidationException} If parentBypass missing, or a role does not exist, or company role not found, or an
+ *   admin-role rule refuses (D194: only a SysAdmin changes an administrator or gives General Administrator)
  *
  * @remarks
  * - Rate limited: 20 requests per minute
@@ -209,7 +212,8 @@ router.put(
  *
  * @param params - roles, auth context, company, session, parentBypass, actionUserCtx.
  * @returns Updated roles with clearanceLevel, name, _id, permissions.
- * @throws {apiValidationException} If parentBypass missing, a role does not exist, or company role not found.
+ * @throws {apiValidationException} If parentBypass missing, a role does not exist, company role not found, or an admin-role
+ *   rule refuses (D194).
  */
 async function UpdateUserRoles(params: TransactionRequiredParams & ChangeUserRolesFormType & AuthenticatedMWType): Promise<ChangeUserRolesFormResponseType[]> {
     const { roles, logger, userInfo, company, languageCode, session, parentBypass, actionUserCtx, actionUserInfo } = params;
@@ -226,18 +230,19 @@ async function UpdateUserRoles(params: TransactionRequiredParams & ChangeUserRol
 
     SchemaGuard.sanitizeFields(User, {roles: {keys: {roles: {}}}}, "write", actionUserCtx, languageCode);
 
+    // Each id sent toggles that role: added when the user lacks it, taken away when they hold it.
     const newRolesObjectIds = roles.map((role) => new ObjectId(role));
-    const filter: FilterQuery<IRole> = {
-        _id: { $in: newRolesObjectIds },
-        company: company._id,
-        isAdmin: false
-    };
-
-    const foundRoles = await roleService.find(filter, opts);
-
-    if( foundRoles.length !== roles.length ){
-        throw apiValidationException("one_of_the_roles_does_not_exist", null, null, languageCode);
-    }
+    const heldRoleIds = new Set((userInfo.roles.find((role: IEmbeddedCompanyRole) => role.company._id.equals(company._id))?.roles ?? [])
+        .map((role) => role._id.toString()));
+    await assertMayChangeMember(userInfo, company, actionUserCtx.userId, opts);
+    const foundRoles = await assertAssignableRoles({
+        roleIds: newRolesObjectIds,
+        company,
+        actorId: actionUserCtx.userId,
+        targetUserId: userInfo._id,
+        giving: (roleId) => !heldRoleIds.has(roleId.toString()),
+        opts,
+    });
 
     const user = await userService.findByIdOrThrow(userInfo._id, opts);
 

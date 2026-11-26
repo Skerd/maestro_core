@@ -30,10 +30,12 @@ import {companyViews} from "./company.views";
 import {
     DEFAULT_ROLE_SLUG_PATTERN,
     defaultRoleSlug,
+    defaultRoleSuffix,
     groupDefaultRoles,
     getDefaultRolesForModules,
     resolveDefaultRolePermissionIds,
     roleHasPermissionPack,
+    sysAdminRole,
     type DefaultRoleDefinition,
 } from "@coreModule/database/schemas/role/role.defaults";
 import {ensureModuleDefaultRolesRegistered} from "@coreModule/utilities/modules/ensureModuleDefaultRoles";
@@ -665,9 +667,11 @@ CompanySchema.methods.assignCreatorRoles = async function (session?: ClientSessi
         return;
     }
 
+    // The creator gets SysAdmin, never General Administrator: that one is the owner's, given by the SysAdmin (D194).
+    const sysAdminFilter = {company: this._id, isAdmin: true, slug: {$regex: `${defaultRoleSuffix(sysAdminRole)}$`}};
     const adminRole = session
-        ? await Role.findOne({company: this._id, isAdmin: true}).session(session)
-        : await Role.findOne({company: this._id, isAdmin: true});
+        ? await Role.findOne(sysAdminFilter).session(session)
+        : await Role.findOne(sysAdminFilter);
 
     if (!adminRole) {
         throw new Error(`assignCreatorRoles: admin role not found for company ${this._id.toString()}`);

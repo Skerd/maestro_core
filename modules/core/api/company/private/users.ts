@@ -68,6 +68,8 @@ import {emitNotificationEvent, NotificationEventCodes} from "@coreModule/domain/
 import {mountActions, selectIdsOf} from "@coreModule/api/crudRouterFactory";
 import {registerRecordResource} from "@coreModule/utilities/endpoints/recordRegistry";
 import {companyStaffFilter} from "@coreModule/domain/roles/companyStaff";
+import {assertAssignableRoles} from "@coreModule/domain/roles/adminRoles";
+import type {IRole} from "@coreModule/database/schemas/role/role";
 import {UserActions} from "@coreModule/database/schemas/user/user.actions";
 import type {ActionMessage, SelectResponse, TableResponse} from "armonia/src/modules/core/types/shared.types";
 
@@ -100,27 +102,22 @@ async function ensureUserCanBeAddedToCompany(email: string, company: { _id?: Obj
 }
 
 /**
- * Validates that the given role ID is a valid, non-admin company role for the company.
+ * Checks that `userRole` is a role of the company that the caller may give to this person (D194: ordinary roles, or
+ * General Administrator for a SysAdmin while nobody else holds it) and returns it.
  *
- * @param company - Company with getAllRoles() (and _id for the query).
- * @param userRole - Role ID (string) to validate.
- * @param opts - CRUD options for roleService.findOneOrThrow.
- * @throws If the role is not found or is not a non-admin company role.
+ * @param targetUserId - The existing account being added, or `null` for a new one.
+ * @throws `one_of_the_roles_does_not_exist` or a General Administrator refusal (`assertAssignableRoles`).
  */
-async function validateCompanyRole(company: { _id?: ObjectId; getAllRoles(): Promise<Array<{ _id?: ObjectId }>> }, userRole: string, opts: CrudOptions): Promise<void> {
-    const allRoles = await company.getAllRoles();
-    const companyRoleIds = allRoles.map((r) => r._id).filter((id): id is ObjectId => id != null);
-    await roleService.findOneOrThrow(
-        {
-            $and: [
-                { _id: new ObjectId(userRole) },
-                { _id: { $in: companyRoleIds } },
-                { isAdmin: false }
-            ],
-            company: company._id
-        },
-        opts
-    );
+async function validateCompanyRole(company: AuthenticatedMWType["company"], userRole: string, actorId: string, targetUserId: ObjectId | null, opts: CrudOptions & { languageCode: string }): Promise<IRole> {
+    const [role] = await assertAssignableRoles({
+        roleIds: [new ObjectId(userRole)],
+        company,
+        actorId,
+        targetUserId,
+        giving: () => true,
+        opts,
+    });
+    return role;
 }
 
 /**
@@ -483,7 +480,7 @@ async function getCompanyUsersSimple(params: AuthenticatedMWType & SimpleUsersFo
  * @returns {Promise<CreateUserFormResponseType>} Success message
  *
  * @throws {apiValidationException} If user with same email already belongs to the company
- * @throws If role is invalid or not a non-admin company role
+ * @throws If the role is not one the caller may give (D194)
  *
  * @remarks
  * - Rate limited: 10 requests per minute
@@ -501,7 +498,7 @@ type CreateNewUserType = TransactionRequiredParams & AuthenticatedMWType & Schem
 /**
  * Creates a new user in the company (direct registration with password).
  * If a user with the same email already exists but is not in this company, they are added to the company.
- * Otherwise a new user document is created. Requires create permission on User and a valid non-admin company role.
+ * Otherwise a new user document is created. Requires create permission on User and a role the caller may give (D194).
  *
  * @param params - email, password, name, surname, userRole, auth and transaction context.
  * @returns Success message.
@@ -516,7 +513,7 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
     SchemaGuard.checkModelPermission(User, "create", actionUserCtx);
 
     const existingUser = await ensureUserCanBeAddedToCompany(email, company, opts);
-    await validateCompanyRole(company, userRole, opts);
+    const roleDoc = await validateCompanyRole(company, userRole, actionUserCtx.userId, existingUser?._id ?? null, opts);
     const companyRoleData = buildCompanyRoleData(userRole, company._id);
 
     let newUser: IUser;
@@ -556,14 +553,6 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
         });
     }
 
-    const roleDoc = await roleService.findOneOrThrow(
-        {
-            _id: new ObjectId(userRole),
-            company: company._id,
-            isAdmin: false
-        },
-        { ...opts, auditUserId: actionUserCtx.userId }
-    );
     const assignerNameCreated = `${userInfo.name || ""} ${userInfo.surname || ""}`.trim() || userInfo.username;
     emitNotificationEvent(NotificationEventCodes.ROLE_ASSIGNED, {
         receiverIds: [newUser._id.toString()],
@@ -601,7 +590,7 @@ async function CreateNewUser(params: CreateNewUserType & CreateUserFormType): Pr
  * @returns {Promise<ActionMessage>} Success message
  *
  * @throws {apiValidationException} If user with same email already belongs to the company
- * @throws If role is invalid or not a non-admin company role
+ * @throws If the role is not one the caller may give (D194)
  *
  * @remarks
  * - Rate limited: 10 requests per minute
@@ -621,7 +610,7 @@ type InviteUserType = TransactionRequiredParams & AuthenticatedMWType & SchemaSa
  * Invites a user to the company by email. Creates a user with a temporary password if they do not exist,
  * or adds the company to an existing user. Either way an email goes out after commit, with the optional welcome message:
  * the invitation to a new user, the added-to-company notice to an existing one (D187).
- * Requires create permission on User and a valid non-admin company role.
+ * Requires create permission on User and a role the caller may give (D194).
  *
  * @param params - email, name, surname, userRole, welcomeMessage, auth and transaction context.
  * @returns Success message.
@@ -636,21 +625,13 @@ async function inviteUser(params: InviteUserType & InviteUserFormType): Promise<
     SchemaGuard.checkModelPermission(User, "create", actionUserCtx);
 
     const existingUser = await ensureUserCanBeAddedToCompany(email, company, opts);
-    await validateCompanyRole(company, userRole, opts);
+    const invitedRoleDoc = await validateCompanyRole(company, userRole, actionUserCtx.userId, existingUser?._id ?? null, opts);
     const companyRoleData = buildCompanyRoleData(userRole, company._id);
 
     const inviterName = `${userInfo.name || ""} ${userInfo.surname || ""}`.trim() || userInfo.username;
 
     if (existingUser) {
         await addExistingUserToCompany(existingUser, company._id, companyRoleData, opts);
-        const invitedRoleDoc = await roleService.findOneOrThrow(
-            {
-                _id: new ObjectId(userRole),
-                company: company._id,
-                isAdmin: false
-            },
-            opts
-        );
         emitNotificationEvent(NotificationEventCodes.ROLE_ASSIGNED, {
             receiverIds: [existingUser._id.toString()],
             payload: {

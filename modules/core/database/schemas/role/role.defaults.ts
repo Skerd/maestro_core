@@ -27,25 +27,31 @@ export type DefaultRoleDefinition = {
     excludedPermissions?: string[];
 };
 
+/** Goes to whoever created the company, and never to anyone by hand (D194). */
+export const sysAdminRole: DefaultRoleDefinition = {
+    name: "SysAdmin",
+    slug: "sys_admin",
+    description: "Full system access across every module. Reserved — cannot be edited or deleted.",
+    isAdmin: true,
+    isSignupDefault: false,
+    canEdit: false,
+    canDelete: false,
+};
+
+/** The company's owner: one person at a time, given only by the SysAdmin, never in the platform company (D194). */
+export const generalAdministratorRole: DefaultRoleDefinition = {
+    name: "General Administrator",
+    slug: "general_administrator",
+    description: "The company's owner: full administration of this company. One person at a time, given by the SysAdmin. Reserved — cannot be edited or deleted.",
+    isAdmin: true,
+    isSignupDefault: false,
+    canEdit: false,
+    canDelete: false,
+};
+
 export const coreDefaultRoles: DefaultRoleDefinition[] = [
-    {
-        name: "SysAdmin",
-        slug: "sys_admin",
-        description: "Full system access across every module. Reserved — cannot be edited or deleted.",
-        isAdmin: true,
-        isSignupDefault: false,
-        canEdit: false,
-        canDelete: false,
-    },
-    {
-        name: "General Administrator",
-        slug: "general_administrator",
-        description: "Full company administration. Reserved — cannot be edited or deleted.",
-        isAdmin: true,
-        isSignupDefault: false,
-        canEdit: false,
-        canDelete: false,
-    },
+    sysAdminRole,
+    generalAdministratorRole,
     {
         name: "Web Client",
         slug: "webclient",
