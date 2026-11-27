@@ -101,31 +101,6 @@ export const defaultCompaniesValues: any = {
             },
         },
         {
-            // The services marketplace's operator (D143): it owns the shared service categories and every job posted
-            // on the portal, so it is protected and sells nothing itself. The marketplace module finds it by its VAT.
-            "name": "Kudoo Services",
-            "email": "services@kudoo.al",
-            "description": "Kudoo Services runs the services marketplace on the portal. It keeps one list of service categories, takes the jobs clients post and passes each one to the providers who do that work.",
-            "website": "https://services.kudoo.al",
-            "phoneNumber": "+355 4 223 0110",
-            "vat": "Z000000001Z",
-            "timezone": "Europe/Tirane",
-            "isActive": true,
-            "isPlatformOwner": false,
-            "isProtected": true,
-            "isDefaultForSignUp": false,
-            // Its own site is the public task board (D172).
-            "siteSlug": "tasks",
-            "modules": ["core", "finance", "marketplace"],
-            "demoAddress": {
-                countryCode: "AL",
-                cityName: "Tirana",
-                street: "Rruga Ibrahim Rugova 1",
-                postalCode: "1001",
-                geoLocation: {latitude: 41.3210, longitude: 19.8225},
-            },
-        },
-        {
             "name": "Tirana Pros",
             "email": "pros@kudoo.al",
             "description": "Tirana Pros is a construction company in Tirana: a site engineer and crews of builders, tilers and plasterers for renovations, new houses, roofs, terraces and facades. Clients book a service at a fixed price, or post a job and compare quotes.",
