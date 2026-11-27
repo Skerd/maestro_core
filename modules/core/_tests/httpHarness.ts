@@ -7,7 +7,7 @@
  *       (await import("@coreModule/_tests/httpHarness")).authMWStub);
  */
 import http from "node:http";
-import {isPlatformListRouter} from "@coreModule/utilities/security/platformListRegistry";
+import {isPlatformRouter} from "@coreModule/utilities/security/platformListRegistry";
 import {once} from "node:events";
 import {beforeAll} from "vitest";
 import express, {type Router} from "express";
@@ -77,9 +77,9 @@ export function appFor(routes: {basePath: string; router: Router; module?: strin
     app.use(express.json());
     // Mounted like routeRegistry does, so tests see production's body guard.
     for (const {basePath, router, module} of routes) {
-        const platformListRoute = isPlatformListRouter(router);
+        const platformRoute = isPlatformRouter(router);
         const tag = (_req: unknown, _res: unknown, next: () => void) =>
-            module ? requestContext.run({...requestContext.getStore(), routeModule: module, platformListRoute}, () => next()) : next();
+            module ? requestContext.run({...requestContext.getStore(), routeModule: module, platformRoute}, () => next()) : next();
         app.use(basePath, stripServerKeys, tag, router, failedRequestCleanup);
         // Like routeRegistry: the router's records can be shared in chat under its module (D162).
         if (module) recordRouterMounted(router, module);

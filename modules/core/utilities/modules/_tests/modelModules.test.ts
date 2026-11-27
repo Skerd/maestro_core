@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, it} from "vitest";
 import mongoose, {Schema} from "mongoose";
 import {isModelForCompany, registerModelModules, wantsInstalledModuleScope, wantsStudioSample} from "../modelModules";
-import {registerPlatformListRouter} from "@coreModule/utilities/security/platformListRegistry";
+import {registerPlatformRouter} from "@coreModule/utilities/security/platformListRegistry";
 
 describe("wantsInstalledModuleScope", () => {
     const previous = process.env.SERVER_NODE_ENV;
@@ -36,7 +36,7 @@ describe("isModelForCompany (D195)", () => {
     const list = mongoose.model("ModelModulesTestShopList", new Schema({}), "modelmodulestestshoplists");
     const other = mongoose.model("ModelModulesTestShopOrder", new Schema({}), "modelmodulestestshoporders");
     registerModelModules("eCommerce", [list, other]);
-    registerPlatformListRouter({}, "modelmodulestestshoplists");
+    registerPlatformRouter({}, "modelmodulestestshoplists");
 
     it("lets the platform company see another module's platform list, and nothing else of that module", () => {
         expect(isModelForCompany(list, ["core"], {isPlatformOwner: true})).toBe(true);

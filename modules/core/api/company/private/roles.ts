@@ -17,7 +17,7 @@ import {createRoleFormSchema} from "armonia/src/modules/core/api/company/private
 import {editRoleFormSchema} from "armonia/src/modules/core/api/company/private/roles/editRole.form.validator";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
 import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
-import {platformListTagPrefixes} from "@coreModule/utilities/security/platformListRegistry";
+import {platformTagPrefixes} from "@coreModule/utilities/security/platformListRegistry";
 import {escapeRegex} from "@coreModule/utilities/helpers";
 import type {ObjectId} from "mongodb";
 
@@ -32,11 +32,11 @@ function permissionRefId(permission: unknown): string {
 
 /**
  * Permissions of the company's modules only: the rest are neither listed, granted nor revoked. The platform company also
- * gets every module's platform lists, which it manages whether or not it runs the module (D195).
+ * gets every module's platform collections, which it manages whether or not it runs the module (D195, D197).
  */
 function companyPermissionClause(params: {actionUserCtx: AuthenticatedMWType["actionUserCtx"]; company: AuthenticatedMWType["company"]}) {
     const own = {module: {$in: params.actionUserCtx.modules ?? ["core"]}};
-    const prefixes = isPlatformCompany(params.company) ? platformListTagPrefixes() : [];
+    const prefixes = isPlatformCompany(params.company) ? platformTagPrefixes() : [];
     if (prefixes.length === 0) return own;
     return {$or: [own, {tag: {$regex: `^(${prefixes.map((prefix) => escapeRegex(prefix)).join("|")})`}}]};
 }

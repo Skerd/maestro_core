@@ -15,7 +15,7 @@ import {Router} from "express";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import authMW, {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
-import {platformListModules} from "@coreModule/utilities/security/platformListRegistry";
+import {platformModules} from "@coreModule/utilities/security/platformListRegistry";
 import {
     ValidateTokenFormResponseType
 } from "armonia/src/modules/core/api/user/public/validateToken/validateToken.form.response.type";
@@ -36,9 +36,9 @@ function companyCountry(company: {addresses?: {country?: unknown}[]}): {country?
     return country != null ? {country: String(country)} : {};
 }
 
-/** For the platform company, the modules it does not run whose platform lists it keeps (D195): the panel shows their platform-list pages. */
-function platformListModulesOf(company: Parameters<typeof isPlatformCompany>[0], modules: readonly string[]): {platformListModules?: string[]} {
-    return isPlatformCompany(company) ? {platformListModules: platformListModules().filter((name) => !modules.includes(name))} : {};
+/** For the platform company, the modules it does not run whose platform pages it keeps (D195, D197): the panel shows those pages. */
+function platformModulesOf(company: Parameters<typeof isPlatformCompany>[0], modules: readonly string[]): {platformModules?: string[]} {
+    return isPlatformCompany(company) ? {platformModules: platformModules().filter((name) => !modules.includes(name))} : {};
 }
 
 /**
@@ -75,7 +75,7 @@ async function validateToken(params: AuthenticatedMWType): Promise<ValidateToken
         return {
             id: userInfo._id.toString(),
             username: userInfo.username,
-            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company), ...platformListModulesOf(company, actionUserCtx.modules ?? []), timezone: companyTimeZone, ...companyLocation(place ?? {}), ...companyCountry(place ?? {})},
+            company: {_id: company._id, name: company.name, modules: actionUserCtx.modules ?? ["core"], isPlatformOwner: isPlatformCompany(company), ...platformModulesOf(company, actionUserCtx.modules ?? []), timezone: companyTimeZone, ...companyLocation(place ?? {}), ...companyCountry(place ?? {})},
             isPlatformAdmin: isPlatformCompany(company) && actionUserCtx.isAdmin,
             canErasePeople: actionUserCtx.isAdmin === true && (await personErasureModules()).some((name) => (actionUserCtx.modules ?? []).includes(name)),
             email: userInfo.username,

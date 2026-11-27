@@ -9,7 +9,7 @@
  */
 
 import type {Model} from "mongoose";
-import {isPlatformListCollection} from "@coreModule/utilities/security/platformListRegistry";
+import {isPlatformCollection} from "@coreModule/utilities/security/platformListRegistry";
 
 const moduleByModel = new Map<string, string>();
 
@@ -51,7 +51,7 @@ export function isModelInModules(modelName: string, modules: readonly string[]):
 
 /**
  * Whether a company sees a model (its access, table and view configs, audit log): a core model, a model of one of its
- * modules, or, for the platform company, the platform list of any module (D195). The platform company's flag is read
+ * modules, or, for the platform company, a platform collection of any module (D195, D197). The platform company's flag is read
  * here, not through `isPlatformCompany`, which lives with the company service.
  */
 export function isModelForCompany(
@@ -59,7 +59,7 @@ export function isModelForCompany(
     modules: readonly string[],
     company: {isPlatformOwner?: boolean} | null | undefined,
 ): boolean {
-    return isModelInModules(model.modelName, modules) || (company?.isPlatformOwner === true && isPlatformListCollection(model.collection.name));
+    return isModelInModules(model.modelName, modules) || (company?.isPlatformOwner === true && isPlatformCollection(model.collection.name));
 }
 
 /**

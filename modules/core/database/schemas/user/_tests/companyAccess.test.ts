@@ -13,7 +13,7 @@ import Role from "@coreModule/database/schemas/role/role";
 // roleAccessCache reads it by model name; the servers load every model at start-up.
 import RolePermission from "@coreModule/database/schemas/rolePermission/rolePermission";
 import Company from "@coreModule/database/schemas/company/company";
-import {registerPlatformListRouter} from "@coreModule/utilities/security/platformListRegistry";
+import {registerPlatformRouter} from "@coreModule/utilities/security/platformListRegistry";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 
 const shop = new ObjectId();
@@ -34,7 +34,7 @@ beforeAll(async () => {
         {_id: productRead, tag: "products[read:self:title]", module: "eCommerce"},
     ]);
     await Role.collection.insertOne({_id: platformStaffRole, company: platform, name: "Staff", slug: "platform:staff", isAdmin: false, permissions: [categoryRead, productRead]});
-    registerPlatformListRouter({}, "productcategories");
+    registerPlatformRouter({}, "productcategories");
 }, 120000);
 
 afterAll(async () => {

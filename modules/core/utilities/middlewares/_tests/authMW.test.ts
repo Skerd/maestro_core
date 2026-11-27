@@ -129,7 +129,7 @@ describe("authMW and the platform's suspension (D191)", () => {
 
 describe("authMW and the platform's lists of other modules (D195)", () => {
     /** A signed-in request to a "widgets" route, from a company with core only; returns what authMW passed on. */
-    async function listRequest(company: {isPlatformOwner?: boolean}, platformListRoute: boolean) {
+    async function listRequest(company: {isPlatformOwner?: boolean}, platformRoute: boolean) {
         findCompany.mockResolvedValueOnce({_id: companyId, name: "Kudoo", isActive: true, modules: ["core"], ...company});
         const headers: Record<string, string> = {"x-auth-token": "token"};
         const req = {
@@ -142,7 +142,7 @@ describe("authMW and the platform's lists of other modules (D195)", () => {
             get: () => undefined,
         };
         const next = vi.fn();
-        await requestContext.run({routeModule: "widgets", platformListRoute}, () => authMW("private")(req, {}, next));
+        await requestContext.run({routeModule: "widgets", platformRoute}, () => authMW("private")(req, {}, next));
         return next.mock.calls[0]?.[0];
     }
 

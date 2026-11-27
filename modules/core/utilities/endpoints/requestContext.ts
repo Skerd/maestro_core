@@ -23,8 +23,8 @@ export interface RequestContextStore {
      * job runner) is running.
      */
     routeModule?: string;
-    /** The running router serves a platform list (D160, D195): the platform company may use it without the module. */
-    platformListRoute?: boolean;
+    /** The running router is a platform router (D195, D197): the platform company may use it without the module. */
+    platformRoute?: boolean;
     /**
      * The company whose data this request or job works on (D16). Set by authMW (private requests),
      * resolveCompanyByOrigin (public requests) and the cron job runner; ownershipPlugin scopes tenant

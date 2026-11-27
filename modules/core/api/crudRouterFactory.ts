@@ -1,5 +1,5 @@
 import {Router, RequestHandler} from "express";
-import {registerPlatformListRouter} from "@coreModule/utilities/security/platformListRegistry";
+import {registerPlatformRouter} from "@coreModule/utilities/security/platformListRegistry";
 import {ObjectId} from "mongodb";
 import {Document, Model, RefAllowlist} from "mongoose";
 import {ZodObject, type ZodType} from "zod";
@@ -796,7 +796,7 @@ export function createCrudRouter<
         mountActions(router, config.actions, config.model);
     }
 
-    if (config.platformListCollection) registerPlatformListRouter(router, config.platformListCollection);
+    if (config.platformListCollection) registerPlatformRouter(router, config.platformListCollection);
     return {router};
 }
 

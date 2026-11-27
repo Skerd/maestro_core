@@ -9,7 +9,7 @@ import {Application, NextFunction, Request, Response, Router} from 'express';
 import {getLogger, serverLogger} from '@coreModule/loggers/serverLog';
 import {registerRawBodyPrefix} from '@coreModule/utilities/endpoints/rawBodyRouteRegistry';
 import {requestContext} from '@coreModule/utilities/endpoints/requestContext';
-import {isPlatformListRouter, recordPlatformListModule} from "@coreModule/utilities/security/platformListRegistry";
+import {isPlatformRouter, recordPlatformModule} from "@coreModule/utilities/security/platformListRegistry";
 import path from 'path';
 import fs from 'fs';
 import {stripServerKeys} from "@coreModule/utilities/middlewares/serverKeys";
@@ -216,8 +216,8 @@ export class RouteRegistry {
      * through leaves the next mount to re-tag the request.
      */
     applyRoutes(app: Application, moduleName: string): void {
-        const tagRouteModule = (platformListRoute: boolean) => (_req: Request, _res: Response, next: NextFunction) =>
-            requestContext.run({...requestContext.getStore(), routeModule: moduleName, platformListRoute}, () => next());
+        const tagRouteModule = (platformRoute: boolean) => (_req: Request, _res: Response, next: NextFunction) =>
+            requestContext.run({...requestContext.getStore(), routeModule: moduleName, platformRoute}, () => next());
         const totalRoutes = Array.from(this.routes.values()).reduce((sum, modules) => sum + modules.length, 0);
         this.logger?.start(`Applying ${totalRoutes} routes across ${this.routes.size} paths to Express app...`);
         
@@ -230,9 +230,9 @@ export class RouteRegistry {
                     // stripServerKeys first: no client value may reach a server-owned body key (SEC-03).
                     // failedRequestCleanup last: whatever step failed, an open transaction rolls back and uploads
                     // that did not are handed to the orphan cleanup (TD-B251).
-                    const platformList = isPlatformListRouter(module.router);
+                    const platformList = isPlatformRouter(module.router);
                     app.use(routePath, stripServerKeys, tagRouteModule(platformList), module.router, failedRequestCleanup);
-                    if (platformList) recordPlatformListModule(moduleName);
+                    if (platformList) recordPlatformModule(moduleName);
                     // Its records can now be shared in chat, gated on this module (D162).
                     recordRouterMounted(module.router, moduleName);
                     if (modules.length > 1) {

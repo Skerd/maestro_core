@@ -52,7 +52,7 @@ import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.sni
 import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets";
 import {getRolesAccess} from "@coreModule/utilities/security/roleAccessCache";
 import {getCompanyModules} from "@coreModule/utilities/modules/companyModules";
-import {platformListTagPrefixes} from "@coreModule/utilities/security/platformListRegistry";
+import {platformTagPrefixes} from "@coreModule/utilities/security/platformListRegistry";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {checkTenantReferences} from "@coreModule/database/plugins/tenantReferences";
 
@@ -1801,9 +1801,9 @@ UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId, modul
     // Permissions of modules the company does not have are left out, admins included.
     // The roles belong to `companyId`, which need not be the request's tenant: the companies list asks
     // for each of the user's companies (D16).
-    // The platform company keeps the platform lists of every module (D195); authMW already knows the company and passes them.
+    // The platform company keeps the platform collections of every module (D195, D197); authMW already knows the company and passes them.
     const platformLists = extraTagPrefixes
-        ?? (await model("Company").exists({_id: companyId, isPlatformOwner: true}) ? platformListTagPrefixes() : []);
+        ?? (await model("Company").exists({_id: companyId, isPlatformOwner: true}) ? platformTagPrefixes() : []);
     const {isAdmin, tags} = await withTenant(companyId, async () => getRolesAccess(roleIds, modules ?? await getCompanyModules(companyId), platformLists));
     return {isAdmin, permissions: tags};
 }
