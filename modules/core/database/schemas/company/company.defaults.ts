@@ -128,7 +128,7 @@ export const defaultCompaniesValues: any = {
         {
             "name": "Tirana Pros",
             "email": "pros@kudoo.al",
-            "description": "Tirana Pros is a services marketplace in Tirana. Clients hire independent designers, developers, writers and translators at a fixed price, or post a job and compare their bids, and pay the provider directly.",
+            "description": "Tirana Pros is a construction company in Tirana: a site engineer and crews of builders, tilers and plasterers for renovations, new houses, roofs, terraces and facades. Clients book a service at a fixed price, or post a job and compare quotes.",
             "website": "https://pros.kudoo.al",
             "phoneNumber": "+355 4 223 0170",
             "linkedin": "https://www.linkedin.com/company/tiranapros",
