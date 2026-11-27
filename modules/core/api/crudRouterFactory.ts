@@ -1,4 +1,5 @@
 import {Router, RequestHandler} from "express";
+import {registerPlatformListRouter} from "@coreModule/utilities/security/platformListRegistry";
 import {ObjectId} from "mongodb";
 import {Document, Model, RefAllowlist} from "mongoose";
 import {ZodObject, type ZodType} from "zod";
@@ -191,6 +192,11 @@ export interface CrudRouterConfig<
      * The query string itself always comes from body `name` (ApiSelect / validateSelectForm).
      * @default "name"
      */
+    /**
+     * Set by `platformListRouteOptions`: the router serves this platform list, so the platform company may use it
+     * without running its module (D195, `platformListRegistry`).
+     */
+    platformListCollection?: string;
     selectSearchField?: string;
 
     /**
@@ -790,6 +796,7 @@ export function createCrudRouter<
         mountActions(router, config.actions, config.model);
     }
 
+    if (config.platformListCollection) registerPlatformListRouter(router, config.platformListCollection);
     return {router};
 }
 

@@ -5,7 +5,7 @@ import {Router} from "express";
 import {TableConfiguration} from "armonia/src/modules/core/api/auxiliary/private/tableConfigs/tableConfig.dto";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
-import {isModelInModules, wantsInstalledModuleScope} from "@coreModule/utilities/modules/modelModules";
+import {isModelForCompany, wantsInstalledModuleScope} from "@coreModule/utilities/modules/modelModules";
 import {filterTableConfigBySanitizedFields} from "@coreModule/database/filter/schemaToTableConfig";
 
 /**
@@ -55,7 +55,7 @@ async function getTableConfigurations(
     _routeParams: unknown,
     request: {query?: {scope?: unknown}},
 ): Promise<TableConfiguration> {
-    const {actionUserCtx, languageCode, logger} = params;
+    const {actionUserCtx, company, languageCode, logger} = params;
     const installed = wantsInstalledModuleScope(request.query);
     const returnThis: TableConfiguration = {};
 
@@ -66,7 +66,7 @@ async function getTableConfigurations(
             returnThis[key] = tableConfiguration;
             continue;
         }
-        if (!isModelInModules(model.modelName, actionUserCtx.modules ?? [])) continue;
+        if (!isModelForCompany(model, actionUserCtx.modules ?? [], company)) continue;
         try{
             const sanitizedReadFields = SchemaGuard.sanitizeFields(model, readFields, "read", actionUserCtx, languageCode);
             if (Object.keys(sanitizedReadFields).length === 0) continue;

@@ -137,7 +137,12 @@ async function loadRoleAccessFromDb(roleIds: ObjectId[]): Promise<Map<string, Ca
  * const {isAdmin, tags} = await getRolesAccess(companyRole.roles.map((r) => r._id), companyModules);
  * ```
  */
-export async function getRolesAccess(roleIds: (ObjectId | string)[], modules: readonly string[]): Promise<RoleAccess> {
+export async function getRolesAccess(
+    roleIds: (ObjectId | string)[],
+    modules: readonly string[],
+    /** Tags of other modules kept anyway, by prefix: the platform company's platform lists (D195). */
+    extraTagPrefixes: readonly string[] = [],
+): Promise<RoleAccess> {
     const uniqueIds = [...new Set((roleIds ?? []).map(toIdString))];
     if (uniqueIds.length === 0) {
         return {isAdmin: false, tags: []};
@@ -180,11 +185,9 @@ export async function getRolesAccess(roleIds: (ObjectId | string)[], modules: re
     for (const access of resolved.values()) {
         isAdmin = isAdmin || access.isAdmin;
         for (const [moduleName, moduleTags] of Object.entries(access.tagsByModule)) {
-            if (moduleName !== "core" && !modules.includes(moduleName)) {
-                continue;
-            }
+            const ownModule = moduleName === "core" || modules.includes(moduleName);
             for (const tag of moduleTags) {
-                tags.add(tag);
+                if (ownModule || extraTagPrefixes.some((prefix) => tag.startsWith(prefix))) tags.add(tag);
             }
         }
     }

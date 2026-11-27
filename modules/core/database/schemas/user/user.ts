@@ -52,6 +52,7 @@ import {SimpleBlankUserSnippet} from "@coreModule/database/schemas/user/user.sni
 import {RoleSimpleSnippet} from "@coreModule/database/schemas/role/role.snippets";
 import {getRolesAccess} from "@coreModule/utilities/security/roleAccessCache";
 import {getCompanyModules} from "@coreModule/utilities/modules/companyModules";
+import {platformListTagPrefixes} from "@coreModule/utilities/security/platformListRegistry";
 import {withTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {checkTenantReferences} from "@coreModule/database/plugins/tenantReferences";
 
@@ -211,7 +212,7 @@ export interface IUser extends Document, ILifeCyclePluginFields {
     isUserActive: (companyId: ObjectId) => Promise<boolean>,
     changeAccountStatus: (companyId: ObjectId, status: boolean, session?: ClientSession) => Promise<void>,
     /** `modules` = the company's effective modules when the caller already has them; looked up otherwise. */
-    getCompanyAccess: (companyId: ObjectId, modules?: readonly string[]) => Promise<{isAdmin: boolean, permissions: string[]}>;
+    getCompanyAccess: (companyId: ObjectId, modules?: readonly string[], extraTagPrefixes?: readonly string[]) => Promise<{isAdmin: boolean, permissions: string[]}>;
 
     getCompanyRolePermissions: (companyId: ObjectId) => Promise<string[]>;
     companyRoleHasPermission: (companyId: ObjectId, permission: string) => Promise<boolean>;
@@ -1788,7 +1789,7 @@ UserSchema.methods.changeAccountStatus = async function (companyId: ObjectId, st
  * callers that need both (authMW does, on every private request) should ask once rather
  * than resolve the roles twice. Backed by the Redis role cache.
  */
-UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId, modules?: readonly string[]): Promise<{isAdmin: boolean, permissions: string[]}> {
+UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId, modules?: readonly string[], extraTagPrefixes?: readonly string[]): Promise<{isAdmin: boolean, permissions: string[]}> {
     const companyRole = findCompanyRole(this.roles, companyId);
     const roleIds = companyRole?.roles?.map((role) => role._id) ?? [];
     if (!roleIds.length) {
@@ -1800,7 +1801,10 @@ UserSchema.methods.getCompanyAccess = async function (companyId: ObjectId, modul
     // Permissions of modules the company does not have are left out, admins included.
     // The roles belong to `companyId`, which need not be the request's tenant: the companies list asks
     // for each of the user's companies (D16).
-    const {isAdmin, tags} = await withTenant(companyId, async () => getRolesAccess(roleIds, modules ?? await getCompanyModules(companyId)));
+    // The platform company keeps the platform lists of every module (D195); authMW already knows the company and passes them.
+    const platformLists = extraTagPrefixes
+        ?? (await model("Company").exists({_id: companyId, isPlatformOwner: true}) ? platformListTagPrefixes() : []);
+    const {isAdmin, tags} = await withTenant(companyId, async () => getRolesAccess(roleIds, modules ?? await getCompanyModules(companyId), platformLists));
     return {isAdmin, permissions: tags};
 }
 

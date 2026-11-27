@@ -8,7 +8,7 @@ import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
 import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
 import SchemaGuard from "@coreModule/database/security/schemaGuard";
 import {COLLECTED_DATA} from "@coreModule/database/collections";
-import {isModelInModules} from "@coreModule/utilities/modules/modelModules";
+import {isModelForCompany} from "@coreModule/utilities/modules/modelModules";
 import {decryptHealthDiff} from "@coreModule/database/plugins/healthEncryption";
 import {SanitizedFields} from "armonia/src/modules/core/types";
 import {
@@ -201,7 +201,7 @@ async function getDocumentAuditLogs(reqBody: DocAuditParams, _routeParams: unkno
     const {documentId, collectionName, limit, cursorRaw} = parsed;
 
     const collected = COLLECTED_DATA[collectionName];
-    if (!collected?.model || !collected.readFields || !isModelInModules(collected.model.modelName, actionUserCtx.modules ?? [])) {
+    if (!collected?.model || !collected.readFields || !isModelForCompany(collected.model, actionUserCtx.modules ?? [], company)) {
         throw apiValidationException("not_found", "", null, languageCode);
     }
 

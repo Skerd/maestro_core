@@ -16,6 +16,8 @@ import {UserContext} from "@coreModule/utilities/types/types";
 import {ObjectId} from "mongodb";
 import {validateJWTToken} from "@coreModule/utilities/security/jwtValidator";
 import {requestContext} from "@coreModule/utilities/endpoints/requestContext";
+import {isPlatformCompany} from "@coreModule/utilities/security/platformAccess";
+import {platformListTagPrefixes} from "@coreModule/utilities/security/platformListRegistry";
 import {setRequestTenant} from "@coreModule/utilities/endpoints/tenantScope";
 import {validateActiveUserSession} from "@coreModule/utilities/security/sessionValidator";
 import {effectiveCompanyModules, isModuleEnabledForCompany} from "@coreModule/utilities/modules/companyModules";
@@ -134,7 +136,9 @@ export default (type: "public" | "private", options: AuthMWOptions = {}) => asyn
         setRequestTenant(company._id, languageCode);
         const studioSample = wantsStudioSample(req.header(STUDIO_SAMPLE_HEADER));
         const modules = studioSample ? getEnabledModuleNames() : effectiveCompanyModules(company);
-        const {isAdmin, permissions} = await user.getCompanyAccess(company._id, modules);
+        // The platform company manages every module's platform lists, whether or not it runs the module (D195).
+        const platformLists = isPlatformCompany(company) ? platformListTagPrefixes() : [];
+        const {isAdmin, permissions} = await user.getCompanyAccess(company._id, modules, platformLists);
 
         if( !company.isActive && !isAdmin ){
             throw apiValidationException("company_is_inactive", "company", null, languageCode);
@@ -163,6 +167,7 @@ export default (type: "public" | "private", options: AuthMWOptions = {}) => asyn
             setRequestTenant(member.company._id, languageCode);
             logger.info(`Portal session acts for member company ${member.company._id.toString()} (${options.memberCompany?.method})`);
         } else if (routeModule && !studioSample && !isModuleEnabledForCompany(company, routeModule)
+            && !(isPlatformCompany(company) && requestContext.getStore()?.platformListRoute === true)
             && !(await portalBuyerTargetHasModule(options.portalBuyer, {body: req.body, params: req.params ?? {}}, origin, routeModule))) {
             throw apiValidationException("module_not_enabled", "module", null, languageCode);
         }

@@ -60,7 +60,7 @@ export const platformCompanyOnly: RequestHandler = (req, _res, next) => {
 type PlatformListOptions<T extends RequestableEntry, TCreate extends object> = Pick<
     CrudRouterConfig<T, TCreate>,
     "documentFilter" | "extraSelectFilter" | "checkCreatePermission" | "buildCreateData" | "afterCreate"
-    | "editMiddleware" | "beforeDelete" | "afterRestore" | "actions" | "enrichList" | "enrichSingle"
+    | "editMiddleware" | "beforeDelete" | "afterRestore" | "actions" | "enrichList" | "enrichSingle" | "platformListCollection"
 >;
 
 /**
@@ -93,6 +93,8 @@ export function platformListRouteOptions<T extends RequestableEntry, TCreate ext
     const {model, service, collectionName, toDTO, buildCreateData} = config;
     const requestable = isRequestable(model);
     return {
+        // The platform company manages it whether or not it runs the list's module (D195).
+        platformListCollection: collectionName,
         // Reads, edits and deletes find the platform's rows (and the session company's own requests), never its own copy.
         documentFilter: (params) => platformListClause(params.company),
         // A select offers approved rows only, to every company.

@@ -43,4 +43,17 @@ describe("getRolesAccess module filter", () => {
         const rental = await getRolesAccess([admin._id], ["core", "carRental"]);
         expect(rental.tags.sort()).toEqual(["users[read:self:name]", "vehicles[read:self:name]"]);
     });
+
+    it("keeps another module's platform-list tags when asked, and only those (D195)", async () => {
+        const [coreTag, listTag, otherTag] = await RolePermission.create([
+            {tag: "countries[read:self:name]", module: "core"},
+            {tag: "productcategories[read:self:name]", module: "eCommerce"},
+            {tag: "products[read:self:title]", module: "eCommerce"},
+        ]);
+        const admin = await Role.create({isAdmin: true, permissions: [coreTag._id, listTag._id, otherTag._id]});
+
+        const platform = await getRolesAccess([admin._id], ["core"], ["productcategories["]);
+        expect(platform.tags.sort()).toEqual(["countries[read:self:name]", "productcategories[read:self:name]"]);
+        expect((await getRolesAccess([admin._id], ["core"])).tags).toEqual(["countries[read:self:name]"]);
+    });
 });

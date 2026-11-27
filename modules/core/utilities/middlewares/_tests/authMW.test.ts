@@ -126,3 +126,32 @@ describe("authMW and the platform's suspension (D191)", () => {
         expect(next.mock.calls[0]?.[0]).toMatchObject({error_code: "company_suspended"});
     });
 });
+
+describe("authMW and the platform's lists of other modules (D195)", () => {
+    /** A signed-in request to a "widgets" route, from a company with core only; returns what authMW passed on. */
+    async function listRequest(company: {isPlatformOwner?: boolean}, platformListRoute: boolean) {
+        findCompany.mockResolvedValueOnce({_id: companyId, name: "Kudoo", isActive: true, modules: ["core"], ...company});
+        const headers: Record<string, string> = {"x-auth-token": "token"};
+        const req = {
+            body: {},
+            params: {},
+            originalUrl: "/api/widgets/category",
+            socket: {remoteAddress: "127.0.0.1"},
+            headers: {},
+            header: (name: string) => headers[name],
+            get: () => undefined,
+        };
+        const next = vi.fn();
+        await requestContext.run({routeModule: "widgets", platformListRoute}, () => authMW("private")(req, {}, next));
+        return next.mock.calls[0]?.[0];
+    }
+
+    it("lets the platform company use a platform list of a module it does not run", async () => {
+        expect(await listRequest({isPlatformOwner: true}, true)).toBeUndefined();
+    });
+
+    it("keeps the module gate on the module's other routes, and for every other company", async () => {
+        expect((await listRequest({isPlatformOwner: true}, false))?.error_code).toBe("module_not_enabled");
+        expect((await listRequest({isPlatformOwner: false}, true))?.error_code).toBe("module_not_enabled");
+    });
+});

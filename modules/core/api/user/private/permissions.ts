@@ -61,7 +61,7 @@ import {COLLECTED_DATA, getModelCollectedData} from "@coreModule/database/collec
 import {filterTableConfigBySanitizedFields} from "@coreModule/database/filter/schemaToTableConfig";
 import {SanitizedFields} from "armonia/src/modules/core/types";
 import {escapeRegex} from "@coreModule/utilities/helpers";
-import {isModelInModules} from "@coreModule/utilities/modules/modelModules";
+import {isModelForCompany} from "@coreModule/utilities/modules/modelModules";
 
 /**
  * Derives the Mongoose model name (PascalCase singular) from a resourceId (camelCase plural).
@@ -545,7 +545,7 @@ async function AccessAllResources(params: AuthenticatedMWType & AccessAllFormTyp
 
         const model =  collectedData.model;
         // Models of modules the company does not have stay out (publicRead fields would otherwise show).
-        if (!isModelInModules(model.modelName, actionUserCtx.modules ?? [])) {
+        if (!isModelForCompany(model, actionUserCtx.modules ?? [], params.company)) {
             continue;
         }
         const modelName = collectedData.model.collection.name;

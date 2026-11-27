@@ -1,5 +1,7 @@
 import {afterEach, describe, expect, it} from "vitest";
-import {wantsInstalledModuleScope, wantsStudioSample} from "../modelModules";
+import mongoose, {Schema} from "mongoose";
+import {isModelForCompany, registerModelModules, wantsInstalledModuleScope, wantsStudioSample} from "../modelModules";
+import {registerPlatformListRouter} from "@coreModule/utilities/security/platformListRegistry";
 
 describe("wantsInstalledModuleScope", () => {
     const previous = process.env.SERVER_NODE_ENV;
@@ -27,5 +29,22 @@ describe("wantsInstalledModuleScope", () => {
 
         process.env.SERVER_NODE_ENV = "production";
         expect(wantsStudioSample("1")).toBe(false);
+    });
+});
+
+describe("isModelForCompany (D195)", () => {
+    const list = mongoose.model("ModelModulesTestShopList", new Schema({}), "modelmodulestestshoplists");
+    const other = mongoose.model("ModelModulesTestShopOrder", new Schema({}), "modelmodulestestshoporders");
+    registerModelModules("eCommerce", [list, other]);
+    registerPlatformListRouter({}, "modelmodulestestshoplists");
+
+    it("lets the platform company see another module's platform list, and nothing else of that module", () => {
+        expect(isModelForCompany(list, ["core"], {isPlatformOwner: true})).toBe(true);
+        expect(isModelForCompany(other, ["core"], {isPlatformOwner: true})).toBe(false);
+    });
+
+    it("keeps other companies to their own modules", () => {
+        expect(isModelForCompany(list, ["core"], {isPlatformOwner: false})).toBe(false);
+        expect(isModelForCompany(list, ["core", "eCommerce"], null)).toBe(true);
     });
 });
