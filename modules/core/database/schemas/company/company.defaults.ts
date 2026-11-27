@@ -8,6 +8,7 @@ import Country from "@coreModule/database/schemas/country/country";
 import City from "@coreModule/database/schemas/city/city";
 import {createCurrencies} from "@coreModule/database/schemas/currency/currency.defaults";
 import {createCountries} from "@coreModule/database/schemas/country/country.defaults";
+import {runModulePlatformLists} from "@coreModule/utilities/modules/moduleCompanyDefaults";
 import {createStates} from "@coreModule/database/schemas/state/state.defaults";
 import {createCities} from "@coreModule/database/schemas/city/city.defaults";
 import {resolveDemoImagesFromUnsplash} from "@coreModule/database/demo/demoMedia";
@@ -371,12 +372,13 @@ async function syncCompanyBot(company: any): Promise<void> {
     await bot.save();
 }
 
-/** Currencies, countries, states and cities: the platform lists, owned by the platform company (D160). */
+/** Currencies, countries, states and cities, then each module's own: the platform lists, owned by the platform company (D160, D195). */
 async function createPlatformLists(logger: serverLogger, platformCompany: ICompany): Promise<void> {
     await createCurrencies(logger, platformCompany);
     await createCountries(logger, platformCompany);
     await createStates(logger, platformCompany);
     await createCities(logger, platformCompany);
+    await runModulePlatformLists(platformCompany, logger);
 }
 
 export async function createCompanies(parentLogger?: serverLogger, demoData: boolean = false){

@@ -3,6 +3,8 @@
  * module code. `onModuleEnabled` gives a company that gets the module its starter records (TD-B254): whether the company
  * is created with the module (the panel's create, a self-serve sign-up) or the platform grants it later (Manage modules).
  * `onAccountVerified` gives an account with a verified email the guest records made with that email (P23.9).
+ * `platformLists` seeds the module's platform lists, owned by the platform company like core's countries and currencies
+ * (D160), right after core's own at database setup (D195: eCommerce's product categories).
  *
  * @module moduleCompanyDefaults
  */
@@ -49,8 +51,17 @@ export type AccountVerifiedContext = {
  */
 export type AccountVerifiedHook = (context: AccountVerifiedContext) => Promise<void>;
 
+/** What a module's platform-lists hook gets: the platform company, which owns every row (D160). */
+export type PlatformListsContext = {platformCompany: ICompany; logger: serverLogger};
+
+/**
+ * Seeds the module's platform lists. It runs at every database setup, so it must add or update only what changed and
+ * never remove a row a company uses.
+ */
+export type PlatformListsHook = (context: PlatformListsContext) => Promise<void>;
+
 /** The hooks a module's bootstrap may export. */
-type ModuleBootstrapHooks = {onModuleEnabled?: ModuleEnabledHook; onAccountVerified?: AccountVerifiedHook};
+type ModuleBootstrapHooks = {onModuleEnabled?: ModuleEnabledHook; onAccountVerified?: AccountVerifiedHook; platformLists?: PlatformListsHook};
 
 type ModuleBootstrapExport = {moduleBootstrap?: ModuleBootstrapHooks};
 
@@ -79,5 +90,14 @@ export async function runModuleCompanyDefaults(company: ICompany, moduleNames: r
         if (moduleName === "core" || !enabled.has(moduleName)) continue;
         const hook = await moduleBootstrapHook(moduleName, "onModuleEnabled");
         if (hook) await withTenant(company._id, () => hook({...context, company}));
+    }
+}
+
+/** Runs every enabled module's platform-lists hook, in the platform company's tenant (D195). */
+export async function runModulePlatformLists(platformCompany: ICompany, logger: serverLogger): Promise<void> {
+    for (const moduleName of getEnabledModuleNames()) {
+        if (moduleName === "core") continue;
+        const hook = await moduleBootstrapHook(moduleName, "platformLists");
+        if (hook) await withTenant(platformCompany._id, () => hook({platformCompany, logger}));
     }
 }
