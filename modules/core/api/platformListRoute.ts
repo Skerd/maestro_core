@@ -89,8 +89,11 @@ export function platformListRouteOptions<T extends RequestableEntry, TCreate ext
     collectionName: string;
     toDTO: (doc: T) => unknown;
     buildCreateData: CrudRouterConfig<T, TCreate>["buildCreateData"];
+    /** The list's page under Configurations (`/tenancy/systemSettings/<page>`), which request notices open; defaults to the collection name. */
+    page?: string;
 }): PlatformListOptions<T, TCreate> {
     const {model, service, collectionName, toDTO, buildCreateData} = config;
+    const page = config.page ?? collectionName;
     const requestable = isRequestable(model);
     return {
         // The platform company manages it whether or not it runs the list's module (D195).
@@ -128,7 +131,7 @@ export function platformListRouteOptions<T extends RequestableEntry, TCreate ext
         afterCreate: async (created, params) => {
             if (created.requestStatus !== "requested") return;
             const platformId = await findPlatformCompanyId();
-            if (platformId) await notifyEntryRequested(model, created, platformId, params);
+            if (platformId) await notifyEntryRequested(model, created, platformId, params, page);
         },
         editMiddleware: [platformCompanyOnly],
         beforeDelete: async (params, doc) => {
@@ -137,7 +140,7 @@ export function platformListRouteOptions<T extends RequestableEntry, TCreate ext
             if (requestable && doc.requestStatus === "requested") {
                 const {session, logger, languageCode, actionUserCtx} = params;
                 await service.updateByIdOrThrow(doc._id, {$set: decisionSet("rejected", actionUserCtx.userId)}, {session, logger, languageCode, auditUserId: actionUserCtx.userId});
-                notifyRequester(model, doc, NotificationEventCodes.ENTRY_REQUEST_REJECTED, params);
+                notifyRequester(model, doc, NotificationEventCodes.ENTRY_REQUEST_REJECTED, params, page);
             }
             // Records of every company point at the shared row: count them all, not only the platform's.
             await asCrossTenant("a platform list row is used by every company's records", () =>
@@ -152,7 +155,7 @@ export function platformListRouteOptions<T extends RequestableEntry, TCreate ext
             }
         },
         ...(requestable ? {
-            actions: requestableActions({model, service, collectionName, toDTO}),
+            actions: requestableActions({model, service, collectionName, toDTO, page}),
             enrichList: async (docs, params) => docs.map((doc) => withoutForeignRequest(toDTO(doc), params.company)),
             enrichSingle: async (doc, params) => withoutForeignRequest(toDTO(doc), params.company),
         } : {}),

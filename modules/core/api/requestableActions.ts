@@ -35,9 +35,9 @@ type DecisionParams = TransactionRequiredParams & {_id: string; notes?: string};
 
 const RATE_LIMIT = {windowMs: 60000, max: 30};
 
-/** The ids a notification about `entry` carries: its list page and the entry to open there. */
-function entryContent(model: Model<any>, entry: RequestableEntry) {
-    return {list: model.collection.name, entryId: entry._id.toString()};
+/** The ids a notification about `entry` carries: its list page (under Configurations) and the entry to open there. */
+function entryContent(page: string, entry: RequestableEntry) {
+    return {list: page, entryId: entry._id.toString()};
 }
 
 /** Tells the platform's deciders that `requester` asked for `entry`; runs after the request is created. */
@@ -46,6 +46,7 @@ export async function notifyEntryRequested(
     entry: RequestableEntry,
     platformId: ObjectId,
     params: Pick<AuthenticatedMWType, "company" | "actionUserCtx" | "languageCode"> & {session?: TransactionRequiredParams["session"]},
+    page: string,
 ): Promise<void> {
     // The platform's roles are read in its own tenant.
     const deciders = await withTenant(platformId, () =>
@@ -54,7 +55,7 @@ export async function notifyEntryRequested(
         receiverIds: deciders.filter((id) => id !== String(params.actionUserCtx.userId)),
         payload: {
             companyId: platformId.toString(),
-            ...entryContent(model, entry),
+            ...entryContent(page, entry),
             name: entry.name ?? "",
             requesterCompanyName: params.company.name ?? "",
             languageCode: params.languageCode ?? "en-US",
@@ -69,6 +70,7 @@ export function notifyRequester(
     entry: RequestableEntry,
     code: string,
     params: Pick<TransactionRequiredParams, "languageCode" | "session"> & {notes?: string},
+    page: string,
 ): void {
     const requester = nestedEntityToRef(entry.requestedBy) ?? nestedEntityToRef(entry.createdBy);
     const requesterCompany = nestedEntityToRef(entry.requestedByCompany);
@@ -78,7 +80,7 @@ export function notifyRequester(
         receiverIds: [requester.toString()],
         payload: {
             companyId: requesterCompany.toString(),
-            ...entryContent(model, entry),
+            ...entryContent(page, entry),
             name: entry.name ?? "",
             notes,
             ...(notes ? {variant: "withReason"} : {}),
@@ -108,8 +110,10 @@ export function requestableActions<T extends RequestableEntry>(config: {
     service: BaseCrudService<T, Model<T>>;
     collectionName: string;
     toDTO: (doc: T) => unknown;
+    /** The list's page under Configurations, which the notices open. */
+    page: string;
 }): new () => object {
-    const {model, service, collectionName, toDTO} = config;
+    const {model, service, collectionName, toDTO, page} = config;
 
     async function requestedEntry(params: DecisionParams): Promise<T> {
         const {_id, session, logger, languageCode} = params;
@@ -156,7 +160,7 @@ export function requestableActions<T extends RequestableEntry>(config: {
             const entry = await requestedEntry(params);
             const {session, logger, languageCode, actionUserCtx} = params;
             await service.updateByIdOrThrow(entry._id, {$set: decisionSet("approved", actionUserCtx.userId)}, {session, logger, languageCode, auditUserId: actionUserCtx.userId});
-            notifyRequester(model, entry, NotificationEventCodes.ENTRY_REQUEST_APPROVED, params);
+            notifyRequester(model, entry, NotificationEventCodes.ENTRY_REQUEST_APPROVED, params, page);
             return decidedDTO(entry, params);
         }
 
@@ -166,7 +170,7 @@ export function requestableActions<T extends RequestableEntry>(config: {
             assertPlatformCompany(params);
             const entry = await requestedEntry(params);
             await closeEntry(entry, "rejected", params);
-            notifyRequester(model, entry, NotificationEventCodes.ENTRY_REQUEST_REJECTED, params);
+            notifyRequester(model, entry, NotificationEventCodes.ENTRY_REQUEST_REJECTED, params, page);
             return decidedDTO(entry, params);
         }
 
