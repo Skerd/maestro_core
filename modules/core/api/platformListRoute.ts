@@ -11,8 +11,8 @@
  */
 
 import {ObjectId} from "mongodb";
-import type {RequestHandler} from "express";
-import type {Model} from "mongoose";
+import type {RequestHandler, Router} from "express";
+import type {FilterQuery, Model} from "mongoose";
 import type {CrudRouterConfig} from "@coreModule/api/crudRouterFactory";
 import type {AuthenticatedMWType} from "@coreModule/utilities/middlewares/authMW";
 import type {BaseCrudService} from "@coreModule/database/services/baseCrudService";
@@ -31,6 +31,18 @@ import {
 import {decisionSet, notifyEntryRequested, notifyRequester, type RequestableEntry, requestableActions} from "@coreModule/api/requestableActions";
 import {NotificationEventCodes} from "@coreModule/domain/notifications/notificationEventBus";
 import {apiValidationException} from "armonia/src/modules/core/helpers/exceptions";
+import authMW from "@coreModule/utilities/middlewares/authMW";
+import {rateLimiter} from "@coreModule/utilities/middlewares/rateLimiter";
+import {validateFormZod} from "@coreModule/utilities/middlewares/validateFormZod";
+import {asyncHandler} from "@coreModule/utilities/middlewares/asyncHandler";
+import {escapeRegex} from "@coreModule/utilities/helpers";
+import {nestedEntityToRef} from "@coreModule/utilities/mappers/common.mapper";
+import {listDisplayName, type ListNames} from "@coreModule/utilities/helpers/listNames";
+import {platformListTreeFormSchema} from "armonia/src/modules/core/api/platform/private/platformListTree/platformListTree.form.validator";
+import type {
+    PlatformListTreeFormType,
+    PlatformListTreeResponse,
+} from "armonia/src/modules/core/api/platform/private/platformListTree/platformListTree.types";
 
 /**
  * A model's access as the access map reports it (`/api/user/permissions/access*`): a requestable platform list is
@@ -161,3 +173,99 @@ export function platformListRouteOptions<T extends RequestableEntry, TCreate ext
         } : {}),
     };
 }
+
+const TREE_LEVEL_LIMIT = 500;
+const TREE_SEARCH_LIMIT = 50;
+
+/** A row of a tree-shaped platform list as the hierarchy view reads it (D195, D196). */
+type TreeRow = {_id: ObjectId; name: string; names?: ListNames; slug: string; requestStatus?: string} & Record<string, unknown>;
+
+/**
+ * Adds `POST /tree` to a tree-shaped platform list's router (D195 product categories, D196 service categories): one
+ * level at a time (thousands of entries never load at once), each with how many entries sit under it, or a search in
+ * any language (the row's `searchText`) with each match's path. Names are in the reader's language (`names`). A company
+ * sees what its list shows: the platform's approved entries and its own requests.
+ */
+export function addPlatformListTreeRoute<T extends RequestableEntry>(router: Router, config: {
+    model: Model<T>;
+    service: BaseCrudService<T, Model<T>>;
+    /** The field that points at the parent entry (`parent`, `parentListingCategory`). */
+    parentField: string;
+}): void {
+    const {model, service, parentField} = config;
+    const select = `_id name names slug requestStatus ${parentField}`;
+    const rowsOf = (found: unknown[]): TreeRow[] => found as TreeRow[];
+
+    /** How many entries sit directly under each of `ids`, in what the company sees. */
+    async function childCounts(ids: ObjectId[], visible: Record<string, unknown>): Promise<Map<string, number>> {
+        const counts = new Map<string, number>();
+        if (ids.length === 0) return counts;
+        const filter = {...visible, [parentField]: {$in: ids}} as FilterQuery<T>;
+        for (const child of rowsOf(await service.find(filter, {}, undefined, parentField))) {
+            const parent = String(nestedEntityToRef(child[parentField] as never));
+            counts.set(parent, (counts.get(parent) ?? 0) + 1);
+        }
+        return counts;
+    }
+
+    /** The names above each entry, top level first, one query per level. */
+    async function ancestorPaths(rows: TreeRow[]): Promise<Map<string, string[]>> {
+        const parentOf = (row: TreeRow) => nestedEntityToRef(row[parentField] as never);
+        const byId = new Map<string, TreeRow>();
+        let wanted = rows.map(parentOf).filter((id): id is ObjectId => !!id);
+        while (wanted.length > 0) {
+            const found = rowsOf(await service.find({_id: {$in: wanted}}, {}, undefined, select));
+            for (const row of found) byId.set(String(row._id), row);
+            wanted = found.map(parentOf).filter((id): id is ObjectId => !!id && !byId.has(String(id)));
+        }
+        const paths = new Map<string, string[]>();
+        for (const row of rows) {
+            const path: string[] = [];
+            for (let parent = parentOf(row); parent;) {
+                const ancestor = byId.get(String(parent));
+                if (!ancestor) break;
+                path.unshift(listDisplayName(ancestor));
+                parent = parentOf(ancestor);
+            }
+            paths.set(String(row._id), path);
+        }
+        return paths;
+    }
+
+    async function tree(params: AuthenticatedMWType & PlatformListTreeFormType): Promise<PlatformListTreeResponse> {
+        const {company, actionUserCtx, languageCode, logger, parent, search} = params;
+        SchemaGuard.sanitizeFields(model, {name: {}}, "read", actionUserCtx, languageCode);
+        const visible = await platformListClause(company);
+        const opts = {logger, languageCode};
+        const term = search?.trim();
+        const limit = term ? TREE_SEARCH_LIMIT : TREE_LEVEL_LIMIT;
+        // The tree's fields are the list's, named by the caller: the filter is typed by hand.
+        const filter = (term
+            ? {...visible, searchText: {$regex: escapeRegex(term.toLowerCase()), $options: "i"}}
+            : {...visible, [parentField]: parent ? new ObjectId(parent) : null}) as FilterQuery<T>;
+        const rows = rowsOf(await service.find(filter, opts, undefined, select, {order: 1, name: 1}, limit + 1));
+        const shown = rows.slice(0, limit);
+        const counts = await childCounts(shown.map((row) => row._id), visible);
+        const paths = term ? await ancestorPaths(shown) : undefined;
+        return {
+            data: shown.map((row) => ({
+                _id: String(row._id),
+                name: listDisplayName(row),
+                slug: row.slug,
+                childCount: counts.get(String(row._id)) ?? 0,
+                ...(row.requestStatus ? {requestStatus: row.requestStatus as PlatformListTreeResponse["data"][number]["requestStatus"]} : {}),
+                ...(paths ? {path: paths.get(String(row._id)) ?? []} : {}),
+            })),
+            truncated: rows.length > limit,
+        };
+    }
+
+    router.post(
+        "/tree",
+        authMW("private"),
+        rateLimiter({windowMs: 60000, max: 120}),
+        validateFormZod(platformListTreeFormSchema),
+        asyncHandler(tree),
+    );
+}
+
